@@ -95,7 +95,7 @@ func testDelay(t *testing.T, q processor.Queuer) {
 
 	tm := <-handlerCh
 	timing := tm.Sub(start)
-	if timing < msg.Delay {
+	if timing < msg.Delay || msg.Delay-timing > 2*time.Second {
 		t.Fatalf("message was delayed by %s, wanted %s", timing, msg.Delay)
 	}
 
