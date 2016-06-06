@@ -57,6 +57,8 @@ var _ = Describe("message with invalid number of args", func() {
 		q := memqueue.NewMemqueue(&memqueue.Options{
 			Processor: processor.Options{
 				Handler: handler,
+
+				Retries: 1,
 			},
 		})
 		q.CallAsync()
@@ -103,7 +105,7 @@ var _ = Describe("message retry timing", func() {
 	ch := make(chan time.Time, 10)
 	handler := func() error {
 		ch <- time.Now()
-		return errors.New("fake handler error")
+		return errors.New("fake error")
 	}
 
 	BeforeEach(func() {
@@ -196,7 +198,7 @@ var _ = Describe("failing queue with error handler", func() {
 	var q *memqueue.Memqueue
 
 	handler := func() error {
-		return errors.New("fake handler error")
+		return errors.New("fake error")
 	}
 
 	ch := make(chan bool, 10)
@@ -209,8 +211,7 @@ var _ = Describe("failing queue with error handler", func() {
 			Processor: processor.Options{
 				Handler:         handler,
 				FallbackHandler: fallbackHandler,
-				Retries:         3,
-				Backoff:         time.Millisecond,
+				Retries:         1,
 			},
 		})
 		q.CallAsync()
@@ -383,6 +384,7 @@ var _ = Describe("stress testing failing queue", func() {
 			Processor: processor.Options{
 				Handler:         handler,
 				FallbackHandler: fallbackHandler,
+				Retries:         1,
 			},
 		})
 

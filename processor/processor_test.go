@@ -24,8 +24,8 @@ func printStats(p *processor.Processor) {
 		}
 		avg := time.Duration(st.AvgDuration) * time.Millisecond
 		log.Printf(
-			"%s: buffered=%d processed=%d errors=%d retries=%d avg_dur=%s\n",
-			p, st.Buffered, st.Processed, st.Errors, st.Retries, avg,
+			"%s: workers=%d inFlight=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
+			p, st.Workers, st.InFlight, st.Processed, st.Fails, st.Retries, avg,
 		)
 	}
 }
@@ -42,6 +42,10 @@ func rateLimiter() *rate.Limiter {
 }
 
 func testProcessor(t *testing.T, q processor.Queuer) {
+	if err := q.Purge(); err != nil {
+		t.Fatal(err)
+	}
+
 	var count int64
 	handler := func(hello, world string) error {
 		if hello != "hello" {
@@ -75,6 +79,10 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 }
 
 func testDelay(t *testing.T, q processor.Queuer) {
+	if err := q.Purge(); err != nil {
+		t.Fatal(err)
+	}
+
 	handlerCh := make(chan time.Time, 10)
 	handler := func() {
 		handlerCh <- time.Now()
@@ -105,6 +113,10 @@ func testDelay(t *testing.T, q processor.Queuer) {
 }
 
 func testRetry(t *testing.T, q processor.Queuer) {
+	if err := q.Purge(); err != nil {
+		t.Fatal(err)
+	}
+
 	handlerCh := make(chan bool, 10)
 	handler := func(hello, world string) error {
 		handlerCh <- true
@@ -138,7 +150,9 @@ func testRetry(t *testing.T, q processor.Queuer) {
 }
 
 func testRateLimit(t *testing.T, q processor.Queuer) {
-	_ = q.Purge()
+	if err := q.Purge(); err != nil {
+		t.Fatal(err)
+	}
 
 	var count int64
 	handler := func() error {
@@ -161,10 +175,10 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	wg.Wait()
 
 	p := processor.New(q, &processor.Options{
-		Handler:      handler,
-		WorkerNumber: 2,
-		RateLimit:    timerate.Every(time.Second),
-		Limiter:      rateLimiter(),
+		Handler:   handler,
+		Workers:   2,
+		RateLimit: timerate.Every(time.Second),
+		Limiter:   rateLimiter(),
 	})
 	p.Start()
 	go printStats(p)

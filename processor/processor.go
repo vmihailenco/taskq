@@ -21,10 +21,11 @@ type Limiter interface {
 }
 
 type Stats struct {
-	Buffered    uint32
+	Workers     uint32
+	InFlight    uint32
 	Processed   uint32
-	Errors      uint32
 	Retries     uint32
+	Fails       uint32
 	AvgDuration uint32
 }
 
@@ -39,9 +40,9 @@ type Processor struct {
 	wg   sync.WaitGroup
 	stop uint32
 
-	buffered    uint32
+	inFlight    uint32
 	processed   uint32
-	errors      uint32
+	fails       uint32
 	retries     uint32
 	avgDuration uint32
 }
@@ -84,10 +85,11 @@ func (p *Processor) Stats() *Stats {
 		return nil
 	}
 	return &Stats{
-		Buffered:    atomic.LoadUint32(&p.buffered),
+		Workers:     uint32(p.opt.Workers),
+		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Processed:   atomic.LoadUint32(&p.processed),
-		Errors:      atomic.LoadUint32(&p.errors),
 		Retries:     atomic.LoadUint32(&p.retries),
+		Fails:       atomic.LoadUint32(&p.fails),
 		AvgDuration: atomic.LoadUint32(&p.avgDuration),
 	}
 }
@@ -106,8 +108,8 @@ func (p *Processor) AddMessage(msg *queue.Message) error {
 }
 
 func (p *Processor) startWorkers() {
-	for i := 0; i < p.opt.WorkerNumber; i++ {
-		p.wg.Add(1)
+	p.wg.Add(p.opt.Workers)
+	for i := 0; i < p.opt.Workers; i++ {
 		go p.worker()
 	}
 }
@@ -144,7 +146,7 @@ func (p *Processor) ProcessAll() error {
 	p.startWorkers()
 	var noWork int
 	for {
-		isIdle := atomic.LoadUint32(&p.buffered) == 0
+		isIdle := atomic.LoadUint32(&p.inFlight) == 0
 		n, err := p.prefetch()
 		if err != nil {
 			return err
@@ -195,7 +197,7 @@ func (p *Processor) prefetch() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	atomic.AddUint32(&p.buffered, uint32(len(msgs)))
+	atomic.AddUint32(&p.inFlight, uint32(len(msgs)))
 	for i := range msgs {
 		p.ch <- &msgs[i]
 	}
@@ -240,11 +242,11 @@ func (p *Processor) Process(msg *queue.Message) error {
 
 	if msg.ReservedCount < p.opt.Retries {
 		atomic.AddUint32(&p.retries, 1)
-		log.Printf("%s handler failed on %s (will retry): %s", p.q, msg, err)
+		log.Printf("%s handler failed (will retry): %s", p.q, err)
 		p.release(msg)
 	} else {
-		atomic.AddUint32(&p.errors, 1)
-		log.Printf("%s handler failed on %s: %s", p.q, msg, err)
+		atomic.AddUint32(&p.fails, 1)
+		log.Printf("%s handler failed: %s", p.q, err)
 		p.delete(msg, err)
 	}
 
@@ -252,8 +254,6 @@ func (p *Processor) Process(msg *queue.Message) error {
 }
 
 func (p *Processor) release(msg *queue.Message) {
-	atomic.AddUint32(&p.buffered, ^uint32(0))
-
 	var delay time.Duration
 	if msg.Delay > 0 {
 		delay = msg.Delay
@@ -261,22 +261,24 @@ func (p *Processor) release(msg *queue.Message) {
 		delay = exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
 	}
 	if err := p.q.Release(msg, delay); err != nil {
-		log.Printf("Release failed: %s", err)
+		log.Printf("%s Release failed: %s", p.q, err)
 	}
+
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
 func (p *Processor) delete(msg *queue.Message, reason error) {
-	atomic.AddUint32(&p.buffered, ^uint32(0))
-
 	if reason != nil && p.fallbackHandler != nil {
 		if err := p.fallbackHandler.HandleMessage(msg); err != nil {
-			log.Printf("%s fallback handler on failed %s: %s", p.q, msg, err)
+			log.Printf("%s fallback handler failed: %s", p.q, err)
 		}
 	}
 
 	if err := p.q.Delete(msg, reason); err != nil {
-		log.Printf("Delete failed: %s", err)
+		log.Printf("%s Delete failed: %s", p.q, err)
 	}
+
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {

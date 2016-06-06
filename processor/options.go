@@ -11,18 +11,18 @@ type Options struct {
 	Handler         interface{}
 	FallbackHandler interface{}
 
-	WorkerNumber int
-	BufferSize   int
-	Retries      int
-	Backoff      time.Duration
+	Workers    int
+	BufferSize int
+	Retries    int
+	Backoff    time.Duration
 
 	RateLimit rate.Limit
 	Limiter   Limiter
 }
 
 func (opt *Options) init() {
-	if opt.WorkerNumber == 0 {
-		opt.WorkerNumber = runtime.NumCPU() * 10
+	if opt.Workers == 0 {
+		opt.Workers = runtime.NumCPU() * 10
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = 10
