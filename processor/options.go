@@ -25,7 +25,7 @@ func (opt *Options) init() {
 		opt.WorkerNumber = runtime.NumCPU() * 10
 	}
 	if opt.BufferSize == 0 {
-		opt.BufferSize = opt.WorkerNumber
+		opt.BufferSize = 10
 	}
 	if opt.RateLimit == 0 {
 		opt.RateLimit = rate.Inf
