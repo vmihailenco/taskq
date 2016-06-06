@@ -21,7 +21,6 @@ type Limiter interface {
 }
 
 type Stats struct {
-	Workers     uint32
 	InFlight    uint32
 	Processed   uint32
 	Retries     uint32
@@ -77,7 +76,10 @@ func (p *Processor) Start() error {
 }
 
 func (p *Processor) String() string {
-	return fmt.Sprintf("Processor<%s>", p.q.Name())
+	return fmt.Sprintf(
+		"Processor<%s workers=%d buffer=%d>",
+		p.q.Name(), p.opt.Workers, p.opt.BufferSize,
+	)
 }
 
 func (p *Processor) Stats() *Stats {
@@ -85,7 +87,6 @@ func (p *Processor) Stats() *Stats {
 		return nil
 	}
 	return &Stats{
-		Workers:     uint32(p.opt.Workers),
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
