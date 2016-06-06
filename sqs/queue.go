@@ -11,13 +11,13 @@ import (
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/memqueue"
+	"gopkg.in/queue.v1/processor"
 )
 
 type Queue struct {
 	sqs       *sqs.SQS
 	accountId string
-	name      string
-	handler   *queue.Handler
+	opt       *memqueue.Options
 	memqueue  *memqueue.Memqueue
 
 	mu        sync.RWMutex
@@ -26,32 +26,35 @@ type Queue struct {
 	sync bool
 }
 
-func NewQueue(sqs *sqs.SQS, accountId, name string, opt *memqueue.Options) *Queue {
+func NewQueue(sqs *sqs.SQS, accountId string, opt *memqueue.Options) *Queue {
 	q := Queue{
 		sqs:       sqs,
 		accountId: accountId,
-		name:      name,
+		opt:       opt,
 	}
-	if opt == nil {
-		opt = &memqueue.Options{}
+
+	memopt := *opt
+	if !memopt.AlwaysSync {
+		memopt.IgnoreDelay = true
+		memopt.Processor.FallbackHandler = memopt.Processor.Handler
+		memopt.Processor.Handler = queue.HandlerFunc(q.add)
 	}
-	opt.Name = name
-	if !opt.AlwaysSync {
-		opt.IgnoreDelay = true
-		opt.Processor.FallbackHandler = opt.Processor.Handler
-		opt.Processor.Handler = queue.HandlerFunc(q.add)
-	}
-	q.memqueue = memqueue.NewMemqueue(opt)
+	q.memqueue = memqueue.NewMemqueue(&memopt)
+
 	registerQueue(&q)
 	return &q
 }
 
 func (q *Queue) Name() string {
-	return q.name
+	return q.opt.Name
 }
 
 func (q *Queue) String() string {
-	return fmt.Sprintf("Queue<%s>", q.name)
+	return fmt.Sprintf("Queue<%s>", q.Name())
+}
+
+func (q *Queue) Processor() *processor.Processor {
+	return processor.New(q, &q.opt.Processor)
 }
 
 func (q *Queue) queueURL() string {
@@ -76,7 +79,7 @@ func (q *Queue) queueURL() string {
 
 func (q *Queue) createQueue() (string, error) {
 	in := &sqs.CreateQueueInput{
-		QueueName: &q.name,
+		QueueName: aws.String(q.Name()),
 	}
 	out, err := q.sqs.CreateQueue(in)
 	if err != nil {
@@ -87,7 +90,7 @@ func (q *Queue) createQueue() (string, error) {
 
 func (q *Queue) getQueueURL() (string, error) {
 	in := &sqs.GetQueueUrlInput{
-		QueueName:              &q.name,
+		QueueName:              aws.String(q.Name()),
 		QueueOwnerAWSAccountId: &q.accountId,
 	}
 	out, err := q.sqs.GetQueueUrl(in)

@@ -10,27 +10,30 @@ import (
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/memqueue"
+	"gopkg.in/queue.v1/processor"
 )
 
 type Queue struct {
 	q        mq.Queue
+	opt      *memqueue.Options
 	memqueue *memqueue.Memqueue
 }
 
 func NewQueue(mqueue mq.Queue, opt *memqueue.Options) *Queue {
-	q := Queue{
-		q: mqueue,
-	}
-	if opt == nil {
-		opt = new(memqueue.Options)
-	}
 	opt.Name = mqueue.Name
-	if !opt.AlwaysSync {
-		opt.IgnoreDelay = true
-		opt.Processor.FallbackHandler = opt.Processor.Handler
-		opt.Processor.Handler = queue.HandlerFunc(q.add)
+	q := Queue{
+		q:   mqueue,
+		opt: opt,
 	}
-	q.memqueue = memqueue.NewMemqueue(opt)
+
+	memopt := *opt
+	if !memopt.AlwaysSync {
+		memopt.IgnoreDelay = true
+		memopt.Processor.FallbackHandler = memopt.Processor.Handler
+		memopt.Processor.Handler = queue.HandlerFunc(q.add)
+	}
+	q.memqueue = memqueue.NewMemqueue(&memopt)
+
 	registerQueue(&q)
 	return &q
 }
@@ -40,7 +43,11 @@ func (q *Queue) Name() string {
 }
 
 func (q *Queue) String() string {
-	return fmt.Sprintf("Queue<%s>", q.q.Name)
+	return fmt.Sprintf("Queue<%s>", q.Name())
+}
+
+func (q *Queue) Processor() *processor.Processor {
+	return processor.New(q, &q.opt.Processor)
 }
 
 func (q *Queue) createQueue() error {

@@ -37,12 +37,12 @@ func NewMemqueue(opt *Options) *Memqueue {
 	return &q
 }
 
-func (q *Memqueue) String() string {
-	return fmt.Sprintf("Memqueue<%s>", q.Name())
-}
-
 func (q *Memqueue) Name() string {
 	return q.opt.Name
+}
+
+func (q *Memqueue) String() string {
+	return fmt.Sprintf("Memqueue<%s>", q.Name())
 }
 
 func (q *Memqueue) Processor() *processor.Processor {

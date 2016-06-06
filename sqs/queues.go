@@ -21,7 +21,7 @@ func registerQueue(queue *Queue) {
 	queuesMu.Lock()
 
 	for _, q := range queues {
-		if q.name == queue.name {
+		if q.Name() == queue.Name() {
 			panic(fmt.Sprintf("%s is already registered", queue))
 		}
 	}
