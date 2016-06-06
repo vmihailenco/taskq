@@ -13,12 +13,8 @@ import (
 	"gopkg.in/queue.v1"
 )
 
-const redisPrefix = "memqueue"
-
-const (
-	consumerBackoff   = time.Second
-	maxMessageBackoff = 12 * time.Hour
-)
+const consumerBackoff = time.Second
+const maxBackoff = 12 * time.Hour
 
 type Limiter interface {
 	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
@@ -298,8 +294,8 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 
 func exponentialBackoff(dur time.Duration, retry int) time.Duration {
 	dur <<= uint(retry - 1)
-	if dur > maxMessageBackoff {
-		dur = maxMessageBackoff
+	if dur > maxBackoff {
+		dur = maxBackoff
 	}
 	return dur
 }
