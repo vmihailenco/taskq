@@ -22,10 +22,9 @@ func printStats(p *processor.Processor) {
 		if st == nil {
 			break
 		}
-		avg := time.Duration(st.AvgDuration) * time.Millisecond
 		log.Printf(
-			"%s: inFlight=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
-			p, st.InFlight, st.Processed, st.Fails, st.Retries, avg,
+			"%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
+			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
 		)
 	}
 }

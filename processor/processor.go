@@ -22,10 +22,11 @@ type Limiter interface {
 
 type Stats struct {
 	InFlight    uint32
+	Deleting    uint32
 	Processed   uint32
 	Retries     uint32
 	Fails       uint32
-	AvgDuration uint32
+	AvgDuration time.Duration
 }
 
 type Processor struct {
@@ -35,11 +36,17 @@ type Processor struct {
 	handler         queue.Handler
 	fallbackHandler queue.Handler
 
-	ch   chan *queue.Message
-	wg   sync.WaitGroup
+	ch chan *queue.Message
+	wg sync.WaitGroup
+
+	delLimit chan struct{}
+	delCh    chan *queue.Message
+	delWG    sync.WaitGroup
+
 	stop uint32
 
 	inFlight    uint32
+	deleting    uint32
 	processed   uint32
 	fails       uint32
 	retries     uint32
@@ -54,6 +61,9 @@ func New(q Queuer, opt *Options) *Processor {
 		opt: opt,
 
 		ch: make(chan *queue.Message, opt.BufferSize),
+
+		delLimit: make(chan struct{}, opt.Scavengers),
+		delCh:    make(chan *queue.Message, opt.BufferSize),
 	}
 	p.SetHandler(opt.Handler)
 	if opt.FallbackHandler != nil {
@@ -70,15 +80,20 @@ func Start(q Queuer, opt *Options) *Processor {
 
 func (p *Processor) Start() error {
 	p.wg.Add(1)
-	go p.prefetchMessages()
+	go p.messageFetcher()
+
 	p.startWorkers()
+
+	p.delWG.Add(1)
+	go p.messageDeleter()
+
 	return nil
 }
 
 func (p *Processor) String() string {
 	return fmt.Sprintf(
-		"Processor<%s workers=%d buffer=%d>",
-		p.q.Name(), p.opt.Workers, p.opt.BufferSize,
+		"Processor<%s workers=%d scavengers=%d buffer=%d>",
+		p.q.Name(), p.opt.Workers, p.opt.Scavengers, p.opt.BufferSize,
 	)
 }
 
@@ -88,10 +103,11 @@ func (p *Processor) Stats() *Stats {
 	}
 	return &Stats{
 		InFlight:    atomic.LoadUint32(&p.inFlight),
+		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
-		AvgDuration: atomic.LoadUint32(&p.avgDuration),
+		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Millisecond,
 	}
 }
 
@@ -132,6 +148,10 @@ func (p *Processor) waitWorkers(timeout time.Duration) error {
 	stopped := make(chan struct{})
 	go func() {
 		p.wg.Wait()
+
+		close(p.delCh)
+		p.delWG.Wait()
+
 		close(stopped)
 	}()
 
@@ -148,7 +168,7 @@ func (p *Processor) ProcessAll() error {
 	var noWork int
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
-		n, err := p.prefetch()
+		n, err := p.fetchMessages()
 		if err != nil {
 			return err
 		}
@@ -176,15 +196,15 @@ func (p *Processor) ProcessOne() error {
 	return p.Process(&msgs[0])
 }
 
-func (p *Processor) prefetchMessages() {
+func (p *Processor) messageFetcher() {
 	defer p.wg.Done()
 	for {
 		if p.stopped() {
 			close(p.ch)
-			return
+			break
 		}
 
-		_, err := p.prefetch()
+		_, err := p.fetchMessages()
 		if err != nil {
 			log.Printf("%s ReserveN failed: %s (sleeping for %s)", p.q, err, consumerBackoff)
 			time.Sleep(consumerBackoff)
@@ -193,7 +213,7 @@ func (p *Processor) prefetchMessages() {
 	}
 }
 
-func (p *Processor) prefetch() (int, error) {
+func (p *Processor) fetchMessages() (int, error) {
 	msgs, err := p.q.ReserveN(p.opt.BufferSize)
 	if err != nil {
 		return 0, err
@@ -203,6 +223,35 @@ func (p *Processor) prefetch() (int, error) {
 		p.ch <- &msgs[i]
 	}
 	return len(msgs), nil
+}
+
+func (p *Processor) messageDeleter() {
+	defer p.delWG.Done()
+	var msgs []*queue.Message
+	for {
+		var stop, timeout bool
+		select {
+		case msg, ok := <-p.delCh:
+			if ok {
+				msgs = append(msgs, msg)
+			} else {
+				stop = true
+			}
+		case <-time.After(time.Second):
+			timeout = true
+		}
+
+		if (timeout && len(msgs) > 0) || len(msgs) >= 10 {
+			p.delLimit <- struct{}{}
+			p.delWG.Add(1)
+			go p.deleteBatch(msgs)
+			msgs = nil
+		}
+
+		if stop {
+			break
+		}
+	}
 }
 
 func (p *Processor) worker() {
@@ -275,11 +324,29 @@ func (p *Processor) delete(msg *queue.Message, reason error) {
 		}
 	}
 
-	if err := p.q.Delete(msg, reason); err != nil {
-		log.Printf("%s Delete failed: %s", p.q, err)
+	select {
+	case p.delCh <- msg:
+		atomic.AddUint32(&p.inFlight, ^uint32(0))
+		atomic.AddUint32(&p.deleting, 1)
+		return
+	default:
 	}
 
+	if err := p.q.Delete(msg); err != nil {
+		log.Printf("%s Delete failed: %s", p.q, err)
+	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
+}
+
+func (p *Processor) deleteBatch(msgs []*queue.Message) {
+	defer func() {
+		p.delWG.Done()
+		<-p.delLimit
+	}()
+	if err := p.q.DeleteBatch(msgs); err != nil {
+		log.Printf("%s DeleteBatch failed: %s", p.q, err)
+	}
+	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {

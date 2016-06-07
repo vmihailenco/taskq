@@ -12,6 +12,7 @@ type Queuer interface {
 	AddAsync(msg *queue.Message) error
 	ReserveN(n int) ([]queue.Message, error)
 	Release(*queue.Message, time.Duration) error
-	Delete(msg *queue.Message, reason error) error
+	Delete(msg *queue.Message) error
+	DeleteBatch(msg []*queue.Message) error
 	Purge() error
 }

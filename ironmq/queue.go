@@ -135,7 +135,7 @@ func (q *Queue) Release(msg *queue.Message, delay time.Duration) error {
 	})
 }
 
-func (q *Queue) Delete(msg *queue.Message, fail error) error {
+func (q *Queue) Delete(msg *queue.Message) error {
 	err := retry(func() error {
 		return q.q.DeleteMessage(msg.Id, msg.ReservationId)
 	})
@@ -146,6 +146,17 @@ func (q *Queue) Delete(msg *queue.Message, fail error) error {
 		return nil
 	}
 	return err
+}
+
+func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
+	mqMsgs := make([]mq.Message, len(msgs))
+	for i, msg := range msgs {
+		mqMsgs[i] = mq.Message{
+			Id:            msg.Id,
+			ReservationId: msg.ReservationId,
+		}
+	}
+	return q.q.DeleteReservedMessages(mqMsgs)
 }
 
 func (q *Queue) Purge() error {

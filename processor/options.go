@@ -12,6 +12,7 @@ type Options struct {
 	FallbackHandler interface{}
 
 	Workers    int
+	Scavengers int
 	BufferSize int
 	Retries    int
 	Backoff    time.Duration
@@ -22,7 +23,10 @@ type Options struct {
 
 func (opt *Options) init() {
 	if opt.Workers == 0 {
-		opt.Workers = runtime.NumCPU() * 10
+		opt.Workers = 10 * runtime.NumCPU()
+	}
+	if opt.Scavengers == 0 {
+		opt.Scavengers = 2 * runtime.NumCPU()
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = 10

@@ -149,8 +149,17 @@ func (q *Memqueue) Release(msg *queue.Message, dur time.Duration) error {
 	return nil
 }
 
-func (q *Memqueue) Delete(msg *queue.Message, reason error) error {
-	defer q.wg.Done()
+func (q *Memqueue) Delete(msg *queue.Message) error {
+	q.wg.Done()
+	return nil
+}
+
+func (q *Memqueue) DeleteBatch(msgs []*queue.Message) error {
+	for _, msg := range msgs {
+		if err := q.Delete(msg); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

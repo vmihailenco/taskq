@@ -218,12 +218,29 @@ func (q *Queue) Release(msg *queue.Message, delay time.Duration) error {
 	return err
 }
 
-func (q *Queue) Delete(msg *queue.Message, reason error) error {
+func (q *Queue) Delete(msg *queue.Message) error {
 	in := &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.queueURL()),
 		ReceiptHandle: &msg.ReservationId,
 	}
 	_, err := q.sqs.DeleteMessage(in)
+	return err
+}
+
+func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
+	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
+	for i, msg := range msgs {
+		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
+			Id:            aws.String(strconv.Itoa(i)),
+			ReceiptHandle: &msg.ReservationId,
+		}
+	}
+
+	in := &sqs.DeleteMessageBatchInput{
+		QueueUrl: aws.String(q.queueURL()),
+		Entries:  entries,
+	}
+	_, err := q.sqs.DeleteMessageBatch(in)
 	return err
 }
 
