@@ -308,7 +308,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 func (p *Processor) release(msg *queue.Message, reason error) {
 	delay := p.backoff(msg, reason)
 
-	log.Printf("%s handler failed (will retry in %s): %s", p.q, delay, reason)
+	log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
 	if err := p.q.Release(msg, delay); err != nil {
 		log.Printf("%s Release failed: %s", p.q, err)
 	}
@@ -365,7 +365,7 @@ func (p *Processor) deleteBatch(msgs []*queue.Message) {
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
-	const decay = float64(1) / 50
+	const decay = float64(1) / 100
 
 	ms := float64(dur / time.Millisecond)
 	for {
