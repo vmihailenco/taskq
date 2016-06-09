@@ -88,9 +88,6 @@ func (p *Processor) Start() error {
 
 	p.startWorkers()
 
-	p.delWG.Add(1)
-	go p.messageDeleter()
-
 	return nil
 }
 
@@ -133,6 +130,9 @@ func (p *Processor) startWorkers() {
 	for i := 0; i < p.opt.Workers; i++ {
 		go p.worker()
 	}
+
+	p.delWG.Add(1)
+	go p.messageDeleter()
 }
 
 func (p *Processor) Stop() error {
