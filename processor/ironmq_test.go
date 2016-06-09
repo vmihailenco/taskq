@@ -24,3 +24,7 @@ func TestIronmqRetry(t *testing.T) {
 func TestIronmqRateLimit(t *testing.T) {
 	testRateLimit(t, ironmq.NewQueue(mq.New("test-ironmq-rate-limit"), &memqueue.Options{}))
 }
+
+func TestIronmqDelayer(t *testing.T) {
+	testDelayer(t, ironmq.NewQueue(mq.New("test-ironmq-delayer"), &memqueue.Options{}))
+}

@@ -41,9 +41,7 @@ func rateLimiter() *rate.Limiter {
 }
 
 func testProcessor(t *testing.T, q processor.Queuer) {
-	if err := q.Purge(); err != nil {
-		t.Fatal(err)
-	}
+	_ = q.Purge()
 
 	var count int64
 	handler := func(hello, world string) error {
@@ -78,9 +76,7 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 }
 
 func testDelay(t *testing.T, q processor.Queuer) {
-	if err := q.Purge(); err != nil {
-		t.Fatal(err)
-	}
+	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
 	handler := func() {
@@ -101,9 +97,9 @@ func testDelay(t *testing.T, q processor.Queuer) {
 	p.Start()
 
 	tm := <-handlerCh
-	timing := tm.Sub(start)
-	if timing < msg.Delay || msg.Delay-timing > 2*time.Second {
-		t.Fatalf("message was delayed by %s, wanted %s", timing, msg.Delay)
+	sub := tm.Sub(start)
+	if !durEqual(sub, msg.Delay) {
+		t.Fatalf("message was delayed by %s, wanted %s", sub, msg.Delay)
 	}
 
 	if err := p.Stop(); err != nil {
@@ -112,9 +108,7 @@ func testDelay(t *testing.T, q processor.Queuer) {
 }
 
 func testRetry(t *testing.T, q processor.Queuer) {
-	if err := q.Purge(); err != nil {
-		t.Fatal(err)
-	}
+	_ = q.Purge()
 
 	handlerCh := make(chan bool, 10)
 	handler := func(hello, world string) error {
@@ -131,17 +125,10 @@ func testRetry(t *testing.T, q processor.Queuer) {
 	p := processor.New(q, &processor.Options{
 		Handler: handler,
 	})
-	start := time.Now()
 	p.Start()
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second}
-	for i, timing := range timings {
-		<-handlerCh
-		since := time.Since(start)
-		if since < timing {
-			t.Fatalf("retry %d: message was delayed by %s, wanted %s", i+1, since, timing)
-		}
-	}
+	testTimings(t, handlerCh, timings)
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
@@ -149,9 +136,7 @@ func testRetry(t *testing.T, q processor.Queuer) {
 }
 
 func testRateLimit(t *testing.T, q processor.Queuer) {
-	if err := q.Purge(); err != nil {
-		t.Fatal(err)
-	}
+	_ = q.Purge()
 
 	var count int64
 	handler := func() error {
@@ -189,5 +174,58 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type Error string
+
+func (e Error) Error() string {
+	return string(e)
+}
+
+func (Error) Delay() time.Duration {
+	return 3 * time.Second
+}
+
+func testDelayer(t *testing.T, q processor.Queuer) {
+	_ = q.Purge()
+
+	handlerCh := make(chan bool, 10)
+	handler := func() error {
+		handlerCh <- true
+		return Error("fake error")
+	}
+
+	p := processor.New(q, &processor.Options{
+		Handler: handler,
+		Backoff: time.Second,
+	})
+	p.Start()
+
+	err := q.Call()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
+	testTimings(t, handlerCh, timings)
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func durEqual(d1, d2 time.Duration) bool {
+	return d1 >= d2 && d2-d1 < 2*time.Second
+}
+
+func testTimings(t *testing.T, ch chan bool, timings []time.Duration) {
+	start := time.Now()
+	for i, timing := range timings {
+		<-ch
+		since := time.Since(start)
+		if !durEqual(since, timing) {
+			t.Fatalf("#%d: timing is %s, wanted %s", i+1, since, timing)
+		}
 	}
 }

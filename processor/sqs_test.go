@@ -37,3 +37,9 @@ func TestSQSRateLimit(t *testing.T) {
 		Name: "test-sqs-rate-limit",
 	}))
 }
+
+func TestSQSDelayer(t *testing.T) {
+	testDelayer(t, memsqs.NewQueue(awsSQS(), "788427328026", &memqueue.Options{
+		Name: "test-sqs-delayer",
+	}))
+}

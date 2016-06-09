@@ -20,6 +20,10 @@ type Limiter interface {
 	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
 }
 
+type Delayer interface {
+	Delay() time.Duration
+}
+
 type Stats struct {
 	InFlight    uint32
 	Deleting    uint32
@@ -271,7 +275,7 @@ func (p *Processor) worker() {
 		}
 
 		if msg.Delay > 0 {
-			p.release(msg)
+			p.release(msg, nil)
 			continue
 		}
 
@@ -292,24 +296,19 @@ func (p *Processor) Process(msg *queue.Message) error {
 
 	if msg.ReservedCount < p.opt.Retries {
 		atomic.AddUint32(&p.retries, 1)
-		log.Printf("%s handler failed (will retry): %s", p.q, err)
-		p.release(msg)
+		p.release(msg, err)
 	} else {
 		atomic.AddUint32(&p.fails, 1)
-		log.Printf("%s handler failed: %s", p.q, err)
 		p.delete(msg, err)
 	}
 
 	return err
 }
 
-func (p *Processor) release(msg *queue.Message) {
-	var delay time.Duration
-	if msg.Delay > 0 {
-		delay = msg.Delay
-	} else {
-		delay = exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
-	}
+func (p *Processor) release(msg *queue.Message, reason error) {
+	delay := p.backoff(msg, reason)
+
+	log.Printf("%s handler failed (will retry in %s): %s", p.q, delay, reason)
 	if err := p.q.Release(msg, delay); err != nil {
 		log.Printf("%s Release failed: %s", p.q, err)
 	}
@@ -317,10 +316,26 @@ func (p *Processor) release(msg *queue.Message) {
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
+func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
+	if reason != nil {
+		if delayer, ok := reason.(Delayer); ok {
+			return delayer.Delay()
+		}
+	}
+	if msg.Delay > 0 {
+		return msg.Delay
+	}
+	return exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
+}
+
 func (p *Processor) delete(msg *queue.Message, reason error) {
-	if reason != nil && p.fallbackHandler != nil {
-		if err := p.fallbackHandler.HandleMessage(msg); err != nil {
-			log.Printf("%s fallback handler failed: %s", p.q, err)
+	if reason != nil {
+		log.Printf("%s handler failed: %s", p.q, reason)
+
+		if p.fallbackHandler != nil {
+			if err := p.fallbackHandler.HandleMessage(msg); err != nil {
+				log.Printf("%s fallback handler failed: %s", p.q, err)
+			}
 		}
 	}
 
