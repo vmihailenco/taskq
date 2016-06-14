@@ -3,6 +3,7 @@ package queue
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"reflect"
 	"sync"
 
@@ -66,6 +67,7 @@ func decodeArgs(s string, fnType reflect.Type) ([]reflect.Value, error) {
 
 	bytes2, err = snappy.Decode(bytes2, bytes1)
 	if err != nil {
+		err = fmt.Errorf("queue: args decompression failed: %s", err)
 		return nil, err
 	}
 
@@ -76,6 +78,7 @@ func decodeArgs(s string, fnType reflect.Type) ([]reflect.Value, error) {
 	for i := 0; i < fnType.NumIn(); i++ {
 		arg := reflect.New(fnType.In(i)).Elem()
 		if err := dec.DecodeValue(arg); err != nil {
+			err = fmt.Errorf("queue: arg #%d decoding failed: %s", i, err)
 			return nil, err
 		}
 		in[i] = arg
