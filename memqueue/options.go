@@ -7,10 +7,9 @@ type cacher interface {
 }
 
 type Options struct {
-	Name        string
-	IgnoreDelay bool // if true message.Delay is ignored
-	AlwaysSync  bool // if true messages are processed synchronously
-	Cache       cacher
+	Name       string
+	AlwaysSync bool // if true messages are processed synchronously
+	Cache      cacher
 
 	Processor processor.Options
 }

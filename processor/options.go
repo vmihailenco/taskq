@@ -19,6 +19,8 @@ type Options struct {
 
 	RateLimit rate.Limit
 	Limiter   Limiter
+
+	IgnoreMessageDelay bool // if true Message.Delay is ignored
 }
 
 func (opt *Options) init() {

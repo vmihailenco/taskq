@@ -28,7 +28,7 @@ func NewQueue(mqueue mq.Queue, opt *memqueue.Options) *Queue {
 
 	memopt := *opt
 	if !memopt.AlwaysSync {
-		memopt.IgnoreDelay = true
+		memopt.Processor.IgnoreMessageDelay = true
 		memopt.Processor.FallbackHandler = memopt.Processor.Handler
 		memopt.Processor.Handler = queue.HandlerFunc(q.add)
 	}

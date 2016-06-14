@@ -160,32 +160,48 @@ var _ = Describe("message retry timing", func() {
 		})
 	})
 
-	Context("message with delay and IgnoreDelay=true", func() {
-		var now time.Time
-
+	Context("message with delay and IgnoreMessageDelay=true", func() {
 		BeforeEach(func() {
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
 
 			q = memqueue.NewMemqueue(&memqueue.Options{
-				IgnoreDelay: true,
 				Processor: processor.Options{
 					Handler: handler,
 					Retries: 3,
 					Backoff: backoff,
+
+					IgnoreMessageDelay: true,
 				},
 			})
+		})
 
+		It("is processed immediately with async API", func() {
 			msg := queue.NewMessage()
 			msg.Delay = time.Hour
-			q.AddAsync(msg)
-			now = time.Now()
+			err := q.AddAsync(msg)
+			Expect(err).NotTo(HaveOccurred())
+			now := time.Now()
 
 			err = q.Close()
 			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now.Add(backoff), backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now.Add(3*backoff), backoff/10)))
+			Expect(ch).NotTo(Receive())
 		})
 
-		It("is processed immediately", func() {
+		It("is processed immediately with sync API", func() {
+			msg := queue.NewMessage()
+			msg.Delay = time.Hour
+			err := q.Add(msg)
+			Expect(err).To(MatchError("fake error"))
+			now := time.Now()
+
+			err = q.Close()
+			Expect(err).NotTo(HaveOccurred())
+
 			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
 			Expect(ch).To(Receive(BeTemporally("~", now.Add(backoff), backoff/10)))
 			Expect(ch).To(Receive(BeTemporally("~", now.Add(3*backoff), backoff/10)))

@@ -50,11 +50,7 @@ func (q *Memqueue) Processor() *processor.Processor {
 }
 
 func (q *Memqueue) Add(msg *queue.Message) error {
-	if !q.isUniqueName(msg.Name) {
-		return ErrDuplicate
-	}
-	q.wg.Add(1)
-	return q.p.Process(msg)
+	return q.addMessage(msg, true)
 }
 
 func (q *Memqueue) Call(args ...interface{}) error {
@@ -70,11 +66,7 @@ func (q *Memqueue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Memqueue) AddAsync(msg *queue.Message) error {
-	if !q.isUniqueName(msg.Name) {
-		return ErrDuplicate
-	}
-	q.wg.Add(1)
-	return q.addMessage(msg)
+	return q.addMessage(msg, false)
 }
 
 func (q *Memqueue) CallAsync(args ...interface{}) error {
@@ -110,18 +102,30 @@ func (q *Memqueue) CloseTimeout(timeout time.Duration) error {
 	}
 }
 
-func (q *Memqueue) addMessage(msg *queue.Message) error {
+func (q *Memqueue) addMessage(msg *queue.Message, sync bool) error {
+	if !q.isUniqueName(msg.Name) {
+		return ErrDuplicate
+	}
+	q.wg.Add(1)
+	return q.enqueueMessage(msg, sync)
+}
+
+func (q *Memqueue) enqueueMessage(msg *queue.Message, sync bool) error {
+	msg.ReservedCount++
+
 	if q.opt.AlwaysSync {
 		return q.p.Process(msg)
 	}
 
-	var delay time.Duration
-	delay, msg.Delay = msg.Delay, 0
-	msg.ReservedCount++
-
-	if delay == 0 || q.opt.IgnoreDelay {
+	if q.opt.Processor.IgnoreMessageDelay || msg.Delay == 0 {
+		if sync {
+			return q.p.Process(msg)
+		}
 		return q.p.AddMessage(msg)
 	}
+
+	var delay time.Duration
+	delay, msg.Delay = msg.Delay, 0
 
 	time.AfterFunc(delay, func() {
 		q.p.AddMessage(msg)
@@ -142,9 +146,9 @@ func (q *Memqueue) ReserveN(n int) ([]queue.Message, error) {
 }
 
 func (q *Memqueue) Release(msg *queue.Message, dur time.Duration) error {
+	msg.Delay = 0
 	time.AfterFunc(dur, func() {
-		msg.ReservedCount++
-		q.p.AddMessage(msg)
+		q.enqueueMessage(msg, false)
 	})
 	return nil
 }

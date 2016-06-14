@@ -274,7 +274,7 @@ func (p *Processor) worker() {
 			break
 		}
 
-		if msg.Delay > 0 {
+		if !p.opt.IgnoreMessageDelay && msg.Delay > 0 {
 			p.release(msg, nil)
 			continue
 		}
@@ -308,7 +308,9 @@ func (p *Processor) Process(msg *queue.Message) error {
 func (p *Processor) release(msg *queue.Message, reason error) {
 	delay := p.backoff(msg, reason)
 
-	log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
+	if reason != nil {
+		log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
+	}
 	if err := p.q.Release(msg, delay); err != nil {
 		log.Printf("%s Release failed: %s", p.q, err)
 	}
@@ -322,7 +324,7 @@ func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
 			return delayer.Delay()
 		}
 	}
-	if msg.Delay > 0 {
+	if !p.opt.IgnoreMessageDelay && msg.Delay > 0 {
 		return msg.Delay
 	}
 	return exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
