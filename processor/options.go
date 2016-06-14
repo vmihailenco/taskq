@@ -29,7 +29,10 @@ func (opt *Options) init() {
 		opt.Scavengers = 2 * runtime.NumCPU()
 	}
 	if opt.BufferSize == 0 {
-		opt.BufferSize = 10
+		opt.BufferSize = opt.Workers
+		if opt.BufferSize > 10 {
+			opt.BufferSize = 10
+		}
 	}
 	if opt.RateLimit == 0 {
 		opt.RateLimit = rate.Inf

@@ -261,7 +261,7 @@ func (p *Processor) messageDeleter() {
 func (p *Processor) worker() {
 	defer p.wg.Done()
 	for {
-		if p.opt != nil && p.opt.Limiter != nil {
+		if p.opt.Limiter != nil {
 			delay, allow := p.opt.Limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 			if !allow {
 				time.Sleep(delay)
