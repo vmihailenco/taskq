@@ -156,7 +156,9 @@ func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
 			ReservationId: msg.ReservationId,
 		}
 	}
-	return q.q.DeleteReservedMessages(mqMsgs)
+	return retry(func() error {
+		return q.q.DeleteReservedMessages(mqMsgs)
+	})
 }
 
 func (q *Queue) Purge() error {
