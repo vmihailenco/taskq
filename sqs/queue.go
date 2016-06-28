@@ -35,9 +35,11 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *memqueue.Options) *Queue {
 
 	memopt := *opt
 	if !memopt.AlwaysSync {
-		memopt.Processor.IgnoreMessageDelay = true
+		memopt.Processor.Retries = 3
+		memopt.Processor.Backoff = time.Second
 		memopt.Processor.FallbackHandler = memopt.Processor.Handler
 		memopt.Processor.Handler = queue.HandlerFunc(q.add)
+		memopt.Processor.IgnoreMessageDelay = true
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 

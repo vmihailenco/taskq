@@ -15,7 +15,7 @@ import (
 
 type Queue struct {
 	q        mq.Queue
-	opt      *memqueue.Options
+	opt      *processor.Options
 	memqueue *memqueue.Memqueue
 }
 
@@ -23,14 +23,16 @@ func NewQueue(mqueue mq.Queue, opt *memqueue.Options) *Queue {
 	opt.Name = mqueue.Name
 	q := Queue{
 		q:   mqueue,
-		opt: opt,
+		opt: &opt.Processor,
 	}
 
 	memopt := *opt
 	if !memopt.AlwaysSync {
-		memopt.Processor.IgnoreMessageDelay = true
+		memopt.Processor.Retries = 3
+		memopt.Processor.Backoff = time.Second
 		memopt.Processor.FallbackHandler = memopt.Processor.Handler
 		memopt.Processor.Handler = queue.HandlerFunc(q.add)
+		memopt.Processor.IgnoreMessageDelay = true
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 
@@ -47,7 +49,7 @@ func (q *Queue) String() string {
 }
 
 func (q *Queue) Processor() *processor.Processor {
-	return processor.New(q, &q.opt.Processor)
+	return processor.New(q, q.opt)
 }
 
 func (q *Queue) createQueue() error {

@@ -28,7 +28,7 @@ func (opt *Options) init() {
 		opt.Workers = 10 * runtime.NumCPU()
 	}
 	if opt.Scavengers == 0 {
-		opt.Scavengers = 2 * runtime.NumCPU()
+		opt.Scavengers = runtime.NumCPU() + 1
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.Workers
