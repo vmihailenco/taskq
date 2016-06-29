@@ -11,6 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"gopkg.in/queue.v1"
+	"gopkg.in/queue.v1/internal"
 )
 
 const consumerBackoff = time.Second
@@ -43,9 +44,7 @@ type Processor struct {
 	ch chan *queue.Message
 	wg sync.WaitGroup
 
-	delLimit chan struct{}
-	delCh    chan *queue.Message
-	delWG    sync.WaitGroup
+	delBatch *internal.Batcher
 
 	stop uint32
 
@@ -65,14 +64,12 @@ func New(q Queuer, opt *Options) *Processor {
 		opt: opt,
 
 		ch: make(chan *queue.Message, opt.BufferSize),
-
-		delLimit: make(chan struct{}, opt.Scavengers),
-		delCh:    make(chan *queue.Message, opt.BufferSize),
 	}
 	p.SetHandler(opt.Handler)
 	if opt.FallbackHandler != nil {
 		p.SetFallbackHandler(opt.FallbackHandler)
 	}
+	p.delBatch = internal.NewBatcher(opt.Scavengers, p.deleteBatch)
 	return p
 }
 
@@ -130,9 +127,6 @@ func (p *Processor) startWorkers() {
 	for i := 0; i < p.opt.Workers; i++ {
 		go p.worker()
 	}
-
-	p.delWG.Add(1)
-	go p.messageDeleter()
 }
 
 func (p *Processor) Stop() error {
@@ -152,10 +146,7 @@ func (p *Processor) waitWorkers(timeout time.Duration) error {
 	stopped := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-
-		close(p.delCh)
-		p.delWG.Wait()
-
+		p.delBatch.Close()
 		close(stopped)
 	}()
 
@@ -227,35 +218,6 @@ func (p *Processor) fetchMessages() (int, error) {
 		p.ch <- &msgs[i]
 	}
 	return len(msgs), nil
-}
-
-func (p *Processor) messageDeleter() {
-	defer p.delWG.Done()
-	var msgs []*queue.Message
-	for {
-		var stop, timeout bool
-		select {
-		case msg, ok := <-p.delCh:
-			if ok {
-				msgs = append(msgs, msg)
-			} else {
-				stop = true
-			}
-		case <-time.After(time.Second):
-			timeout = true
-		}
-
-		if (timeout && len(msgs) > 0) || len(msgs) >= 10 {
-			p.delLimit <- struct{}{}
-			p.delWG.Add(1)
-			go p.deleteBatch(msgs)
-			msgs = nil
-		}
-
-		if stop {
-			break
-		}
-	}
 }
 
 func (p *Processor) worker() {
@@ -341,25 +303,12 @@ func (p *Processor) delete(msg *queue.Message, reason error) {
 		}
 	}
 
-	select {
-	case p.delCh <- msg:
-		atomic.AddUint32(&p.inFlight, ^uint32(0))
-		atomic.AddUint32(&p.deleting, 1)
-		return
-	default:
-	}
-
-	if err := p.q.Delete(msg); err != nil {
-		log.Printf("%s Delete failed: %s", p.q, err)
-	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	atomic.AddUint32(&p.deleting, 1)
+	p.delBatch.Add(msg)
 }
 
 func (p *Processor) deleteBatch(msgs []*queue.Message) {
-	defer func() {
-		p.delWG.Done()
-		<-p.delLimit
-	}()
 	if err := p.q.DeleteBatch(msgs); err != nil {
 		log.Printf("%s DeleteBatch failed: %s", p.q, err)
 	}
