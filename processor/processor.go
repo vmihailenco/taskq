@@ -65,9 +65,9 @@ func New(q Queuer, opt *Options) *Processor {
 
 		ch: make(chan *queue.Message, opt.BufferSize),
 	}
-	p.SetHandler(opt.Handler)
+	p.setHandler(opt.Handler)
 	if opt.FallbackHandler != nil {
-		p.SetFallbackHandler(opt.FallbackHandler)
+		p.setFallbackHandler(opt.FallbackHandler)
 	}
 	p.delBatch = internal.NewBatcher(opt.Scavengers, p.deleteBatch)
 	return p
@@ -109,15 +109,15 @@ func (p *Processor) Stats() *Stats {
 	}
 }
 
-func (p *Processor) SetHandler(handler interface{}) {
+func (p *Processor) setHandler(handler interface{}) {
 	p.handler = queue.NewHandler(handler)
 }
 
-func (p *Processor) SetFallbackHandler(handler interface{}) {
+func (p *Processor) setFallbackHandler(handler interface{}) {
 	p.fallbackHandler = queue.NewHandler(handler)
 }
 
-func (p *Processor) AddMessage(msg *queue.Message) error {
+func (p *Processor) Add(msg *queue.Message) error {
 	p.ch <- msg
 	return nil
 }

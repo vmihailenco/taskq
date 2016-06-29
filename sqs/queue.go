@@ -17,7 +17,7 @@ import (
 type Queue struct {
 	sqs       *sqs.SQS
 	accountId string
-	opt       *memqueue.Options
+	opt       *Options
 	memqueue  *memqueue.Memqueue
 
 	mu        sync.RWMutex
@@ -26,20 +26,26 @@ type Queue struct {
 	sync bool
 }
 
-func NewQueue(sqs *sqs.SQS, accountId string, opt *memqueue.Options) *Queue {
+func NewQueue(sqs *sqs.SQS, accountId string, opt *Options) *Queue {
 	q := Queue{
 		sqs:       sqs,
 		accountId: accountId,
 		opt:       opt,
 	}
 
-	memopt := *opt
-	if !memopt.AlwaysSync {
-		memopt.Processor.Retries = 3
-		memopt.Processor.Backoff = time.Second
-		memopt.Processor.FallbackHandler = memopt.Processor.Handler
-		memopt.Processor.Handler = queue.HandlerFunc(q.add)
-		memopt.Processor.IgnoreMessageDelay = true
+	popt := opt.Processor
+	if !opt.Offline {
+		popt.Retries = 3
+		popt.Backoff = time.Second
+		popt.FallbackHandler = popt.Handler
+		popt.Handler = queue.HandlerFunc(q.add)
+		popt.IgnoreMessageDelay = true
+	}
+	memopt := memqueue.Options{
+		Name:    opt.Name,
+		Storage: opt.Storage,
+
+		Processor: popt,
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 

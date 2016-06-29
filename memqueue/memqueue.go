@@ -121,14 +121,14 @@ func (q *Memqueue) enqueueMessage(msg *queue.Message, sync bool) error {
 		if sync {
 			return q.p.Process(msg)
 		}
-		return q.p.AddMessage(msg)
+		return q.p.Add(msg)
 	}
 
 	var delay time.Duration
 	delay, msg.Delay = msg.Delay, 0
 
 	time.AfterFunc(delay, func() {
-		q.p.AddMessage(msg)
+		q.p.Add(msg)
 	})
 	return nil
 }
@@ -138,7 +138,7 @@ func (q *Memqueue) isUniqueName(name string) bool {
 		return true
 	}
 	key := fmt.Sprintf("%s:%s:%s", cachePrefix, q.Name(), name)
-	return !q.opt.Cache.Exists(key)
+	return !q.opt.Storage.Exists(key)
 }
 
 func (q *Memqueue) ReserveN(n int) ([]queue.Message, error) {

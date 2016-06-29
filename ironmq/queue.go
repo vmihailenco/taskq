@@ -19,20 +19,26 @@ type Queue struct {
 	memqueue *memqueue.Memqueue
 }
 
-func NewQueue(mqueue mq.Queue, opt *memqueue.Options) *Queue {
+func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 	opt.Name = mqueue.Name
 	q := Queue{
 		q:   mqueue,
 		opt: &opt.Processor,
 	}
 
-	memopt := *opt
-	if !memopt.AlwaysSync {
-		memopt.Processor.Retries = 3
-		memopt.Processor.Backoff = time.Second
-		memopt.Processor.FallbackHandler = memopt.Processor.Handler
-		memopt.Processor.Handler = queue.HandlerFunc(q.add)
-		memopt.Processor.IgnoreMessageDelay = true
+	popt := opt.Processor
+	if !opt.Offline {
+		popt.Retries = 3
+		popt.Backoff = time.Second
+		popt.FallbackHandler = popt.Handler
+		popt.Handler = queue.HandlerFunc(q.add)
+		popt.IgnoreMessageDelay = true
+	}
+	memopt := memqueue.Options{
+		Name:    opt.Name,
+		Storage: opt.Storage,
+
+		Processor: popt,
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 

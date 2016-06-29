@@ -2,14 +2,15 @@ package memqueue
 
 import "gopkg.in/queue.v1/processor"
 
-type cacher interface {
+type Storager interface {
 	Exists(key string) bool
 }
 
 type Options struct {
-	Name       string
+	Name    string
+	Storage Storager
+
 	AlwaysSync bool // if true messages are processed synchronously
-	Cache      cacher
 
 	Processor processor.Options
 }

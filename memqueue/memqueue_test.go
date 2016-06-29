@@ -242,11 +242,11 @@ var _ = Describe("failing queue with error handler", func() {
 	})
 })
 
-type memqueueCache struct {
+type memqueueStorage struct {
 	*redis.Ring
 }
 
-func (c memqueueCache) Exists(key string) bool {
+func (c memqueueStorage) Exists(key string) bool {
 	return !c.SetNX(key, "", 12*time.Hour).Val()
 }
 
@@ -270,7 +270,7 @@ var _ = Describe("named message", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewMemqueue(&memqueue.Options{
-			Cache: memqueueCache{redisRing()},
+			Storage: memqueueStorage{redisRing()},
 			Processor: processor.Options{
 				Handler: handler,
 			},
@@ -324,7 +324,7 @@ var _ = Describe("CallOnce", func() {
 		now = time.Now()
 
 		q := memqueue.NewMemqueue(&memqueue.Options{
-			Cache: memqueueCache{redisRing()},
+			Storage: memqueueStorage{redisRing()},
 			Processor: processor.Options{
 				Handler: handler,
 			},
@@ -438,7 +438,7 @@ func BenchmarkCallAsync(b *testing.B) {
 
 func BenchmarkNamedMessage(b *testing.B) {
 	q := memqueue.NewMemqueue(&memqueue.Options{
-		Cache: memqueueCache{redisRing()},
+		Storage: memqueueStorage{redisRing()},
 		Processor: processor.Options{
 			Handler:    func() {},
 			BufferSize: 1000000,
