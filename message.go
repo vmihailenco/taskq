@@ -14,6 +14,8 @@ type Message struct {
 
 	ReservationId string
 	ReservedCount int
+
+	values map[string]interface{}
 }
 
 func NewMessage(args ...interface{}) *Message {
@@ -29,4 +31,15 @@ func NewMessage(args ...interface{}) *Message {
 
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
+}
+
+func (m *Message) SetValue(name string, value interface{}) {
+	if m.values == nil {
+		m.values = make(map[string]interface{})
+	}
+	m.values[name] = value
+}
+
+func (m *Message) Value(name string) interface{} {
+	return m.values[name]
 }

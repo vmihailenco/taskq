@@ -50,6 +50,7 @@ func (q *Memqueue) Processor() *processor.Processor {
 }
 
 func (q *Memqueue) Add(msg *queue.Message) error {
+	msg.SetValue("sync", true)
 	return q.addMessage(msg, true)
 }
 
@@ -147,6 +148,15 @@ func (q *Memqueue) ReserveN(n int) ([]queue.Message, error) {
 
 func (q *Memqueue) Release(msg *queue.Message, dur time.Duration) error {
 	msg.Delay = 0
+
+	sync := msg.Value("sync")
+	if sync != nil {
+		time.Sleep(dur)
+		err := q.enqueueMessage(msg, true)
+		msg.SetValue("err", err)
+		return nil
+	}
+
 	time.AfterFunc(dur, func() {
 		q.enqueueMessage(msg, false)
 	})

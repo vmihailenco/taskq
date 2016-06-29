@@ -256,6 +256,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 		return nil
 	}
 
+	msg.SetValue("err", err)
 	if msg.ReservedCount < p.opt.Retries {
 		atomic.AddUint32(&p.retries, 1)
 		p.release(msg, err)
@@ -264,7 +265,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 		p.delete(msg, err)
 	}
 
-	return err
+	return msg.Value("err").(error)
 }
 
 func (p *Processor) release(msg *queue.Message, reason error) {

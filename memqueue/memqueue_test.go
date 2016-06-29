@@ -2,6 +2,7 @@ package memqueue_test
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,13 +103,17 @@ var _ = Describe("message retry timing", func() {
 	var q *memqueue.Memqueue
 	backoff := 100 * time.Millisecond
 
-	ch := make(chan time.Time, 10)
+	var count int
+	var ch chan time.Time
 	handler := func() error {
 		ch <- time.Now()
-		return errors.New("fake error")
+		count++
+		return fmt.Errorf("fake error #%d", count)
 	}
 
 	BeforeEach(func() {
+		count = 0
+		ch = make(chan time.Time, 10)
 		q = memqueue.NewMemqueue(&memqueue.Options{
 			Processor: processor.Options{
 				Handler: handler,
@@ -193,11 +198,12 @@ var _ = Describe("message retry timing", func() {
 		})
 
 		It("is processed immediately with sync API", func() {
+			now := time.Now()
+
 			msg := queue.NewMessage()
 			msg.Delay = time.Hour
 			err := q.Add(msg)
-			Expect(err).To(MatchError("fake error"))
-			now := time.Now()
+			Expect(err).To(MatchError("fake error #3"))
 
 			err = q.Close()
 			Expect(err).NotTo(HaveOccurred())
