@@ -9,8 +9,9 @@ type Options struct {
 	Name    string
 	Storage queue.Storager
 
-	Processor processor.Options
-	Offline   bool // if true messages are processed locally
+	Processor  processor.Options
+	AlwaysSync bool // if true messages are always processed synchronously
+	Offline    bool // if true messages are processed locally
 }
 
 func (opt *Options) init() {}
