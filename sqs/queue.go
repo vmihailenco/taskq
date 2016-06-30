@@ -145,7 +145,9 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
+	if !q.opt.Offline {
+		msg = queue.NewMessage(msg)
+	}
 	return q.memqueue.Add(msg)
 }
 
@@ -162,7 +164,9 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
+	if !q.opt.Offline {
+		msg = queue.NewMessage(msg)
+	}
 	return q.memqueue.AddAsync(msg)
 }
 

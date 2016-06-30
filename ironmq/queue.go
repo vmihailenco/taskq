@@ -15,7 +15,7 @@ import (
 
 type Queue struct {
 	q        mq.Queue
-	opt      *processor.Options
+	opt      *Options
 	memqueue *memqueue.Memqueue
 }
 
@@ -23,7 +23,7 @@ func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 	opt.Name = mqueue.Name
 	q := Queue{
 		q:   mqueue,
-		opt: &opt.Processor,
+		opt: opt,
 	}
 
 	popt := opt.Processor // copy
@@ -55,7 +55,7 @@ func (q *Queue) String() string {
 }
 
 func (q *Queue) Processor() *processor.Processor {
-	return processor.New(q, q.opt)
+	return processor.New(q, &q.opt.Processor)
 }
 
 func (q *Queue) createQueue() error {
@@ -84,7 +84,9 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
+	if !q.opt.Offline {
+		msg = queue.NewMessage(msg)
+	}
 	return q.memqueue.Add(msg)
 }
 
@@ -101,7 +103,9 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
+	if !q.opt.Offline {
+		msg = queue.NewMessage(msg)
+	}
 	return q.memqueue.AddAsync(msg)
 }
 
