@@ -35,10 +35,9 @@ func NewQueue(mqueue mq.Queue, opt *queue.Options) *Queue {
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Retries:         3,
-		Backoff:         time.Second,
-		FallbackHandler: opt.Handler,
-		Handler:         queue.HandlerFunc(q.add),
+		Retries: 3,
+		Backoff: time.Second,
+		Handler: queue.HandlerFunc(q.add),
 	}
 	q.memqueue = memqueue.NewQueue(&memopt)
 
@@ -88,8 +87,7 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
-	return q.memqueue.Add(msg)
+	return q.memqueue.Add(queue.WrapMessage(msg))
 }
 
 func (q *Queue) Call(args ...interface{}) error {
@@ -105,8 +103,7 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
-	msg = queue.NewMessage(msg)
-	return q.memqueue.AddAsync(msg)
+	return q.memqueue.AddAsync(queue.WrapMessage(msg))
 }
 
 func (q *Queue) CallAsync(args ...interface{}) error {

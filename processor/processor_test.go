@@ -30,14 +30,28 @@ func printStats(p *processor.Processor) {
 }
 
 func rateLimiter() *rate.Limiter {
+	fallbackLimiter := timerate.NewLimiter(timerate.Every(time.Millisecond), 100)
+	return rate.NewLimiter(redisRing(), fallbackLimiter)
+}
+
+type queueStorage struct {
+	*redis.Ring
+}
+
+func (c queueStorage) Exists(key string) bool {
+	return !c.SetNX(key, "", 12*time.Hour).Val()
+}
+
+func redisRing() *redis.Ring {
 	ring := redis.NewRing(&redis.RingOptions{
-		Addrs: map[string]string{"server0": ":6379"},
+		Addrs:    map[string]string{"0": ":6379"},
+		PoolSize: 100,
 	})
-	if err := ring.FlushDb().Err(); err != nil {
+	err := ring.FlushDb().Err()
+	if err != nil {
 		panic(err)
 	}
-	fallbackLimiter := timerate.NewLimiter(timerate.Every(time.Millisecond), 100)
-	return rate.NewLimiter(ring, fallbackLimiter)
+	return ring
 }
 
 func testProcessor(t *testing.T, q queue.Queuer) {
@@ -124,6 +138,8 @@ func testRetry(t *testing.T, q queue.Queuer) {
 
 	p := processor.New(q, &queue.Options{
 		Handler: handler,
+		Retries: 3,
+		Backoff: time.Second,
 	})
 	p.Start()
 
@@ -132,6 +148,44 @@ func testRetry(t *testing.T, q queue.Queuer) {
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func testNamedMessage(t *testing.T, q queue.Queuer) {
+	_ = q.Purge()
+
+	var count int64
+	handler := func() error {
+		atomic.AddInt64(&count, 1)
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			msg := queue.NewMessage()
+			msg.Name = "the-name"
+			err := q.Add(msg)
+			if err != nil && err != queue.ErrDuplicate {
+				t.Fatal(err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	p := processor.New(q, &queue.Options{
+		Handler: handler,
+	})
+	p.Start()
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := atomic.LoadInt64(&count); n != 1 {
+		t.Fatalf("processed %d messages, wanted 1", n)
 	}
 }
 

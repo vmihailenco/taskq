@@ -1,9 +1,12 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
+
+var ErrDuplicate = errors.New("queue: message with such name already exists")
 
 type Message struct {
 	Id    string
@@ -23,6 +26,12 @@ func NewMessage(args ...interface{}) *Message {
 	return &Message{
 		Args: args,
 	}
+}
+
+func WrapMessage(msg *Message) *Message {
+	msg0 := NewMessage(msg)
+	msg0.Name = msg.Name
+	return msg0
 }
 
 func (m *Message) String() string {

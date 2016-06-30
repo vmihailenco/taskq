@@ -286,7 +286,10 @@ func (p *Processor) Process(msg *queue.Message) error {
 		p.delete(msg, err)
 	}
 
-	return msg.Value("err").(error)
+	if v := msg.Value("err"); v != nil {
+		return v.(error)
+	}
+	return nil
 }
 
 func (p *Processor) release(msg *queue.Message, reason error) {

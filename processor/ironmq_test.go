@@ -21,6 +21,12 @@ func TestIronmqRetry(t *testing.T) {
 	testRetry(t, ironmq.NewQueue(mq.New("test-ironmq-retry"), &queue.Options{}))
 }
 
+func TestIronmqNamedMessage(t *testing.T) {
+	testNamedMessage(t, ironmq.NewQueue(mq.New("test-ironmq-named-message"), &queue.Options{
+		Storage: queueStorage{redisRing()},
+	}))
+}
+
 func TestIronmqRateLimit(t *testing.T) {
 	testRateLimit(t, ironmq.NewQueue(mq.New("test-ironmq-rate-limit"), &queue.Options{}))
 }

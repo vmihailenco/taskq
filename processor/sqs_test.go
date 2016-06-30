@@ -32,6 +32,13 @@ func TestSQSRetry(t *testing.T) {
 	}))
 }
 
+func TestSQSNamedMessage(t *testing.T) {
+	testNamedMessage(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
+		Name:    "test-sqs-named-message",
+		Storage: queueStorage{redisRing()},
+	}))
+}
+
 func TestSQSRateLimit(t *testing.T) {
 	testRateLimit(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-rate-limit",

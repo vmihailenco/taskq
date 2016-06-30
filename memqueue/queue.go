@@ -1,7 +1,6 @@
 package memqueue
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,10 +10,6 @@ import (
 )
 
 const cachePrefix = "memqueue"
-
-var (
-	ErrDuplicate = errors.New("memqueue: message with such name already exists")
-)
 
 type Queue struct {
 	opt *queue.Options
@@ -113,7 +108,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 
 func (q *Queue) addMessage(msg *queue.Message) error {
 	if !q.isUniqueName(msg.Name) {
-		return ErrDuplicate
+		return queue.ErrDuplicate
 	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)
