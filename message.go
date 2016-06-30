@@ -16,8 +16,6 @@ type Message struct {
 	ReservationId string
 	ReservedCount int
 
-	Wrapped bool
-
 	values map[string]interface{}
 }
 

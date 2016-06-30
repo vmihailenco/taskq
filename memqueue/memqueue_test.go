@@ -165,56 +165,6 @@ var _ = Describe("message retry timing", func() {
 			Expect(ch).NotTo(Receive())
 		})
 	})
-
-	Context("wrapped message with delay", func() {
-		BeforeEach(func() {
-			err := q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			q = memqueue.NewMemqueue(&memqueue.Options{
-				Processor: processor.Options{
-					Handler: handler,
-					Retries: 3,
-					Backoff: backoff,
-				},
-			})
-		})
-
-		It("is processed immediately with async API", func() {
-			msg := queue.NewMessage()
-			msg.Delay = time.Hour
-			msg.Wrapped = true
-			err := q.AddAsync(msg)
-			Expect(err).NotTo(HaveOccurred())
-			now := time.Now()
-
-			err = q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now.Add(backoff), backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now.Add(3*backoff), backoff/10)))
-			Expect(ch).NotTo(Receive())
-		})
-
-		It("is processed immediately with sync API", func() {
-			now := time.Now()
-
-			msg := queue.NewMessage()
-			msg.Delay = time.Hour
-			msg.Wrapped = true
-			err := q.Add(msg)
-			Expect(err).To(MatchError("fake error #3"))
-
-			err = q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now.Add(backoff), backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now.Add(3*backoff), backoff/10)))
-			Expect(ch).NotTo(Receive())
-		})
-	})
 })
 
 var _ = Describe("failing queue with error handler", func() {

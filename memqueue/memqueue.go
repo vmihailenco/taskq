@@ -119,7 +119,7 @@ func (q *Memqueue) enqueueMessage(msg *queue.Message) error {
 		return q.p.Process(msg)
 	}
 
-	if msg.Wrapped || msg.Delay == 0 {
+	if msg.Delay == 0 {
 		if sync {
 			return q.p.Process(msg)
 		}

@@ -46,7 +46,7 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	}
 
 	if len(args) != h.ft.NumIn() {
-		return fmt.Errorf("got %d args, handler expects %d", len(args), h.ft.NumIn())
+		return fmt.Errorf("got %d args, handler expects %d args", len(args), h.ft.NumIn())
 	}
 
 	out := h.fv.Call(args)

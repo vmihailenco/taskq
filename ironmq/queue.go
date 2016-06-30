@@ -26,7 +26,7 @@ func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 		opt: &opt.Processor,
 	}
 
-	popt := opt.Processor
+	popt := opt.Processor // copy
 	if !opt.Offline {
 		popt.Retries = 3
 		popt.Backoff = time.Second
@@ -64,6 +64,8 @@ func (q *Queue) createQueue() error {
 }
 
 func (q *Queue) add(msg *queue.Message) error {
+	msg = msg.Args[0].(*queue.Message)
+
 	body, err := msg.MarshalArgs()
 	if err != nil {
 		return err
@@ -82,7 +84,7 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	msg.Wrapped = true
+	msg = queue.NewMessage(msg)
 	return q.memqueue.Add(msg)
 }
 
@@ -99,7 +101,7 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
-	msg.Wrapped = true
+	msg = queue.NewMessage(msg)
 	return q.memqueue.AddAsync(msg)
 }
 

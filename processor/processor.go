@@ -241,7 +241,7 @@ func (p *Processor) worker() {
 }
 
 func (p *Processor) Process(msg *queue.Message) error {
-	if !msg.Wrapped && msg.Delay > 0 {
+	if msg.Delay > 0 {
 		p.release(msg, nil)
 		return nil
 	}
@@ -270,7 +270,6 @@ func (p *Processor) Process(msg *queue.Message) error {
 
 func (p *Processor) release(msg *queue.Message, reason error) {
 	delay := p.backoff(msg, reason)
-	msg.Wrapped = false
 
 	if reason != nil {
 		log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
@@ -288,7 +287,7 @@ func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
 			return delayer.Delay()
 		}
 	}
-	if !msg.Wrapped && msg.Delay > 0 {
+	if msg.Delay > 0 {
 		return msg.Delay
 	}
 	return exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
