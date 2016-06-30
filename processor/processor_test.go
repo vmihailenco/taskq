@@ -40,7 +40,7 @@ func rateLimiter() *rate.Limiter {
 	return rate.NewLimiter(ring, fallbackLimiter)
 }
 
-func testProcessor(t *testing.T, q processor.Queuer) {
+func testProcessor(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
 	var count int64
@@ -61,7 +61,7 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &processor.Options{
+	p := processor.New(q, &queue.Options{
 		Handler: handler,
 	})
 	p.Start()
@@ -75,7 +75,7 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testDelay(t *testing.T, q processor.Queuer) {
+func testDelay(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
@@ -90,7 +90,7 @@ func testDelay(t *testing.T, q processor.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &processor.Options{
+	p := processor.New(q, &queue.Options{
 		Handler: handler,
 	})
 	start := time.Now()
@@ -107,7 +107,7 @@ func testDelay(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testRetry(t *testing.T, q processor.Queuer) {
+func testRetry(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan bool, 10)
@@ -122,7 +122,7 @@ func testRetry(t *testing.T, q processor.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &processor.Options{
+	p := processor.New(q, &queue.Options{
 		Handler: handler,
 	})
 	p.Start()
@@ -135,7 +135,7 @@ func testRetry(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testRateLimit(t *testing.T, q processor.Queuer) {
+func testRateLimit(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
 	var count int64
@@ -158,7 +158,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	}
 	wg.Wait()
 
-	p := processor.New(q, &processor.Options{
+	p := processor.New(q, &queue.Options{
 		Handler:   handler,
 		Workers:   2,
 		RateLimit: timerate.Every(time.Second),
@@ -187,7 +187,7 @@ func (Error) Delay() time.Duration {
 	return 3 * time.Second
 }
 
-func testDelayer(t *testing.T, q processor.Queuer) {
+func testDelayer(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan bool, 10)
@@ -196,7 +196,7 @@ func testDelayer(t *testing.T, q processor.Queuer) {
 		return Error("fake error")
 	}
 
-	p := processor.New(q, &processor.Options{
+	p := processor.New(q, &queue.Options{
 		Handler: handler,
 		Backoff: time.Second,
 	})

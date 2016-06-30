@@ -14,7 +14,6 @@ import (
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/memqueue"
-	"gopkg.in/queue.v1/processor"
 )
 
 func TestMemqueue(t *testing.T) {
@@ -31,10 +30,8 @@ var _ = Describe("message with args", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler: handler,
-			},
+		q := memqueue.NewQueue(&queue.Options{
+			Handler: handler,
 		})
 		q.CallAsync("string", 42)
 
@@ -55,12 +52,9 @@ var _ = Describe("message with invalid number of args", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler: handler,
-
-				Retries: 1,
-			},
+		q := memqueue.NewQueue(&queue.Options{
+			Handler: handler,
+			Retries: 1,
 		})
 		err := q.Call()
 		Expect(err).To(MatchError("got 0 args, handler expects 1 args"))
@@ -83,10 +77,8 @@ var _ = Describe("handler that expects Message", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler: queue.HandlerFunc(handler),
-			},
+		q := memqueue.NewQueue(&queue.Options{
+			Handler: queue.HandlerFunc(handler),
 		})
 		q.CallAsync("string", 42)
 
@@ -101,7 +93,7 @@ var _ = Describe("handler that expects Message", func() {
 })
 
 var _ = Describe("message retry timing", func() {
-	var q *memqueue.Memqueue
+	var q *memqueue.Queue
 	backoff := 100 * time.Millisecond
 
 	var count int
@@ -115,12 +107,10 @@ var _ = Describe("message retry timing", func() {
 	BeforeEach(func() {
 		count = 0
 		ch = make(chan time.Time, 10)
-		q = memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler: handler,
-				Retries: 3,
-				Backoff: backoff,
-			},
+		q = memqueue.NewQueue(&queue.Options{
+			Handler: handler,
+			Retries: 3,
+			Backoff: backoff,
 		})
 	})
 
@@ -171,14 +161,12 @@ var _ = Describe("message retry timing", func() {
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
 
-			q = memqueue.NewMemqueue(&memqueue.Options{
-				Processor: processor.Options{
-					Handler: handler,
-					Retries: 3,
-					Backoff: backoff,
-				},
-				IgnoreDelay: true,
+			q = memqueue.NewQueue(&queue.Options{
+				Handler: handler,
+				Retries: 3,
+				Backoff: backoff,
 			})
+			q.SetNoDelay(true)
 		})
 
 		It("is processed immediately with async API", func() {
@@ -218,7 +206,7 @@ var _ = Describe("message retry timing", func() {
 })
 
 var _ = Describe("failing queue with error handler", func() {
-	var q *memqueue.Memqueue
+	var q *memqueue.Queue
 
 	handler := func() error {
 		return errors.New("fake error")
@@ -230,12 +218,10 @@ var _ = Describe("failing queue with error handler", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler:         handler,
-				FallbackHandler: fallbackHandler,
-				Retries:         1,
-			},
+		q = memqueue.NewQueue(&queue.Options{
+			Handler:         handler,
+			FallbackHandler: fallbackHandler,
+			Retries:         1,
 		})
 		q.CallAsync()
 
@@ -276,11 +262,9 @@ var _ = Describe("named message", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewMemqueue(&memqueue.Options{
+		q := memqueue.NewQueue(&queue.Options{
 			Storage: memqueueStorage{redisRing()},
-			Processor: processor.Options{
-				Handler: handler,
-			},
+			Handler: handler,
 		})
 
 		var wg sync.WaitGroup
@@ -330,11 +314,9 @@ var _ = Describe("CallOnce", func() {
 	BeforeEach(func() {
 		now = time.Now()
 
-		q := memqueue.NewMemqueue(&memqueue.Options{
+		q := memqueue.NewQueue(&queue.Options{
 			Storage: memqueueStorage{redisRing()},
-			Processor: processor.Options{
-				Handler: handler,
-			},
+			Handler: handler,
 		})
 
 		var wg sync.WaitGroup
@@ -360,7 +342,7 @@ var _ = Describe("CallOnce", func() {
 })
 
 var _ = Describe("stress testing", func() {
-	var q *memqueue.Memqueue
+	var q *memqueue.Queue
 	const n = 10000
 
 	var count int64
@@ -369,10 +351,8 @@ var _ = Describe("stress testing", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler: handler,
-			},
+		q = memqueue.NewQueue(&queue.Options{
+			Handler: handler,
 		})
 
 		for i := 0; i < n; i++ {
@@ -390,7 +370,7 @@ var _ = Describe("stress testing", func() {
 })
 
 var _ = Describe("stress testing failing queue", func() {
-	var q *memqueue.Memqueue
+	var q *memqueue.Queue
 	const n = 10000
 
 	handler := func() error {
@@ -403,12 +383,10 @@ var _ = Describe("stress testing failing queue", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewMemqueue(&memqueue.Options{
-			Processor: processor.Options{
-				Handler:         handler,
-				FallbackHandler: fallbackHandler,
-				Retries:         1,
-			},
+		q = memqueue.NewQueue(&queue.Options{
+			Handler:         handler,
+			FallbackHandler: fallbackHandler,
+			Retries:         1,
 		})
 
 		for i := 0; i < n; i++ {
@@ -426,11 +404,9 @@ var _ = Describe("stress testing failing queue", func() {
 })
 
 func BenchmarkCallAsync(b *testing.B) {
-	q := memqueue.NewMemqueue(&memqueue.Options{
-		Processor: processor.Options{
-			Handler:    func() {},
-			BufferSize: 1000000,
-		},
+	q := memqueue.NewQueue(&queue.Options{
+		Handler:    func() {},
+		BufferSize: 1000000,
 	})
 	defer q.Close()
 
@@ -444,12 +420,10 @@ func BenchmarkCallAsync(b *testing.B) {
 }
 
 func BenchmarkNamedMessage(b *testing.B) {
-	q := memqueue.NewMemqueue(&memqueue.Options{
-		Storage: memqueueStorage{redisRing()},
-		Processor: processor.Options{
-			Handler:    func() {},
-			BufferSize: 1000000,
-		},
+	q := memqueue.NewQueue(&queue.Options{
+		Storage:    memqueueStorage{redisRing()},
+		Handler:    func() {},
+		BufferSize: 1000000,
 	})
 	defer q.Close()
 

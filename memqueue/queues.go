@@ -7,21 +7,21 @@ import (
 
 var (
 	queuesMu sync.Mutex
-	queues   = make(map[string]*Memqueue)
+	queues   = make(map[string]*Queue)
 )
 
-func Queues() []*Memqueue {
+func Queues() []*Queue {
 	defer queuesMu.Unlock()
 	queuesMu.Lock()
 
-	qs := make([]*Memqueue, 0, len(queues))
+	qs := make([]*Queue, 0, len(queues))
 	for _, q := range queues {
 		qs = append(qs, q)
 	}
 	return qs
 }
 
-func registerQueue(queue *Memqueue) {
+func registerQueue(queue *Queue) {
 	queuesMu.Lock()
 	if _, ok := queues[queue.Name()]; ok {
 		panic(fmt.Sprintf("%s is already registered", queue))
@@ -30,7 +30,7 @@ func registerQueue(queue *Memqueue) {
 	queuesMu.Unlock()
 }
 
-func unregisterQueue(queue *Memqueue) {
+func unregisterQueue(queue *Queue) {
 	queuesMu.Lock()
 	delete(queues, queue.Name())
 	queuesMu.Unlock()

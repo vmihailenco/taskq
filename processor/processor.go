@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,10 +17,6 @@ import (
 
 const consumerBackoff = time.Second
 const maxBackoff = 12 * time.Hour
-
-type Limiter interface {
-	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
-}
 
 type Delayer interface {
 	Delay() time.Duration
@@ -35,8 +32,8 @@ type Stats struct {
 }
 
 type Processor struct {
-	q   Queuer
-	opt *Options
+	q   queue.Queuer
+	opt *queue.Options
 
 	handler         queue.Handler
 	fallbackHandler queue.Handler
@@ -56,8 +53,8 @@ type Processor struct {
 	avgDuration uint32
 }
 
-func New(q Queuer, opt *Options) *Processor {
-	opt.init()
+func New(q queue.Queuer, opt *queue.Options) *Processor {
+	initOptions(opt)
 
 	p := &Processor{
 		q:   q,
@@ -73,7 +70,31 @@ func New(q Queuer, opt *Options) *Processor {
 	return p
 }
 
-func Start(q Queuer, opt *Options) *Processor {
+func initOptions(opt *queue.Options) {
+	if opt.Workers == 0 {
+		opt.Workers = 10 * runtime.NumCPU()
+	}
+	if opt.Scavengers == 0 {
+		opt.Scavengers = runtime.NumCPU() + 1
+	}
+	if opt.BufferSize == 0 {
+		opt.BufferSize = opt.Workers
+		if opt.BufferSize > 10 {
+			opt.BufferSize = 10
+		}
+	}
+	if opt.RateLimit == 0 {
+		opt.RateLimit = rate.Inf
+	}
+	if opt.Retries == 0 {
+		opt.Retries = 10
+	}
+	if opt.Backoff == 0 {
+		opt.Backoff = 3 * time.Second
+	}
+}
+
+func Start(q queue.Queuer, opt *queue.Options) *Processor {
 	p := New(q, opt)
 	p.Start()
 	return p

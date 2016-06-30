@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
+	"gopkg.in/queue.v1"
 	mysqs "gopkg.in/queue.v1/sqs"
 )
 
@@ -14,31 +15,31 @@ func awsSQS() *sqs.SQS {
 }
 
 func TestSQSProcessor(t *testing.T) {
-	testProcessor(t, mysqs.NewQueue(awsSQS(), "788427328026", &mysqs.Options{
+	testProcessor(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-processor",
 	}))
 }
 
 func TestSQSDelay(t *testing.T) {
-	testDelay(t, mysqs.NewQueue(awsSQS(), "788427328026", &mysqs.Options{
+	testDelay(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-delay",
 	}))
 }
 
 func TestSQSRetry(t *testing.T) {
-	testRetry(t, mysqs.NewQueue(awsSQS(), "788427328026", &mysqs.Options{
+	testRetry(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-retry",
 	}))
 }
 
 func TestSQSRateLimit(t *testing.T) {
-	testRateLimit(t, mysqs.NewQueue(awsSQS(), "788427328026", &mysqs.Options{
+	testRateLimit(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-rate-limit",
 	}))
 }
 
 func TestSQSDelayer(t *testing.T) {
-	testDelayer(t, mysqs.NewQueue(awsSQS(), "788427328026", &mysqs.Options{
+	testDelayer(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-delayer",
 	}))
 }

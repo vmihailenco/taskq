@@ -16,77 +16,85 @@ var (
 	ErrDuplicate = errors.New("memqueue: message with such name already exists")
 )
 
-type Memqueue struct {
-	opt *Options
+type Queue struct {
+	opt *queue.Options
+
+	noDelay bool
 
 	p  *processor.Processor
 	wg sync.WaitGroup
 }
 
-var _ processor.Queuer = (*Memqueue)(nil)
+var _ queue.Queuer = (*Queue)(nil)
 
-func NewMemqueue(opt *Options) *Memqueue {
-	opt.init()
-
-	q := Memqueue{
+func NewQueue(opt *queue.Options) *Queue {
+	q := Queue{
 		opt: opt,
 	}
-	q.p = processor.Start(&q, &opt.Processor)
+	q.p = processor.Start(&q, opt)
 
 	registerQueue(&q)
 	return &q
 }
 
-func (q *Memqueue) Name() string {
+func (q *Queue) Name() string {
 	return q.opt.Name
 }
 
-func (q *Memqueue) String() string {
+func (q *Queue) String() string {
 	return fmt.Sprintf("Memqueue<%s>", q.Name())
 }
 
-func (q *Memqueue) Processor() *processor.Processor {
+func (q *Queue) Options() *queue.Options {
+	return q.opt
+}
+
+func (q *Queue) Processor() *processor.Processor {
 	return q.p
 }
 
-func (q *Memqueue) Add(msg *queue.Message) error {
+func (q *Queue) SetNoDelay(f bool) {
+	q.noDelay = f
+}
+
+func (q *Queue) Add(msg *queue.Message) error {
 	msg.SetValue("sync", true)
 	return q.addMessage(msg)
 }
 
-func (q *Memqueue) Call(args ...interface{}) error {
+func (q *Queue) Call(args ...interface{}) error {
 	msg := queue.NewMessage(args...)
 	return q.Add(msg)
 }
 
-func (q *Memqueue) CallOnce(delay time.Duration, args ...interface{}) error {
+func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 	msg := queue.NewMessage(args...)
 	msg.Name = fmt.Sprint(args)
 	msg.Delay = delay
 	return q.Add(msg)
 }
 
-func (q *Memqueue) AddAsync(msg *queue.Message) error {
+func (q *Queue) AddAsync(msg *queue.Message) error {
 	return q.addMessage(msg)
 }
 
-func (q *Memqueue) CallAsync(args ...interface{}) error {
+func (q *Queue) CallAsync(args ...interface{}) error {
 	msg := queue.NewMessage(args...)
 	return q.AddAsync(msg)
 }
 
-func (q *Memqueue) CallOnceAsync(delay time.Duration, args ...interface{}) error {
+func (q *Queue) CallOnceAsync(delay time.Duration, args ...interface{}) error {
 	msg := queue.NewMessage(args...)
 	msg.Name = fmt.Sprint(args)
 	msg.Delay = delay
 	return q.AddAsync(msg)
 }
 
-func (q *Memqueue) Close() error {
+func (q *Queue) Close() error {
 	return q.CloseTimeout(30 * time.Second)
 }
 
-func (q *Memqueue) CloseTimeout(timeout time.Duration) error {
+func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	defer unregisterQueue(q)
 
 	done := make(chan struct{})
@@ -103,7 +111,7 @@ func (q *Memqueue) CloseTimeout(timeout time.Duration) error {
 	}
 }
 
-func (q *Memqueue) addMessage(msg *queue.Message) error {
+func (q *Queue) addMessage(msg *queue.Message) error {
 	if !q.isUniqueName(msg.Name) {
 		return ErrDuplicate
 	}
@@ -111,13 +119,13 @@ func (q *Memqueue) addMessage(msg *queue.Message) error {
 	return q.enqueueMessage(msg)
 }
 
-func (q *Memqueue) enqueueMessage(msg *queue.Message) error {
+func (q *Queue) enqueueMessage(msg *queue.Message) error {
 	var delay time.Duration
 	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
 
 	var sync bool
-	if q.opt.IgnoreDelay {
+	if q.noDelay {
 		sync = true
 		delay = 0
 	} else {
@@ -142,7 +150,7 @@ func (q *Memqueue) enqueueMessage(msg *queue.Message) error {
 	return nil
 }
 
-func (q *Memqueue) isUniqueName(name string) bool {
+func (q *Queue) isUniqueName(name string) bool {
 	if name == "" {
 		return true
 	}
@@ -150,21 +158,21 @@ func (q *Memqueue) isUniqueName(name string) bool {
 	return !q.opt.Storage.Exists(key)
 }
 
-func (q *Memqueue) ReserveN(n int) ([]queue.Message, error) {
+func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
 	select {}
 }
 
-func (q *Memqueue) Release(msg *queue.Message, dur time.Duration) error {
+func (q *Queue) Release(msg *queue.Message, dur time.Duration) error {
 	msg.Delay = dur
 	return q.enqueueMessage(msg)
 }
 
-func (q *Memqueue) Delete(msg *queue.Message) error {
+func (q *Queue) Delete(msg *queue.Message) error {
 	q.wg.Done()
 	return nil
 }
 
-func (q *Memqueue) DeleteBatch(msgs []*queue.Message) error {
+func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
 	for _, msg := range msgs {
 		if err := q.Delete(msg); err != nil {
 			return err
@@ -173,6 +181,6 @@ func (q *Memqueue) DeleteBatch(msgs []*queue.Message) error {
 	return nil
 }
 
-func (q *Memqueue) Purge() error {
+func (q *Queue) Purge() error {
 	return nil
 }

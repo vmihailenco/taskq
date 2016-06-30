@@ -17,8 +17,8 @@ import (
 type Queue struct {
 	sqs       *sqs.SQS
 	accountId string
-	opt       *Options
-	memqueue  *memqueue.Memqueue
+	opt       *queue.Options
+	memqueue  *memqueue.Queue
 
 	mu        sync.RWMutex
 	_queueURL string
@@ -26,25 +26,25 @@ type Queue struct {
 	sync bool
 }
 
-func NewQueue(sqs *sqs.SQS, accountId string, opt *Options) *Queue {
+var _ queue.Queuer = (*Queue)(nil)
+
+func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
 	q := Queue{
 		sqs:       sqs,
 		accountId: accountId,
 		opt:       opt,
 	}
 
-	memopt := memqueue.Options{
+	memopt := queue.Options{
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Processor: processor.Options{
-			Retries:         3,
-			Backoff:         time.Second,
-			FallbackHandler: opt.Processor.Handler,
-			Handler:         queue.HandlerFunc(q.add),
-		},
+		Retries:         3,
+		Backoff:         time.Second,
+		FallbackHandler: opt.Handler,
+		Handler:         queue.HandlerFunc(q.add),
 	}
-	q.memqueue = memqueue.NewMemqueue(&memopt)
+	q.memqueue = memqueue.NewQueue(&memopt)
 
 	registerQueue(&q)
 	return &q
@@ -58,8 +58,12 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("Queue<%s>", q.Name())
 }
 
+func (q *Queue) Options() *queue.Options {
+	return q.opt
+}
+
 func (q *Queue) Processor() *processor.Processor {
-	return processor.New(q, &q.opt.Processor)
+	return processor.New(q, q.opt)
 }
 
 func (q *Queue) queueURL() string {
@@ -142,9 +146,7 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	if !q.opt.Offline {
-		msg = queue.NewMessage(msg)
-	}
+	msg = queue.NewMessage(msg)
 	return q.memqueue.Add(msg)
 }
 
@@ -161,9 +163,7 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
-	if !q.opt.Offline {
-		msg = queue.NewMessage(msg)
-	}
+	msg = queue.NewMessage(msg)
 	return q.memqueue.AddAsync(msg)
 }
 
