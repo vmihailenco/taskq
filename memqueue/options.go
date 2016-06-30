@@ -10,8 +10,8 @@ type Options struct {
 	Name    string
 	Storage Storager
 
-	Processor  processor.Options
-	AlwaysSync bool // if true messages are always processed synchronously
+	Processor   processor.Options
+	IgnoreDelay bool // if true messages are processed ignoring delays
 }
 
 func (opt *Options) init() {}

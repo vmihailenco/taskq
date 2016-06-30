@@ -112,22 +112,24 @@ func (q *Memqueue) addMessage(msg *queue.Message) error {
 }
 
 func (q *Memqueue) enqueueMessage(msg *queue.Message) error {
-	sync := msg.Value("sync") == true
+	var delay time.Duration
+	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
 
-	if q.opt.AlwaysSync {
-		return q.p.Process(msg)
+	var sync bool
+	if q.opt.IgnoreDelay {
+		sync = true
+		delay = 0
+	} else {
+		sync = msg.Value("sync") == true
 	}
 
-	if msg.Delay == 0 {
+	if delay == 0 {
 		if sync {
 			return q.p.Process(msg)
 		}
 		return q.p.Add(msg)
 	}
-
-	var delay time.Duration
-	delay, msg.Delay = msg.Delay, 0
 
 	if sync {
 		time.Sleep(delay)

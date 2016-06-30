@@ -63,7 +63,7 @@ var _ = Describe("message with invalid number of args", func() {
 			},
 		})
 		err := q.Call()
-		Expect(err).To(MatchError("got 0 args, handler expects 1"))
+		Expect(err).To(MatchError("got 0 args, handler expects 1 args"))
 
 		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -162,6 +162,56 @@ var _ = Describe("message retry timing", func() {
 			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
 			Expect(ch).To(Receive(BeTemporally("~", now.Add(backoff), backoff/10)))
 			Expect(ch).To(Receive(BeTemporally("~", now.Add(3*backoff), backoff/10)))
+			Expect(ch).NotTo(Receive())
+		})
+	})
+
+	Context("with IgnoreDelay=true", func() {
+		BeforeEach(func() {
+			err := q.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			q = memqueue.NewMemqueue(&memqueue.Options{
+				Processor: processor.Options{
+					Handler: handler,
+					Retries: 3,
+					Backoff: backoff,
+				},
+				IgnoreDelay: true,
+			})
+		})
+
+		It("is processed immediately with async API", func() {
+			now := time.Now()
+
+			msg := queue.NewMessage()
+			msg.Delay = time.Hour
+			err := q.AddAsync(msg)
+			Expect(err).To(MatchError("fake error #3"))
+
+			err = q.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).NotTo(Receive())
+		})
+
+		It("is processed immediately with sync API", func() {
+			now := time.Now()
+
+			msg := queue.NewMessage()
+			msg.Delay = time.Hour
+			err := q.Add(msg)
+			Expect(err).To(MatchError("fake error #3"))
+
+			err = q.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
+			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
 			Expect(ch).NotTo(Receive())
 		})
 	})

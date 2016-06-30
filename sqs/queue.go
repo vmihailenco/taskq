@@ -44,8 +44,8 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *Options) *Queue {
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Processor:  popt,
-		AlwaysSync: opt.AlwaysSync,
+		Processor:   popt,
+		IgnoreDelay: opt.IgnoreDelay,
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 

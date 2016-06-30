@@ -37,8 +37,8 @@ func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Processor:  popt,
-		AlwaysSync: opt.AlwaysSync,
+		Processor:   popt,
+		IgnoreDelay: opt.IgnoreDelay,
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 
