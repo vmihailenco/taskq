@@ -18,8 +18,10 @@ type Queuer interface {
 	Name() string
 	Add(msg *Message) error
 	Call(args ...interface{}) error
+	CallOnce(dur time.Duration, args ...interface{}) error
 	AddAsync(msg *Message) error
 	CallAsync(args ...interface{}) error
+	CallOnceAsync(dur time.Duration, args ...interface{}) error
 	ReserveN(n int) ([]Message, error)
 	Release(*Message, time.Duration) error
 	Delete(msg *Message) error
