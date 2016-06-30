@@ -165,7 +165,7 @@ var _ = Describe("message retry timing", func() {
 		})
 	})
 
-	Context("message with delay and IgnoreMessageDelay=true", func() {
+	Context("wrapped message with delay", func() {
 		BeforeEach(func() {
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -175,8 +175,6 @@ var _ = Describe("message retry timing", func() {
 					Handler: handler,
 					Retries: 3,
 					Backoff: backoff,
-
-					IgnoreMessageDelay: true,
 				},
 			})
 		})
@@ -184,6 +182,7 @@ var _ = Describe("message retry timing", func() {
 		It("is processed immediately with async API", func() {
 			msg := queue.NewMessage()
 			msg.Delay = time.Hour
+			msg.Wrapped = true
 			err := q.AddAsync(msg)
 			Expect(err).NotTo(HaveOccurred())
 			now := time.Now()
@@ -202,6 +201,7 @@ var _ = Describe("message retry timing", func() {
 
 			msg := queue.NewMessage()
 			msg.Delay = time.Hour
+			msg.Wrapped = true
 			err := q.Add(msg)
 			Expect(err).To(MatchError("fake error #3"))
 

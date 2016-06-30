@@ -51,7 +51,7 @@ func (q *Memqueue) Processor() *processor.Processor {
 
 func (q *Memqueue) Add(msg *queue.Message) error {
 	msg.SetValue("sync", true)
-	return q.addMessage(msg, true)
+	return q.addMessage(msg)
 }
 
 func (q *Memqueue) Call(args ...interface{}) error {
@@ -67,7 +67,7 @@ func (q *Memqueue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Memqueue) AddAsync(msg *queue.Message) error {
-	return q.addMessage(msg, false)
+	return q.addMessage(msg)
 }
 
 func (q *Memqueue) CallAsync(args ...interface{}) error {
@@ -103,22 +103,23 @@ func (q *Memqueue) CloseTimeout(timeout time.Duration) error {
 	}
 }
 
-func (q *Memqueue) addMessage(msg *queue.Message, sync bool) error {
+func (q *Memqueue) addMessage(msg *queue.Message) error {
 	if !q.isUniqueName(msg.Name) {
 		return ErrDuplicate
 	}
 	q.wg.Add(1)
-	return q.enqueueMessage(msg, sync)
+	return q.enqueueMessage(msg)
 }
 
-func (q *Memqueue) enqueueMessage(msg *queue.Message, sync bool) error {
+func (q *Memqueue) enqueueMessage(msg *queue.Message) error {
+	sync := msg.Value("sync") == true
 	msg.ReservedCount++
 
 	if q.opt.AlwaysSync {
 		return q.p.Process(msg)
 	}
 
-	if q.opt.Processor.IgnoreMessageDelay || msg.Delay == 0 {
+	if msg.Wrapped || msg.Delay == 0 {
 		if sync {
 			return q.p.Process(msg)
 		}
@@ -127,6 +128,11 @@ func (q *Memqueue) enqueueMessage(msg *queue.Message, sync bool) error {
 
 	var delay time.Duration
 	delay, msg.Delay = msg.Delay, 0
+
+	if sync {
+		time.Sleep(delay)
+		return q.p.Process(msg)
+	}
 
 	time.AfterFunc(delay, func() {
 		q.p.Add(msg)
@@ -147,20 +153,8 @@ func (q *Memqueue) ReserveN(n int) ([]queue.Message, error) {
 }
 
 func (q *Memqueue) Release(msg *queue.Message, dur time.Duration) error {
-	msg.Delay = 0
-
-	sync := msg.Value("sync")
-	if sync != nil {
-		time.Sleep(dur)
-		err := q.enqueueMessage(msg, true)
-		msg.SetValue("err", err)
-		return nil
-	}
-
-	time.AfterFunc(dur, func() {
-		q.enqueueMessage(msg, false)
-	})
-	return nil
+	msg.Delay = dur
+	return q.enqueueMessage(msg)
 }
 
 func (q *Memqueue) Delete(msg *queue.Message) error {

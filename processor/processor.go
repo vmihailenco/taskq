@@ -236,18 +236,19 @@ func (p *Processor) worker() {
 			break
 		}
 
-		if !p.opt.IgnoreMessageDelay && msg.Delay > 0 {
-			p.release(msg, nil)
-			continue
-		}
-
 		p.Process(msg)
 	}
 }
 
 func (p *Processor) Process(msg *queue.Message) error {
+	if !msg.Wrapped && msg.Delay > 0 {
+		p.release(msg, nil)
+		return nil
+	}
+
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
+	msg.SetValue("err", err)
 	p.updateAvgDuration(time.Since(start))
 
 	if err == nil {
@@ -256,7 +257,6 @@ func (p *Processor) Process(msg *queue.Message) error {
 		return nil
 	}
 
-	msg.SetValue("err", err)
 	if msg.ReservedCount < p.opt.Retries {
 		atomic.AddUint32(&p.retries, 1)
 		p.release(msg, err)
@@ -270,6 +270,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 
 func (p *Processor) release(msg *queue.Message, reason error) {
 	delay := p.backoff(msg, reason)
+	msg.Wrapped = false
 
 	if reason != nil {
 		log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
@@ -287,7 +288,7 @@ func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
 			return delayer.Delay()
 		}
 	}
-	if !p.opt.IgnoreMessageDelay && msg.Delay > 0 {
+	if !msg.Wrapped && msg.Delay > 0 {
 		return msg.Delay
 	}
 	return exponentialBackoff(p.opt.Backoff, msg.ReservedCount)

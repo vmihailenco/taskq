@@ -32,7 +32,6 @@ func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 		popt.Backoff = time.Second
 		popt.FallbackHandler = popt.Handler
 		popt.Handler = queue.HandlerFunc(q.add)
-		popt.IgnoreMessageDelay = true
 	}
 	memopt := memqueue.Options{
 		Name:    opt.Name,
@@ -77,6 +76,7 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
+	msg.Wrapped = true
 	return q.memqueue.Add(msg)
 }
 
@@ -93,6 +93,7 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 }
 
 func (q *Queue) AddAsync(msg *queue.Message) error {
+	msg.Wrapped = true
 	return q.memqueue.AddAsync(msg)
 }
 
