@@ -40,9 +40,13 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	args, err := decodeArgs(msg.Body, h.ft)
+	args, err := h.decodeArgs(msg)
 	if err != nil {
 		return err
+	}
+
+	if len(args) != h.ft.NumIn() {
+		return fmt.Errorf("got %d args, handler expects %d", len(args), h.ft.NumIn())
 	}
 
 	out := h.fv.Call(args)
@@ -53,4 +57,16 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	}
 
 	return nil
+}
+
+func (h *reflectFunc) decodeArgs(msg *Message) ([]reflect.Value, error) {
+	if msg.Body != "" {
+		return decodeArgs(msg.Body, h.ft)
+	}
+
+	args := make([]reflect.Value, len(msg.Args))
+	for i, arg := range msg.Args {
+		args[i] = reflect.ValueOf(arg)
+	}
+	return args, nil
 }

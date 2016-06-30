@@ -64,13 +64,19 @@ func (q *Queue) createQueue() error {
 }
 
 func (q *Queue) add(msg *queue.Message) error {
+	body, err := msg.MarshalArgs()
+	if err != nil {
+		return err
+	}
+
 	id, err := q.q.PushMessage(mq.Message{
-		Body:  msg.Body,
+		Body:  body,
 		Delay: int64(msg.Delay / time.Second),
 	})
 	if err != nil {
 		return err
 	}
+
 	msg.Id = id
 	return nil
 }

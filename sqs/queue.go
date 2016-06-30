@@ -111,9 +111,14 @@ func (q *Queue) getQueueURL() (string, error) {
 func (q *Queue) add(msg *queue.Message) error {
 	const maxDelay = 15 * time.Minute
 
+	body, err := msg.MarshalArgs()
+	if err != nil {
+		return err
+	}
+
 	in := &sqs.SendMessageInput{
 		QueueUrl:    aws.String(q.queueURL()),
-		MessageBody: aws.String(msg.Body),
+		MessageBody: aws.String(body),
 	}
 
 	if msg.Delay <= maxDelay {

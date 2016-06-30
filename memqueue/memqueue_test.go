@@ -62,9 +62,10 @@ var _ = Describe("message with invalid number of args", func() {
 				Retries: 1,
 			},
 		})
-		q.CallAsync()
+		err := q.Call()
+		Expect(err).To(MatchError("got 0 args, handler expects 1"))
 
-		err := q.Close()
+		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
 

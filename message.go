@@ -9,8 +9,9 @@ type Message struct {
 	Id    string
 	Name  string
 	Delay time.Duration
-	Body  string
-	Args  []interface{}
+
+	Args []interface{}
+	Body string
 
 	ReservationId string
 	ReservedCount int
@@ -21,18 +22,17 @@ type Message struct {
 }
 
 func NewMessage(args ...interface{}) *Message {
-	body, err := encodeArgs(args)
-	if err != nil {
-		panic(err)
-	}
 	return &Message{
-		Body: body,
 		Args: args,
 	}
 }
 
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
+}
+
+func (m *Message) MarshalArgs() (string, error) {
+	return encodeArgs(m.Args)
 }
 
 func (m *Message) SetValue(name string, value interface{}) {
