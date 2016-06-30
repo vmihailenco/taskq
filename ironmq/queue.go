@@ -26,19 +26,16 @@ func NewQueue(mqueue mq.Queue, opt *Options) *Queue {
 		opt: opt,
 	}
 
-	popt := opt.Processor // copy
-	if !opt.Offline {
-		popt.Retries = 3
-		popt.Backoff = time.Second
-		popt.FallbackHandler = popt.Handler
-		popt.Handler = queue.HandlerFunc(q.add)
-	}
 	memopt := memqueue.Options{
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Processor:   popt,
-		IgnoreDelay: opt.IgnoreDelay,
+		Processor: processor.Options{
+			Retries:         3,
+			Backoff:         time.Second,
+			FallbackHandler: opt.Processor.Handler,
+			Handler:         queue.HandlerFunc(q.add),
+		},
 	}
 	q.memqueue = memqueue.NewMemqueue(&memopt)
 
