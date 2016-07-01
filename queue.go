@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"gopkg.in/queue.v1/processor"
 )
 
 type Storager interface {
@@ -16,6 +18,7 @@ type Limiter interface {
 
 type Queuer interface {
 	Name() string
+	Processor() *processor.Processor
 	Add(msg *Message) error
 	Call(args ...interface{}) error
 	CallOnce(dur time.Duration, args ...interface{}) error
