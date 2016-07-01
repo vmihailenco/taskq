@@ -9,6 +9,7 @@ import (
 	"github.com/iron-io/iron_go3/mq"
 
 	"gopkg.in/queue.v1"
+	"gopkg.in/queue.v1/internal"
 	"gopkg.in/queue.v1/memqueue"
 	"gopkg.in/queue.v1/processor"
 )
@@ -38,6 +39,9 @@ func NewQueue(mqueue mq.Queue, opt *queue.Options) *Queue {
 		Retries: 3,
 		Backoff: time.Second,
 		Handler: queue.HandlerFunc(q.add),
+	}
+	if opt.Handler != nil {
+		memopt.FallbackHandler = internal.MessageUnwrapperHandler(opt.Handler)
 	}
 	q.memqueue = memqueue.NewQueue(&memopt)
 

@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 
 	"gopkg.in/queue.v1"
+	"gopkg.in/queue.v1/internal"
 	"gopkg.in/queue.v1/memqueue"
 	"gopkg.in/queue.v1/processor"
 )
@@ -42,6 +43,9 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
 		Retries: 3,
 		Backoff: time.Second,
 		Handler: queue.HandlerFunc(q.add),
+	}
+	if opt.Handler != nil {
+		memopt.FallbackHandler = internal.MessageUnwrapperHandler(opt.Handler)
 	}
 	q.memqueue = memqueue.NewQueue(&memopt)
 

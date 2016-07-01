@@ -124,10 +124,16 @@ func testDelay(t *testing.T, q queue.Queuer) {
 func testRetry(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
-	handlerCh := make(chan bool, 10)
+	handlerCh := make(chan time.Time, 10)
 	handler := func(hello, world string) error {
-		handlerCh <- true
+		handlerCh <- time.Now()
 		return errors.New("fake error")
+	}
+
+	var fallbackCount int64
+	fallbackHandler := func() error {
+		atomic.AddInt64(&fallbackCount, 1)
+		return nil
 	}
 
 	msg := queue.NewMessage("hello", "world")
@@ -137,9 +143,10 @@ func testRetry(t *testing.T, q queue.Queuer) {
 	}
 
 	p := processor.New(q, &queue.Options{
-		Handler: handler,
-		Retries: 3,
-		Backoff: time.Second,
+		Handler:         handler,
+		FallbackHandler: fallbackHandler,
+		Retries:         3,
+		Backoff:         time.Second,
 	})
 	p.Start()
 
@@ -148,6 +155,10 @@ func testRetry(t *testing.T, q queue.Queuer) {
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
+	}
+
+	if n := atomic.LoadInt64(&fallbackCount); n != 1 {
+		t.Fatalf("fallbach handler is called %d times, wanted 1", n)
 	}
 }
 
@@ -179,6 +190,8 @@ func testNamedMessage(t *testing.T, q queue.Queuer) {
 		Handler: handler,
 	})
 	p.Start()
+
+	time.Sleep(time.Second)
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
@@ -244,9 +257,9 @@ func (Error) Delay() time.Duration {
 func testDelayer(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
-	handlerCh := make(chan bool, 10)
+	handlerCh := make(chan time.Time, 10)
 	handler := func() error {
-		handlerCh <- true
+		handlerCh <- time.Now()
 		return Error("fake error")
 	}
 
@@ -273,11 +286,11 @@ func durEqual(d1, d2 time.Duration) bool {
 	return d1 >= d2 && d2-d1 < 2*time.Second
 }
 
-func testTimings(t *testing.T, ch chan bool, timings []time.Duration) {
+func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 	start := time.Now()
 	for i, timing := range timings {
-		<-ch
-		since := time.Since(start)
+		tm := <-ch
+		since := tm.Sub(start)
 		if !durEqual(since, timing) {
 			t.Fatalf("#%d: timing is %s, wanted %s", i+1, since, timing)
 		}
