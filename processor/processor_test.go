@@ -57,7 +57,7 @@ func redisRing() *redis.Ring {
 func testProcessor(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
-	var count int64
+	ch := make(chan time.Time)
 	handler := func(hello, world string) error {
 		if hello != "hello" {
 			t.Fatalf("got %s, wanted hello", hello)
@@ -65,7 +65,7 @@ func testProcessor(t *testing.T, q queue.Queuer) {
 		if world != "world" {
 			t.Fatalf("got %s, wanted world", world)
 		}
-		atomic.AddInt64(&count, 1)
+		ch <- time.Now()
 		return nil
 	}
 
@@ -75,17 +75,18 @@ func testProcessor(t *testing.T, q queue.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler: handler,
 	})
-	p.Start()
-	time.Sleep(time.Second)
+
+	select {
+	case <-ch:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("message was not processed")
+	}
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
-	}
-	if atomic.LoadInt64(&count) != 1 {
-		t.Fatalf("message was not processed")
 	}
 }
 
@@ -104,11 +105,10 @@ func testDelay(t *testing.T, q queue.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler: handler,
 	})
 	start := time.Now()
-	p.Start()
 
 	tm := <-handlerCh
 	sub := tm.Sub(start)
@@ -142,13 +142,12 @@ func testRetry(t *testing.T, q queue.Queuer) {
 		t.Fatal(err)
 	}
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler:         handler,
 		FallbackHandler: fallbackHandler,
 		Retries:         3,
 		Backoff:         time.Second,
 	})
-	p.Start()
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -165,9 +164,9 @@ func testRetry(t *testing.T, q queue.Queuer) {
 func testNamedMessage(t *testing.T, q queue.Queuer) {
 	_ = q.Purge()
 
-	var count int64
+	ch := make(chan time.Time, 10)
 	handler := func() error {
-		atomic.AddInt64(&count, 1)
+		ch <- time.Now()
 		return nil
 	}
 
@@ -186,19 +185,24 @@ func testNamedMessage(t *testing.T, q queue.Queuer) {
 	}
 	wg.Wait()
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler: handler,
 	})
-	p.Start()
 
-	time.Sleep(time.Second)
+	select {
+	case <-ch:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("message was not processed")
+	}
+
+	select {
+	case <-ch:
+		t.Fatalf("message was processed twice")
+	default:
+	}
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
-	}
-
-	if n := atomic.LoadInt64(&count); n != 1 {
-		t.Fatalf("processed %d messages, wanted 1", n)
 	}
 }
 
@@ -225,13 +229,12 @@ func testRateLimit(t *testing.T, q queue.Queuer) {
 	}
 	wg.Wait()
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler:   handler,
 		Workers:   2,
 		RateLimit: timerate.Every(time.Second),
 		Limiter:   rateLimiter(),
 	})
-	p.Start()
 	go printStats(p)
 
 	time.Sleep(5 * time.Second)
@@ -244,13 +247,13 @@ func testRateLimit(t *testing.T, q queue.Queuer) {
 	}
 }
 
-type Error string
+type RateLimitError string
 
-func (e Error) Error() string {
+func (e RateLimitError) Error() string {
 	return string(e)
 }
 
-func (Error) Delay() time.Duration {
+func (RateLimitError) Delay() time.Duration {
 	return 3 * time.Second
 }
 
@@ -260,14 +263,13 @@ func testDelayer(t *testing.T, q queue.Queuer) {
 	handlerCh := make(chan time.Time, 10)
 	handler := func() error {
 		handlerCh <- time.Now()
-		return Error("fake error")
+		return RateLimitError("fake error")
 	}
 
-	p := processor.New(q, &queue.Options{
+	p := processor.Start(q, &queue.Options{
 		Handler: handler,
 		Backoff: time.Second,
 	})
-	p.Start()
 
 	err := q.Call()
 	if err != nil {

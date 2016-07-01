@@ -56,8 +56,15 @@ var _ = Describe("message with invalid number of args", func() {
 			Handler: handler,
 			Retries: 1,
 		})
+		q.Processor().Stop()
+
 		err := q.Call()
+		Expect(err).NotTo(HaveOccurred())
+
+		err = q.Processor().ProcessOne()
 		Expect(err).To(MatchError("got 0 args, handler expects 1 args"))
+
+		_ = q.Processor().ProcessAll()
 
 		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -119,7 +126,6 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-
 			q.CallAsync()
 
 			err := q.Close()

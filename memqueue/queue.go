@@ -53,7 +53,6 @@ func (q *Queue) SetNoDelay(f bool) {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	msg.SetValue("sync", true)
 	return q.addMessage(msg)
 }
 
@@ -90,6 +89,7 @@ func (q *Queue) Close() error {
 }
 
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
+	defer q.p.Stop()
 	defer unregisterQueue(q)
 
 	done := make(chan struct{})
@@ -119,24 +119,12 @@ func (q *Queue) enqueueMessage(msg *queue.Message) error {
 	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
 
-	var sync bool
 	if q.noDelay {
-		sync = true
-		delay = 0
-	} else {
-		sync = msg.Value("sync") == true
+		return q.p.Process(msg)
 	}
 
 	if delay == 0 {
-		if sync {
-			return q.p.Process(msg)
-		}
 		return q.p.Add(msg)
-	}
-
-	if sync {
-		time.Sleep(delay)
-		return q.p.Process(msg)
 	}
 
 	time.AfterFunc(delay, func() {
@@ -154,7 +142,7 @@ func (q *Queue) isUniqueName(name string) bool {
 }
 
 func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
-	select {}
+	return nil, processor.ErrNotSupported
 }
 
 func (q *Queue) Release(msg *queue.Message, dur time.Duration) error {

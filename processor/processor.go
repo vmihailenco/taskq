@@ -18,6 +18,8 @@ import (
 const consumerBackoff = time.Second
 const maxBackoff = 12 * time.Hour
 
+var ErrNotSupported = errors.New("processor: not supported")
+
 type Delayer interface {
 	Delay() time.Duration
 }
@@ -43,7 +45,8 @@ type Processor struct {
 
 	delBatch *internal.Batcher
 
-	stop uint32
+	_started uint32
+	stop     chan struct{}
 
 	inFlight    uint32
 	deleting    uint32
@@ -100,15 +103,6 @@ func Start(q queue.Queuer, opt *queue.Options) *Processor {
 	return p
 }
 
-func (p *Processor) Start() error {
-	p.wg.Add(1)
-	go p.messageFetcher()
-
-	p.startWorkers()
-
-	return nil
-}
-
 func (p *Processor) String() string {
 	return fmt.Sprintf(
 		"Processor<%s workers=%d scavengers=%d buffer=%d>",
@@ -143,11 +137,17 @@ func (p *Processor) Add(msg *queue.Message) error {
 	return nil
 }
 
-func (p *Processor) startWorkers() {
-	p.wg.Add(p.opt.Workers)
-	for i := 0; i < p.opt.Workers; i++ {
-		go p.worker()
+func (p *Processor) Start() error {
+	if !atomic.CompareAndSwapUint32(&p._started, 0, 1) {
+		return nil
 	}
+
+	p.startWorkers()
+
+	p.wg.Add(1)
+	go p.messageFetcher()
+
+	return nil
 }
 
 func (p *Processor) Stop() error {
@@ -155,19 +155,29 @@ func (p *Processor) Stop() error {
 }
 
 func (p *Processor) StopTimeout(timeout time.Duration) error {
-	atomic.StoreUint32(&p.stop, 1)
+	if !atomic.CompareAndSwapUint32(&p._started, 1, 0) {
+		return nil
+	}
+	p.stopWorkers()
 	return p.waitWorkers(timeout)
 }
 
-func (p *Processor) stopped() bool {
-	return atomic.LoadUint32(&p.stop) == 1
+func (p *Processor) startWorkers() {
+	p.stop = make(chan struct{})
+	p.wg.Add(p.opt.Workers)
+	for i := 0; i < p.opt.Workers; i++ {
+		go p.worker()
+	}
+}
+
+func (p *Processor) stopWorkers() {
+	close(p.stop)
 }
 
 func (p *Processor) waitWorkers(timeout time.Duration) error {
 	stopped := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-		p.delBatch.Close()
 		close(stopped)
 	}()
 
@@ -177,6 +187,18 @@ func (p *Processor) waitWorkers(timeout time.Duration) error {
 	case <-stopped:
 		return nil
 	}
+}
+
+func (p *Processor) stopped() bool {
+	return atomic.LoadUint32(&p._started) == 0
+}
+
+func (p *Processor) Close() error {
+	retErr := p.Stop()
+	if err := p.delBatch.Close(); err != nil && retErr == nil {
+		retErr = err
+	}
+	return retErr
 }
 
 func (p *Processor) ProcessAll() error {
@@ -197,31 +219,48 @@ func (p *Processor) ProcessAll() error {
 			break
 		}
 	}
-	close(p.ch)
+	p.stopWorkers()
 	return p.waitWorkers(time.Minute)
 }
 
 func (p *Processor) ProcessOne() error {
-	msgs, err := p.q.ReserveN(1)
+	msg, err := p.reserveOne()
 	if err != nil {
 		return err
 	}
-	if len(msgs) == 0 {
-		return errors.New("no messages in queue")
+	atomic.AddUint32(&p.inFlight, 1)
+	return p.Process(msg)
+}
+
+func (p *Processor) reserveOne() (*queue.Message, error) {
+	select {
+	case msg := <-p.ch:
+		return msg, nil
+	default:
 	}
-	return p.Process(&msgs[0])
+
+	msgs, err := p.q.ReserveN(1)
+	if err != nil {
+		return nil, err
+	}
+	if len(msgs) == 0 {
+		return nil, errors.New("no messages in queue")
+	}
+	return &msgs[0], nil
 }
 
 func (p *Processor) messageFetcher() {
 	defer p.wg.Done()
 	for {
 		if p.stopped() {
-			close(p.ch)
 			break
 		}
 
 		_, err := p.fetchMessages()
 		if err != nil {
+			if err == ErrNotSupported {
+				break
+			}
 			log.Printf("%s ReserveN failed: %s (sleeping for %s)", p.q, err, consumerBackoff)
 			time.Sleep(consumerBackoff)
 			continue
@@ -234,9 +273,8 @@ func (p *Processor) fetchMessages() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	atomic.AddUint32(&p.inFlight, uint32(len(msgs)))
 	for i := range msgs {
-		p.ch <- &msgs[i]
+		p.queueMessage(&msgs[i])
 	}
 	return len(msgs), nil
 }
@@ -252,11 +290,10 @@ func (p *Processor) worker() {
 			}
 		}
 
-		msg, ok := <-p.ch
+		msg, ok := p.dequeueMessage()
 		if !ok {
 			break
 		}
-
 		p.Process(msg)
 	}
 }
@@ -290,6 +327,25 @@ func (p *Processor) Process(msg *queue.Message) error {
 		return v.(error)
 	}
 	return nil
+}
+
+func (p *Processor) queueMessage(msg *queue.Message) {
+	atomic.AddUint32(&p.inFlight, 1)
+	p.ch <- msg
+}
+
+func (p *Processor) dequeueMessage() (*queue.Message, bool) {
+	select {
+	case msg := <-p.ch:
+		return msg, true
+	case <-p.stop:
+		select {
+		case msg := <-p.ch:
+			return msg, true
+		default:
+			return nil, false
+		}
+	}
 }
 
 func (p *Processor) release(msg *queue.Message, reason error) {
