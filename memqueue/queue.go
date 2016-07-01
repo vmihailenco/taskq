@@ -20,7 +20,7 @@ type Queue struct {
 	wg sync.WaitGroup
 }
 
-var _ queue.Queuer = (*Queue)(nil)
+var _ processor.Queuer = (*Queue)(nil)
 
 func NewQueue(opt *queue.Options) *Queue {
 	q := Queue{

@@ -34,7 +34,7 @@ type Stats struct {
 }
 
 type Processor struct {
-	q   queue.Queuer
+	q   Queuer
 	opt *queue.Options
 
 	handler         queue.Handler
@@ -56,7 +56,7 @@ type Processor struct {
 	avgDuration uint32
 }
 
-func New(q queue.Queuer, opt *queue.Options) *Processor {
+func New(q Queuer, opt *queue.Options) *Processor {
 	initOptions(opt)
 
 	p := &Processor{
@@ -97,7 +97,7 @@ func initOptions(opt *queue.Options) {
 	}
 }
 
-func Start(q queue.Queuer, opt *queue.Options) *Processor {
+func Start(q Queuer, opt *queue.Options) *Processor {
 	p := New(q, opt)
 	p.Start()
 	return p

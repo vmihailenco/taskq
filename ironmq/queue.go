@@ -20,7 +20,7 @@ type Queue struct {
 	memqueue *memqueue.Queue
 }
 
-var _ queue.Queuer = (*Queue)(nil)
+var _ processor.Queuer = (*Queue)(nil)
 
 func NewQueue(mqueue mq.Queue, opt *queue.Options) *Queue {
 	if opt.Name == "" {

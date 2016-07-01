@@ -54,7 +54,7 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func testProcessor(t *testing.T, q queue.Queuer) {
+func testProcessor(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	ch := make(chan time.Time)
@@ -90,7 +90,7 @@ func testProcessor(t *testing.T, q queue.Queuer) {
 	}
 }
 
-func testDelay(t *testing.T, q queue.Queuer) {
+func testDelay(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
@@ -121,7 +121,7 @@ func testDelay(t *testing.T, q queue.Queuer) {
 	}
 }
 
-func testRetry(t *testing.T, q queue.Queuer) {
+func testRetry(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
@@ -161,7 +161,7 @@ func testRetry(t *testing.T, q queue.Queuer) {
 	}
 }
 
-func testNamedMessage(t *testing.T, q queue.Queuer) {
+func testNamedMessage(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	ch := make(chan time.Time, 10)
@@ -206,7 +206,7 @@ func testNamedMessage(t *testing.T, q queue.Queuer) {
 	}
 }
 
-func testRateLimit(t *testing.T, q queue.Queuer) {
+func testRateLimit(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	var count int64
@@ -257,7 +257,7 @@ func (RateLimitError) Delay() time.Duration {
 	return 3 * time.Second
 }
 
-func testDelayer(t *testing.T, q queue.Queuer) {
+func testDelayer(t *testing.T, q processor.Queuer) {
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)

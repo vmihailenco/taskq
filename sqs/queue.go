@@ -27,7 +27,7 @@ type Queue struct {
 	sync bool
 }
 
-var _ queue.Queuer = (*Queue)(nil)
+var _ processor.Queuer = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
 	q := Queue{
