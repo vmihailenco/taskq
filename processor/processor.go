@@ -207,7 +207,7 @@ func (p *Processor) ProcessAll() error {
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
 		n, err := p.fetchMessages()
-		if err != nil {
+		if err != nil && err != ErrNotSupported {
 			return err
 		}
 		if n == 0 && isIdle {
