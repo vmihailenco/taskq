@@ -17,6 +17,7 @@ import (
 
 const consumerBackoff = time.Second
 const maxBackoff = 12 * time.Hour
+const stopTimeout = time.Minute
 
 var ErrNotSupported = errors.New("processor: not supported")
 
@@ -69,7 +70,7 @@ func New(q Queuer, opt *queue.Options) *Processor {
 	if opt.FallbackHandler != nil {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
-	p.delBatch = internal.NewBatcher(opt.Scavengers, p.deleteBatch)
+	p.delBatch = internal.NewBatcher(p.opt.Scavengers, p.deleteBatch)
 	return p
 }
 
@@ -133,7 +134,7 @@ func (p *Processor) setFallbackHandler(handler interface{}) {
 }
 
 func (p *Processor) Add(msg *queue.Message) error {
-	p.ch <- msg
+	p.queueMessage(msg)
 	return nil
 }
 
@@ -158,8 +159,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	if !atomic.CompareAndSwapUint32(&p._started, 1, 0) {
 		return nil
 	}
-	p.stopWorkers()
-	return p.waitWorkers(timeout)
+	return p.stopWorkersTimeout(stopTimeout)
 }
 
 func (p *Processor) startWorkers() {
@@ -170,11 +170,9 @@ func (p *Processor) startWorkers() {
 	}
 }
 
-func (p *Processor) stopWorkers() {
+func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
 	close(p.stop)
-}
 
-func (p *Processor) waitWorkers(timeout time.Duration) error {
 	stopped := make(chan struct{})
 	go func() {
 		p.wg.Wait()
@@ -193,16 +191,10 @@ func (p *Processor) stopped() bool {
 	return atomic.LoadUint32(&p._started) == 0
 }
 
-func (p *Processor) Close() error {
-	retErr := p.Stop()
-	if err := p.delBatch.Close(); err != nil && retErr == nil {
-		retErr = err
-	}
-	return retErr
-}
-
 func (p *Processor) ProcessAll() error {
 	p.startWorkers()
+	defer p.stopWorkersTimeout(stopTimeout)
+
 	var noWork int
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
@@ -219,13 +211,12 @@ func (p *Processor) ProcessAll() error {
 			break
 		}
 	}
-	p.stopWorkers()
-	return p.waitWorkers(time.Minute)
+	return nil
 }
 
 func (p *Processor) ProcessOne() error {
 	msg, err := p.reserveOne()
-	if err != nil {
+	if err != nil && err != ErrNotSupported {
 		return err
 	}
 	atomic.AddUint32(&p.inFlight, 1)
