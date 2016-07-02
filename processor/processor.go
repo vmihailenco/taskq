@@ -321,7 +321,8 @@ func (p *Processor) Process(msg *queue.Message) error {
 func (p *Processor) Purge() error {
 	for {
 		select {
-		case <-p.ch:
+		case msg := <-p.ch:
+			p.delete(msg, nil)
 		default:
 			return nil
 		}
