@@ -193,8 +193,6 @@ func (p *Processor) stopped() bool {
 
 func (p *Processor) ProcessAll() error {
 	p.startWorkers()
-	defer p.stopWorkersTimeout(stopTimeout)
-
 	var noWork int
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
@@ -211,7 +209,7 @@ func (p *Processor) ProcessAll() error {
 			break
 		}
 	}
-	return nil
+	return p.stopWorkersTimeout(stopTimeout)
 }
 
 func (p *Processor) ProcessOne() error {
