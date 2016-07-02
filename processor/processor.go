@@ -320,6 +320,16 @@ func (p *Processor) Process(msg *queue.Message) error {
 	return nil
 }
 
+func (p *Processor) Purge() error {
+	for {
+		select {
+		case <-p.ch:
+		default:
+			return nil
+		}
+	}
+}
+
 func (p *Processor) queueMessage(msg *queue.Message) {
 	atomic.AddUint32(&p.inFlight, 1)
 	p.ch <- msg

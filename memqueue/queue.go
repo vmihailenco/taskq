@@ -165,5 +165,5 @@ func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
 }
 
 func (q *Queue) Purge() error {
-	return nil
+	return q.p.Purge()
 }
