@@ -9,14 +9,21 @@ import (
 var ErrDuplicate = errors.New("queue: message with such name already exists")
 
 type Message struct {
-	Id    string
-	Name  string
+	Id string
+
+	// An unique name for the message.
+	Name string
+
+	// Delay specifies the duration the queue must wait
+	// before executing the message.
 	Delay time.Duration
 
 	Args []interface{}
 	Body string
 
 	ReservationId string
+
+	// The number of times the message has been reserved or released.
 	ReservedCount int
 
 	values map[string]interface{}

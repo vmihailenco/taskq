@@ -33,7 +33,7 @@ var _ = Describe("message with args", func() {
 		q := memqueue.NewQueue(&queue.Options{
 			Handler: handler,
 		})
-		q.CallAsync("string", 42)
+		q.Call("string", 42)
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -53,8 +53,8 @@ var _ = Describe("message with invalid number of args", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&queue.Options{
-			Handler: handler,
-			Retries: 1,
+			Handler:    handler,
+			RetryLimit: 1,
 		})
 		q.Processor().Stop()
 
@@ -87,7 +87,7 @@ var _ = Describe("handler that expects Message", func() {
 		q := memqueue.NewQueue(&queue.Options{
 			Handler: queue.HandlerFunc(handler),
 		})
-		q.CallAsync("string", 42)
+		q.Call("string", 42)
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -115,9 +115,9 @@ var _ = Describe("message retry timing", func() {
 		count = 0
 		ch = make(chan time.Time, 10)
 		q = memqueue.NewQueue(&queue.Options{
-			Handler: handler,
-			Retries: 3,
-			Backoff: backoff,
+			Handler:    handler,
+			RetryLimit: 3,
+			MinBackoff: backoff,
 		})
 	})
 
@@ -126,7 +126,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			q.CallAsync()
+			q.Call()
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -148,7 +148,7 @@ var _ = Describe("message retry timing", func() {
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			q.AddAsync(msg)
+			q.Add(msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -162,37 +162,20 @@ var _ = Describe("message retry timing", func() {
 		})
 	})
 
-	Context("with IgnoreDelay=true", func() {
+	Context("with NoDelay=true", func() {
 		BeforeEach(func() {
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
 
 			q = memqueue.NewQueue(&queue.Options{
-				Handler: handler,
-				Retries: 3,
-				Backoff: backoff,
+				Handler:    handler,
+				RetryLimit: 3,
+				MinBackoff: backoff,
 			})
 			q.SetNoDelay(true)
 		})
 
-		It("is processed immediately with async API", func() {
-			now := time.Now()
-
-			msg := queue.NewMessage()
-			msg.Delay = time.Hour
-			err := q.AddAsync(msg)
-			Expect(err).To(MatchError("fake error #3"))
-
-			err = q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).NotTo(Receive())
-		})
-
-		It("is processed immediately with sync API", func() {
+		It("is processed immediately", func() {
 			now := time.Now()
 
 			msg := queue.NewMessage()
@@ -227,9 +210,9 @@ var _ = Describe("failing queue with error handler", func() {
 		q = memqueue.NewQueue(&queue.Options{
 			Handler:         handler,
 			FallbackHandler: fallbackHandler,
-			Retries:         1,
+			RetryLimit:      1,
 		})
-		q.CallAsync()
+		q.Call()
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -281,7 +264,7 @@ var _ = Describe("named message", func() {
 				defer wg.Done()
 				msg := queue.NewMessage()
 				msg.Name = "myname"
-				q.AddAsync(msg)
+				q.Add(msg)
 			}()
 		}
 		wg.Wait()
@@ -332,7 +315,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				q.CallOnceAsync(delay, slot(delay))
+				q.CallOnce(delay, slot(delay))
 			}()
 		}
 		wg.Wait()
@@ -362,7 +345,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.CallAsync()
+			q.Call()
 		}
 
 		err := q.Close()
@@ -392,11 +375,11 @@ var _ = Describe("stress testing failing queue", func() {
 		q = memqueue.NewQueue(&queue.Options{
 			Handler:         handler,
 			FallbackHandler: fallbackHandler,
-			Retries:         1,
+			RetryLimit:      1,
 		})
 
 		for i := 0; i < n; i++ {
-			q.CallAsync()
+			q.Call()
 		}
 
 		err := q.Close()
@@ -420,7 +403,7 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			q.CallAsync()
+			q.Call()
 		}
 	})
 }
@@ -439,7 +422,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 		for pb.Next() {
 			msg := queue.NewMessage()
 			msg.Name = "myname"
-			q.AddAsync(msg)
+			q.Add(msg)
 		}
 	})
 }

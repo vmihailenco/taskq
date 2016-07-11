@@ -40,9 +40,9 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
 		Name:    opt.Name,
 		Storage: opt.Storage,
 
-		Retries: 3,
-		Backoff: time.Second,
-		Handler: queue.HandlerFunc(q.add),
+		RetryLimit: 3,
+		MinBackoff: time.Second,
+		Handler:    queue.HandlerFunc(q.add),
 	}
 	if opt.Handler != nil {
 		memopt.FallbackHandler = internal.MessageUnwrapperHandler(opt.Handler)
@@ -162,22 +162,6 @@ func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 	msg.Name = fmt.Sprint(args)
 	msg.Delay = delay
 	return q.Add(msg)
-}
-
-func (q *Queue) AddAsync(msg *queue.Message) error {
-	return q.memqueue.AddAsync(queue.WrapMessage(msg))
-}
-
-func (q *Queue) CallAsync(args ...interface{}) error {
-	msg := queue.NewMessage(args...)
-	return q.AddAsync(msg)
-}
-
-func (q *Queue) CallOnceAsync(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessage(args...)
-	msg.Name = fmt.Sprint(args)
-	msg.Delay = delay
-	return q.AddAsync(msg)
 }
 
 func (q *Queue) ReserveN(n int) ([]queue.Message, error) {

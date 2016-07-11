@@ -24,7 +24,7 @@ func printStats(p *processor.Processor) {
 		}
 		log.Printf(
 			"%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
-			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
+			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.RetryLimit, st.AvgDuration,
 		)
 	}
 }
@@ -145,8 +145,8 @@ func testRetry(t *testing.T, q processor.Queuer) {
 	p := processor.Start(q, &queue.Options{
 		Handler:         handler,
 		FallbackHandler: fallbackHandler,
-		Retries:         3,
-		Backoff:         time.Second,
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
 	})
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second}
@@ -230,10 +230,10 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	wg.Wait()
 
 	p := processor.Start(q, &queue.Options{
-		Handler:   handler,
-		Workers:   2,
-		RateLimit: timerate.Every(time.Second),
-		Limiter:   rateLimiter(),
+		Handler:      handler,
+		WorkerNumber: 2,
+		RateLimit:    timerate.Every(time.Second),
+		Limiter:      rateLimiter(),
 	})
 	go printStats(p)
 
@@ -267,8 +267,8 @@ func testDelayer(t *testing.T, q processor.Queuer) {
 	}
 
 	p := processor.Start(q, &queue.Options{
-		Handler: handler,
-		Backoff: time.Second,
+		Handler:    handler,
+		MinBackoff: time.Second,
 	})
 
 	err := q.Call()

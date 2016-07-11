@@ -12,9 +12,6 @@ type Queuer interface {
 	Add(msg *queue.Message) error
 	Call(args ...interface{}) error
 	CallOnce(dur time.Duration, args ...interface{}) error
-	AddAsync(msg *queue.Message) error
-	CallAsync(args ...interface{}) error
-	CallOnceAsync(dur time.Duration, args ...interface{}) error
 	ReserveN(n int) ([]queue.Message, error)
 	Release(*queue.Message, time.Duration) error
 	Delete(msg *queue.Message) error

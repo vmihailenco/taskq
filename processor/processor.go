@@ -29,7 +29,7 @@ type Stats struct {
 	InFlight    uint32
 	Deleting    uint32
 	Processed   uint32
-	Retries     uint32
+	RetryLimit  uint32
 	Fails       uint32
 	AvgDuration time.Duration
 }
@@ -70,19 +70,19 @@ func New(q Queuer, opt *queue.Options) *Processor {
 	if opt.FallbackHandler != nil {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
-	p.delBatch = internal.NewBatcher(p.opt.Scavengers, p.deleteBatch)
+	p.delBatch = internal.NewBatcher(p.opt.ScavengerNumber, p.deleteBatch)
 	return p
 }
 
 func initOptions(opt *queue.Options) {
-	if opt.Workers == 0 {
-		opt.Workers = 10 * runtime.NumCPU()
+	if opt.WorkerNumber == 0 {
+		opt.WorkerNumber = 10 * runtime.NumCPU()
 	}
-	if opt.Scavengers == 0 {
-		opt.Scavengers = runtime.NumCPU() + 1
+	if opt.ScavengerNumber == 0 {
+		opt.ScavengerNumber = runtime.NumCPU() + 1
 	}
 	if opt.BufferSize == 0 {
-		opt.BufferSize = opt.Workers
+		opt.BufferSize = opt.WorkerNumber
 		if opt.BufferSize > 10 {
 			opt.BufferSize = 10
 		}
@@ -90,11 +90,11 @@ func initOptions(opt *queue.Options) {
 	if opt.RateLimit == 0 {
 		opt.RateLimit = rate.Inf
 	}
-	if opt.Retries == 0 {
-		opt.Retries = 10
+	if opt.RetryLimit == 0 {
+		opt.RetryLimit = 10
 	}
-	if opt.Backoff == 0 {
-		opt.Backoff = 3 * time.Second
+	if opt.MinBackoff == 0 {
+		opt.MinBackoff = 3 * time.Second
 	}
 }
 
@@ -107,7 +107,7 @@ func Start(q Queuer, opt *queue.Options) *Processor {
 func (p *Processor) String() string {
 	return fmt.Sprintf(
 		"Processor<%s workers=%d scavengers=%d buffer=%d>",
-		p.q.Name(), p.opt.Workers, p.opt.Scavengers, p.opt.BufferSize,
+		p.q.Name(), p.opt.WorkerNumber, p.opt.ScavengerNumber, p.opt.BufferSize,
 	)
 }
 
@@ -119,7 +119,7 @@ func (p *Processor) Stats() *Stats {
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
-		Retries:     atomic.LoadUint32(&p.retries),
+		RetryLimit:  atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
 		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Millisecond,
 	}
@@ -164,8 +164,8 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 
 func (p *Processor) startWorkers() {
 	p.stop = make(chan struct{})
-	p.wg.Add(p.opt.Workers)
-	for i := 0; i < p.opt.Workers; i++ {
+	p.wg.Add(p.opt.WorkerNumber)
+	for i := 0; i < p.opt.WorkerNumber; i++ {
 		go p.worker()
 	}
 }
@@ -197,7 +197,10 @@ func (p *Processor) ProcessAll() error {
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
 		n, err := p.fetchMessages()
-		if err != nil && err != ErrNotSupported {
+		if err != nil {
+			if err == ErrNotSupported {
+				break
+			}
 			return err
 		}
 		if n == 0 && isIdle {
@@ -217,7 +220,6 @@ func (p *Processor) ProcessOne() error {
 	if err != nil && err != ErrNotSupported {
 		return err
 	}
-	atomic.AddUint32(&p.inFlight, 1)
 	return p.Process(msg)
 }
 
@@ -235,6 +237,7 @@ func (p *Processor) reserveOne() (*queue.Message, error) {
 	if len(msgs) == 0 {
 		return nil, errors.New("no messages in queue")
 	}
+	atomic.AddUint32(&p.inFlight, 1)
 	return &msgs[0], nil
 }
 
@@ -304,7 +307,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 		return nil
 	}
 
-	if msg.ReservedCount < p.opt.Retries {
+	if msg.ReservedCount < p.opt.RetryLimit {
 		atomic.AddUint32(&p.retries, 1)
 		p.release(msg, err)
 	} else {
@@ -370,7 +373,7 @@ func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
 	if msg.Delay > 0 {
 		return msg.Delay
 	}
-	return exponentialBackoff(p.opt.Backoff, msg.ReservedCount)
+	return exponentialBackoff(p.opt.MinBackoff, msg.ReservedCount)
 }
 
 func (p *Processor) delete(msg *queue.Message, reason error) {
@@ -385,7 +388,6 @@ func (p *Processor) delete(msg *queue.Message, reason error) {
 	}
 
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	atomic.AddUint32(&p.deleting, 1)
 	p.delBatch.Add(msg)
 }
 
