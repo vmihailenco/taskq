@@ -139,11 +139,9 @@ func (p *Processor) Add(msg *queue.Message) error {
 }
 
 func (p *Processor) Start() error {
-	if !atomic.CompareAndSwapUint32(&p._started, 0, 1) {
+	if !p.startWorkers() {
 		return nil
 	}
-
-	p.startWorkers()
 
 	p.wg.Add(1)
 	go p.messageFetcher()
@@ -156,21 +154,27 @@ func (p *Processor) Stop() error {
 }
 
 func (p *Processor) StopTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapUint32(&p._started, 1, 0) {
-		return nil
-	}
 	return p.stopWorkersTimeout(stopTimeout)
 }
 
-func (p *Processor) startWorkers() {
+func (p *Processor) startWorkers() bool {
+	if !atomic.CompareAndSwapUint32(&p._started, 0, 1) {
+		return false
+	}
+
 	p.stop = make(chan struct{})
 	p.wg.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
 		go p.worker()
 	}
+	return true
 }
 
 func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
+	if !atomic.CompareAndSwapUint32(&p._started, 1, 0) {
+		return nil
+	}
+
 	close(p.stop)
 
 	stopped := make(chan struct{})
@@ -217,7 +221,7 @@ func (p *Processor) ProcessAll() error {
 
 func (p *Processor) ProcessOne() error {
 	msg, err := p.reserveOne()
-	if err != nil && err != ErrNotSupported {
+	if err != nil {
 		return err
 	}
 	return p.Process(msg)
@@ -231,11 +235,11 @@ func (p *Processor) reserveOne() (*queue.Message, error) {
 	}
 
 	msgs, err := p.q.ReserveN(1)
-	if err != nil {
+	if err != nil && err != ErrNotSupported {
 		return nil, err
 	}
 	if len(msgs) == 0 {
-		return nil, errors.New("no messages in queue")
+		return nil, errors.New("queue is empty")
 	}
 	atomic.AddUint32(&p.inFlight, 1)
 	return &msgs[0], nil

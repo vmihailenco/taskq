@@ -375,7 +375,7 @@ var _ = Describe("Queue", func() {
 	})
 
 	AfterEach(func() {
-		q.Close()
+		Expect(q.Close()).NotTo(HaveOccurred())
 	})
 
 	It("closes queues", func() {
@@ -386,6 +386,16 @@ var _ = Describe("Queue", func() {
 	It("stops processor", func() {
 		err := q.Processor().Stop()
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("processes all messages", func() {
+		err := q.Processor().ProcessAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("processes one message", func() {
+		err := q.Processor().ProcessOne()
+		Expect(err).To(MatchError("queue is empty"))
 	})
 })
 
