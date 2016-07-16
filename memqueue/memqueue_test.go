@@ -10,6 +10,8 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	timerate "golang.org/x/time/rate"
+	"gopkg.in/go-redis/rate.v4"
 	"gopkg.in/redis.v4"
 
 	"gopkg.in/queue.v1"
@@ -224,26 +226,6 @@ var _ = Describe("failing queue with error handler", func() {
 	})
 })
 
-type memqueueStorage struct {
-	*redis.Ring
-}
-
-func (c memqueueStorage) Exists(key string) bool {
-	return !c.SetNX(key, "", 12*time.Hour).Val()
-}
-
-func redisRing() *redis.Ring {
-	ring := redis.NewRing(&redis.RingOptions{
-		Addrs:    map[string]string{"0": ":6379"},
-		PoolSize: 100,
-	})
-	err := ring.FlushDb().Err()
-	if err != nil {
-		panic(err)
-	}
-	return ring
-}
-
 var _ = Describe("named message", func() {
 	var count int64
 	handler := func() {
@@ -278,17 +260,6 @@ var _ = Describe("named message", func() {
 		Expect(n).To(Equal(int64(1)))
 	})
 })
-
-// slot splits time into equal periods (called slots) and returns
-// slot number for provided time.
-func slot(period time.Duration) int64 {
-	tm := time.Now()
-	periodSec := int64(period / time.Second)
-	if periodSec == 0 {
-		return tm.Unix()
-	}
-	return tm.Unix() / periodSec
-}
 
 var _ = Describe("CallOnce", func() {
 	var now time.Time
@@ -392,37 +363,64 @@ var _ = Describe("stress testing failing queue", func() {
 	})
 })
 
-func BenchmarkCallAsync(b *testing.B) {
-	q := memqueue.NewQueue(&queue.Options{
-		Handler:    func() {},
-		BufferSize: 1000000,
-	})
-	defer q.Close()
+var _ = Describe("Queue", func() {
+	var q *memqueue.Queue
 
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			q.Call()
-		}
+	BeforeEach(func() {
+		q = memqueue.NewQueue(&queue.Options{
+			Handler:   func() {},
+			RateLimit: timerate.Every(time.Second),
+			Limiter:   rateLimiter(),
+		})
 	})
+
+	AfterEach(func() {
+		q.Close()
+	})
+
+	It("closes queues", func() {
+		err := q.Close()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("stops processor", func() {
+		err := q.Processor().Stop()
+		Expect(err).NotTo(HaveOccurred())
+	})
+})
+
+// slot splits time into equal periods (called slots) and returns
+// slot number for provided time.
+func slot(period time.Duration) int64 {
+	tm := time.Now()
+	periodSec := int64(period / time.Second)
+	if periodSec == 0 {
+		return tm.Unix()
+	}
+	return tm.Unix() / periodSec
 }
 
-func BenchmarkNamedMessage(b *testing.B) {
-	q := memqueue.NewQueue(&queue.Options{
-		Storage:    memqueueStorage{redisRing()},
-		Handler:    func() {},
-		BufferSize: 1000000,
-	})
-	defer q.Close()
+type memqueueStorage struct {
+	*redis.Ring
+}
 
-	b.ResetTimer()
+func (c memqueueStorage) Exists(key string) bool {
+	return !c.SetNX(key, "", 12*time.Hour).Val()
+}
 
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			msg := queue.NewMessage()
-			msg.Name = "myname"
-			q.Add(msg)
-		}
+func redisRing() *redis.Ring {
+	ring := redis.NewRing(&redis.RingOptions{
+		Addrs:    map[string]string{"0": ":6379"},
+		PoolSize: 100,
 	})
+	err := ring.FlushDb().Err()
+	if err != nil {
+		panic(err)
+	}
+	return ring
+}
+
+func rateLimiter() *rate.Limiter {
+	fallbackLimiter := timerate.NewLimiter(timerate.Every(time.Millisecond), 100)
+	return rate.NewLimiter(redisRing(), fallbackLimiter)
 }

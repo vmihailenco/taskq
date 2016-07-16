@@ -274,18 +274,20 @@ func (p *Processor) fetchMessages() (int, error) {
 func (p *Processor) worker() {
 	defer p.wg.Done()
 	for {
+		msg, ok := p.dequeueMessage()
+		if !ok {
+			break
+		}
+
 		if p.opt.Limiter != nil {
 			delay, allow := p.opt.Limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 			if !allow {
+				p.ch <- msg
 				time.Sleep(delay)
 				continue
 			}
 		}
 
-		msg, ok := p.dequeueMessage()
-		if !ok {
-			break
-		}
 		p.Process(msg)
 	}
 }
