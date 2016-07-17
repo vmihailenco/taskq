@@ -17,14 +17,20 @@ import (
 )
 
 func printStats(p *processor.Processor) {
+	var old *processor.Stats
 	for _ = range time.Tick(3 * time.Second) {
 		st := p.Stats()
 		if st == nil {
 			break
 		}
+		if old != nil && *st == *old {
+			continue
+		}
+		old = st
+
 		log.Printf(
 			"%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
-			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.RetryLimit, st.AvgDuration,
+			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
 		)
 	}
 }

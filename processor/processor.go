@@ -146,14 +146,6 @@ func (p *Processor) Start() error {
 	return nil
 }
 
-func (p *Processor) Stop() error {
-	return p.StopTimeout(30 * time.Second)
-}
-
-func (p *Processor) StopTimeout(timeout time.Duration) error {
-	return p.stopWorkersTimeout(stopTimeout)
-}
-
 func (p *Processor) startWorkers() bool {
 	if !atomic.CompareAndSwapUint32(&p._started, 0, 1) {
 		return false
@@ -165,6 +157,14 @@ func (p *Processor) startWorkers() bool {
 		go p.worker()
 	}
 	return true
+}
+
+func (p *Processor) Stop() error {
+	return p.StopTimeout(30 * time.Second)
+}
+
+func (p *Processor) StopTimeout(timeout time.Duration) error {
+	return p.stopWorkersTimeout(stopTimeout)
 }
 
 func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
@@ -285,11 +285,12 @@ func (p *Processor) worker() {
 		}
 
 		if p.opt.Limiter != nil {
-			delay, allow := p.opt.Limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
-			if !allow {
-				p.ch <- msg
+			for {
+				delay, allow := p.opt.Limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
+				if allow {
+					break
+				}
 				time.Sleep(delay)
-				continue
 			}
 		}
 
