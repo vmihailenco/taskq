@@ -388,14 +388,77 @@ var _ = Describe("Queue", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("processes all messages", func() {
-		err := q.Processor().ProcessAll()
-		Expect(err).NotTo(HaveOccurred())
-	})
+	testEmptyQueue := func() {
+		It("processes all messages", func() {
+			err := q.Processor().ProcessAll()
+			Expect(err).NotTo(HaveOccurred())
+		})
 
-	It("processes one message", func() {
-		err := q.Processor().ProcessOne()
-		Expect(err).To(MatchError("queue is empty"))
+		It("processes one message", func() {
+			err := q.Processor().ProcessOne()
+			Expect(err).To(MatchError("queue is empty"))
+
+			err = q.Processor().ProcessAll()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	}
+
+	testEmptyQueue()
+
+	Context("when processor is stopped", func() {
+		BeforeEach(func() {
+			err := q.Processor().Stop()
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		testEmptyQueue()
+
+		Context("when there are messages in the queue", func() {
+			BeforeEach(func() {
+				for i := 0; i < 3; i++ {
+					err := q.Call()
+					Expect(err).NotTo(HaveOccurred())
+				}
+			})
+
+			It("processes all messages", func() {
+				p := q.Processor()
+
+				err := p.ProcessAll()
+				Expect(err).NotTo(HaveOccurred())
+
+				st := p.Stats()
+				Expect(st.InFlight).To(Equal(uint32(0)))
+				Expect(st.Deleting).To(Equal(uint32(0)))
+				Expect(st.Processed).To(Equal(uint32(3)))
+				Expect(st.Retries).To(Equal(uint32(0)))
+				Expect(st.Fails).To(Equal(uint32(0)))
+			})
+
+			It("processes one message", func() {
+				p := q.Processor()
+
+				err := p.ProcessOne()
+				Expect(err).NotTo(HaveOccurred())
+
+				st := p.Stats()
+				Expect(st.InFlight).To(Equal(uint32(2)))
+				Expect(st.Deleting).To(Equal(uint32(0)))
+				Expect(st.Processed).To(Equal(uint32(1)))
+				Expect(st.Retries).To(Equal(uint32(0)))
+				Expect(st.Fails).To(Equal(uint32(0)))
+
+				err = p.ProcessAll()
+				Expect(err).NotTo(HaveOccurred())
+
+				st = p.Stats()
+				Expect(st.InFlight).To(Equal(uint32(0)))
+				Expect(st.Deleting).To(Equal(uint32(0)))
+				Expect(st.Processed).To(Equal(uint32(3)))
+				Expect(st.Retries).To(Equal(uint32(0)))
+				Expect(st.Fails).To(Equal(uint32(0)))
+			})
+		})
 	})
 })
 

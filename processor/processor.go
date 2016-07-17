@@ -29,7 +29,7 @@ type Stats struct {
 	InFlight    uint32
 	Deleting    uint32
 	Processed   uint32
-	RetryLimit  uint32
+	Retries     uint32
 	Fails       uint32
 	AvgDuration time.Duration
 }
@@ -112,14 +112,11 @@ func (p *Processor) String() string {
 }
 
 func (p *Processor) Stats() *Stats {
-	if p.stopped() {
-		return nil
-	}
 	return &Stats{
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
-		RetryLimit:  atomic.LoadUint32(&p.retries),
+		Retries:     atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
 		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Millisecond,
 	}
@@ -187,7 +184,7 @@ func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
 	case <-time.After(timeout):
 		return fmt.Errorf("workers did not stop after %s seconds", timeout)
 	case <-stopped:
-		return nil
+		return p.delBatch.Wait()
 	}
 }
 
@@ -224,7 +221,11 @@ func (p *Processor) ProcessOne() error {
 	if err != nil {
 		return err
 	}
-	return p.Process(msg)
+	retErr := p.Process(msg)
+	if err := p.delBatch.Wait(); err != nil && retErr == nil {
+		retErr = err
+	}
+	return retErr
 }
 
 func (p *Processor) reserveOne() (*queue.Message, error) {
@@ -394,6 +395,7 @@ func (p *Processor) delete(msg *queue.Message, reason error) {
 	}
 
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	atomic.AddUint32(&p.deleting, 1)
 	p.delBatch.Add(msg)
 }
 

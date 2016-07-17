@@ -20,23 +20,26 @@ func NewBatcher(limit int, fn func([]*queue.Message)) *Batcher {
 		limit: make(chan struct{}, limit),
 		ch:    make(chan *queue.Message, limit),
 	}
-	b.wg.Add(1)
 	go b.batcher()
 	return &b
 }
 
-func (b *Batcher) Close() error {
-	close(b.ch)
+func (b *Batcher) Wait() error {
 	b.wg.Wait()
 	return nil
 }
 
+func (b *Batcher) Close() error {
+	close(b.ch)
+	return b.Wait()
+}
+
 func (b *Batcher) Add(msg *queue.Message) {
+	b.wg.Add(1)
 	b.ch <- msg
 }
 
 func (b *Batcher) batcher() {
-	defer b.wg.Done()
 	var msgs []*queue.Message
 	for {
 		var stop, timeout bool
@@ -53,13 +56,12 @@ func (b *Batcher) batcher() {
 
 		if (timeout && len(msgs) > 0) || len(msgs) >= 10 {
 			b.limit <- struct{}{}
-			b.wg.Add(1)
 			go func(msgs []*queue.Message) {
-				defer func() {
-					b.wg.Done()
-					<-b.limit
-				}()
 				b.fn(msgs)
+				<-b.limit
+				for i := 0; i < len(msgs); i++ {
+					b.wg.Done()
+				}
 			}(msgs)
 			msgs = nil
 		}
