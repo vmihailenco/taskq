@@ -9,7 +9,7 @@ import (
 	"gopkg.in/queue.v1/processor"
 )
 
-const cachePrefix = "memqueue"
+const redisPrefix = "memqueue"
 
 type Queue struct {
 	opt *queue.Options
@@ -121,8 +121,8 @@ func (q *Queue) isUniqueName(name string) bool {
 	if name == "" {
 		return true
 	}
-	key := fmt.Sprintf("%s:%s:%s", cachePrefix, q.Name(), name)
-	return !q.opt.Storage.Exists(key)
+	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.Name(), name)
+	return q.opt.Redis.SetNX(key, nil, 24*time.Hour).Val()
 }
 
 func (q *Queue) ReserveN(n int) ([]queue.Message, error) {

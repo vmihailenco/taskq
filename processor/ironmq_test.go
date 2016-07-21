@@ -23,7 +23,7 @@ func TestIronmqRetry(t *testing.T) {
 
 func TestIronmqNamedMessage(t *testing.T) {
 	testNamedMessage(t, ironmq.NewQueue(mq.New("test-ironmq-named-message"), &queue.Options{
-		Storage: queueStorage{redisRing()},
+		Redis: redisRing(),
 	}))
 }
 

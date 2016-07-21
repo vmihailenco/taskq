@@ -34,8 +34,8 @@ func TestSQSRetry(t *testing.T) {
 
 func TestSQSNamedMessage(t *testing.T) {
 	testNamedMessage(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name:    "test-sqs-named-message",
-		Storage: queueStorage{redisRing()},
+		Name:  "test-sqs-named-message",
+		Redis: redisRing(),
 	}))
 }
 

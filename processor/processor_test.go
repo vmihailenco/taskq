@@ -9,7 +9,6 @@ import (
 	"time"
 
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v4"
 	"gopkg.in/redis.v4"
 
 	"gopkg.in/queue.v1"
@@ -33,19 +32,6 @@ func printStats(p *processor.Processor) {
 			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
 		)
 	}
-}
-
-func rateLimiter() *rate.Limiter {
-	fallbackLimiter := timerate.NewLimiter(timerate.Every(time.Millisecond), 100)
-	return rate.NewLimiter(redisRing(), fallbackLimiter)
-}
-
-type queueStorage struct {
-	*redis.Ring
-}
-
-func (c queueStorage) Exists(key string) bool {
-	return !c.SetNX(key, "", 12*time.Hour).Val()
 }
 
 func redisRing() *redis.Ring {
@@ -239,7 +225,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 		Handler:      handler,
 		WorkerNumber: 2,
 		RateLimit:    timerate.Every(time.Second),
-		Limiter:      rateLimiter(),
+		Redis:        redisRing(),
 	})
 	go printStats(p)
 

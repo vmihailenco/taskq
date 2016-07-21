@@ -25,7 +25,7 @@ func BenchmarkCallAsync(b *testing.B) {
 
 func BenchmarkNamedMessage(b *testing.B) {
 	q := memqueue.NewQueue(&queue.Options{
-		Storage:    memqueueStorage{redisRing()},
+		Redis:      redisRing(),
 		Handler:    func() {},
 		BufferSize: 1000000,
 	})

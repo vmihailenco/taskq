@@ -4,22 +4,20 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+	"gopkg.in/redis.v4"
 )
 
-type Storager interface {
-	Exists(msgName string) bool
-}
-
-type Limiter interface {
-	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
+type Rediser interface {
+	SetNX(string, interface{}, time.Duration) *redis.BoolCmd
+	SAdd(key string, members ...interface{}) *redis.IntCmd
+	SMembers(key string) *redis.StringSliceCmd
+	Pipelined(func(pipe *redis.Pipeline) error) ([]redis.Cmder, error)
+	Publish(channel, message string) *redis.IntCmd
 }
 
 type Options struct {
 	// Queue name.
 	Name string
-
-	// Checks if message name exists.
-	Storage Storager
 
 	Handler         interface{}
 	FallbackHandler interface{}
@@ -39,7 +37,7 @@ type Options struct {
 	// Minimum time between retries.
 	MinBackoff time.Duration
 
-	Limiter Limiter
-
 	RateLimit rate.Limit
+
+	Redis Rediser
 }

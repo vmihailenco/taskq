@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+const redisQueuesKey = "queues:ironmq"
+
 var (
 	queuesMu sync.Mutex
 	queues   []*Queue
@@ -25,5 +27,10 @@ func registerQueue(queue *Queue) {
 			panic(fmt.Sprintf("%s is already registered", queue))
 		}
 	}
+
 	queues = append(queues, queue)
+	if queue.opt.Redis != nil {
+		queue.opt.Redis.SAdd(redisQueuesKey, queue.Name())
+		queue.opt.Redis.Publish(redisQueuesKey, queue.Name())
+	}
 }

@@ -234,7 +234,7 @@ var _ = Describe("named message", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&queue.Options{
-			Storage: memqueueStorage{redisRing()},
+			Redis:   redisRing(),
 			Handler: handler,
 		})
 
@@ -275,7 +275,7 @@ var _ = Describe("CallOnce", func() {
 		now = time.Now()
 
 		q := memqueue.NewQueue(&queue.Options{
-			Storage: memqueueStorage{redisRing()},
+			Redis:   redisRing(),
 			Handler: handler,
 		})
 
@@ -368,9 +368,9 @@ var _ = Describe("Queue", func() {
 
 	BeforeEach(func() {
 		q = memqueue.NewQueue(&queue.Options{
+			Redis:     redisRing(),
 			Handler:   func() {},
 			RateLimit: timerate.Every(time.Second),
-			Limiter:   rateLimiter(),
 		})
 	})
 

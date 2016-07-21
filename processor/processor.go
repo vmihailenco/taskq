@@ -9,7 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/time/rate"
+	timerate "golang.org/x/time/rate"
+	"gopkg.in/go-redis/rate.v4"
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/internal"
@@ -41,8 +42,9 @@ type Processor struct {
 	handler         queue.Handler
 	fallbackHandler queue.Handler
 
-	ch chan *queue.Message
-	wg sync.WaitGroup
+	ch      chan *queue.Message
+	wg      sync.WaitGroup
+	limiter *rate.Limiter
 
 	delBatch *internal.Batcher
 
@@ -66,11 +68,19 @@ func New(q Queuer, opt *queue.Options) *Processor {
 
 		ch: make(chan *queue.Message, opt.BufferSize),
 	}
+
 	p.setHandler(opt.Handler)
 	if opt.FallbackHandler != nil {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
+
+	if opt.RateLimit != timerate.Inf {
+		fallbackLimiter := timerate.NewLimiter(opt.RateLimit, 1)
+		p.limiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
+	}
+
 	p.delBatch = internal.NewBatcher(p.opt.ScavengerNumber, p.deleteBatch)
+
 	return p
 }
 
@@ -88,7 +98,7 @@ func initOptions(opt *queue.Options) {
 		}
 	}
 	if opt.RateLimit == 0 {
-		opt.RateLimit = rate.Inf
+		opt.RateLimit = timerate.Inf
 	}
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 10
@@ -284,9 +294,9 @@ func (p *Processor) worker() {
 			break
 		}
 
-		if p.opt.Limiter != nil {
+		if p.limiter != nil {
 			for {
-				delay, allow := p.opt.Limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
+				delay, allow := p.limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 				if allow {
 					break
 				}

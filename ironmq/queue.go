@@ -33,12 +33,13 @@ func NewQueue(mqueue mq.Queue, opt *queue.Options) *Queue {
 	}
 
 	memopt := queue.Options{
-		Name:    opt.Name,
-		Storage: opt.Storage,
+		Name: opt.Name,
 
 		RetryLimit: 3,
 		MinBackoff: time.Second,
 		Handler:    queue.HandlerFunc(q.add),
+
+		Redis: opt.Redis,
 	}
 	if opt.Handler != nil {
 		memopt.FallbackHandler = internal.MessageUnwrapperHandler(opt.Handler)
