@@ -15,6 +15,10 @@ type Rediser interface {
 	Publish(channel, message string) *redis.IntCmd
 }
 
+type RateLimiter interface {
+	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
+}
+
 type Options struct {
 	// Queue name.
 	Name string
@@ -39,5 +43,6 @@ type Options struct {
 
 	RateLimit rate.Limit
 
-	Redis Rediser
+	Redis       Rediser
+	RateLimiter RateLimiter
 }

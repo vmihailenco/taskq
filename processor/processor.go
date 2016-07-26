@@ -42,9 +42,8 @@ type Processor struct {
 	handler         queue.Handler
 	fallbackHandler queue.Handler
 
-	ch      chan *queue.Message
-	wg      sync.WaitGroup
-	limiter *rate.Limiter
+	ch chan *queue.Message
+	wg sync.WaitGroup
 
 	delBatch *internal.Batcher
 
@@ -74,9 +73,9 @@ func New(q Queuer, opt *queue.Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	if opt.RateLimit != timerate.Inf {
+	if opt.RateLimit != timerate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
 		fallbackLimiter := timerate.NewLimiter(opt.RateLimit, 1)
-		p.limiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
+		opt.RateLimiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
 	}
 
 	p.delBatch = internal.NewBatcher(p.opt.ScavengerNumber, p.deleteBatch)
@@ -294,9 +293,9 @@ func (p *Processor) worker() {
 			break
 		}
 
-		if p.limiter != nil {
+		if p.opt.RateLimiter != nil {
 			for {
-				delay, allow := p.limiter.AllowRate(p.q.Name(), p.opt.RateLimit)
+				delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 				if allow {
 					break
 				}
