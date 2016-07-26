@@ -26,6 +26,7 @@ func NewQueue(mqueue mq.Queue, opt *queue.Options) *Queue {
 	if opt.Name == "" {
 		opt.Name = mqueue.Name
 	}
+	opt.Init()
 
 	q := Queue{
 		q:   mqueue,

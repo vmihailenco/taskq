@@ -4,13 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v4"
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/internal"
@@ -59,8 +55,7 @@ type Processor struct {
 }
 
 func New(q Queuer, opt *queue.Options) *Processor {
-	initOptions(opt)
-
+	opt.Init()
 	p := &Processor{
 		q:   q,
 		opt: opt,
@@ -73,38 +68,9 @@ func New(q Queuer, opt *queue.Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	if opt.RateLimit != timerate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
-		fallbackLimiter := timerate.NewLimiter(opt.RateLimit, 1)
-		opt.RateLimiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
-	}
-
 	p.delBatch = internal.NewBatcher(p.opt.ScavengerNumber, p.deleteBatch)
 
 	return p
-}
-
-func initOptions(opt *queue.Options) {
-	if opt.WorkerNumber == 0 {
-		opt.WorkerNumber = 10 * runtime.NumCPU()
-	}
-	if opt.ScavengerNumber == 0 {
-		opt.ScavengerNumber = runtime.NumCPU() + 1
-	}
-	if opt.BufferSize == 0 {
-		opt.BufferSize = opt.WorkerNumber
-		if opt.BufferSize > 10 {
-			opt.BufferSize = 10
-		}
-	}
-	if opt.RateLimit == 0 {
-		opt.RateLimit = timerate.Inf
-	}
-	if opt.RetryLimit == 0 {
-		opt.RetryLimit = 10
-	}
-	if opt.MinBackoff == 0 {
-		opt.MinBackoff = 3 * time.Second
-	}
 }
 
 func Start(q Queuer, opt *queue.Options) *Processor {

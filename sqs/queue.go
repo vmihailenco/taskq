@@ -28,6 +28,7 @@ type Queue struct {
 var _ processor.Queuer = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
+	opt.Init()
 	q := Queue{
 		sqs:       sqs,
 		accountId: accountId,
