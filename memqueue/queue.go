@@ -123,7 +123,7 @@ func (q *Queue) isUniqueName(name string) bool {
 		return true
 	}
 	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.Name(), name)
-	return q.opt.Redis.SetNX(key, nil, 24*time.Hour).Val()
+	return !q.opt.Storage.Exists(key)
 }
 
 func (q *Queue) ReserveN(n int) ([]queue.Message, error) {

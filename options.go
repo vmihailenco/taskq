@@ -99,5 +99,5 @@ type storage struct {
 }
 
 func (s storage) Exists(key string) bool {
-	return !s.SetNX(key, "", 12*time.Hour).Val()
+	return !s.SetNX(key, "", 24*time.Hour).Val()
 }
