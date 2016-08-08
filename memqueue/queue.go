@@ -64,7 +64,7 @@ func (q *Queue) Call(args ...interface{}) error {
 
 func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
 	msg := queue.NewMessage(args...)
-	msg.Name = fmt.Sprint(args)
+	msg.Name = fmt.Sprintf("%s:%d", fmt.Sprint(args), timeSlot(delay))
 	msg.Delay = delay
 	return q.Add(msg)
 }
@@ -104,11 +104,7 @@ func (q *Queue) enqueueMessage(msg *queue.Message) error {
 	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
 
-	if q.noDelay {
-		return q.p.Process(msg)
-	}
-
-	if delay == 0 {
+	if q.noDelay || delay == 0 {
 		return q.p.Add(msg)
 	}
 
@@ -151,4 +147,12 @@ func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
 
 func (q *Queue) Purge() error {
 	return q.p.Purge()
+}
+
+func timeSlot(resolution time.Duration) int64 {
+	resolutionInSeconds := int64(resolution / time.Second)
+	if resolutionInSeconds <= 0 {
+		return 0
+	}
+	return time.Now().Unix() / resolutionInSeconds
 }
