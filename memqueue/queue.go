@@ -14,6 +14,7 @@ const redisPrefix = "memqueue"
 type Queue struct {
 	opt *queue.Options
 
+	sync    bool
 	noDelay bool
 
 	p  *processor.Processor
@@ -49,8 +50,12 @@ func (q *Queue) Processor() *processor.Processor {
 	return q.p
 }
 
-func (q *Queue) SetNoDelay(f bool) {
-	q.noDelay = f
+func (q *Queue) SetSync(sync bool) {
+	q.sync = sync
+}
+
+func (q *Queue) SetNoDelay(noDelay bool) {
+	q.noDelay = noDelay
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
@@ -103,6 +108,10 @@ func (q *Queue) enqueueMessage(msg *queue.Message) error {
 	var delay time.Duration
 	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
+
+	if q.sync {
+		return q.p.Process(msg)
+	}
 
 	if q.noDelay || delay == 0 {
 		return q.p.Add(msg)
