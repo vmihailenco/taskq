@@ -158,9 +158,7 @@ func (q *Queue) Call(args ...interface{}) error {
 }
 
 func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessage(args...)
-	msg.Name = fmt.Sprint(args)
-	msg.Delay = delay
+	msg := queue.NewMessageOnce(delay, args...)
 	return q.Add(msg)
 }
 

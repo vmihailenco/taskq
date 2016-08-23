@@ -183,7 +183,7 @@ var _ = Describe("message retry timing", func() {
 			msg := queue.NewMessage()
 			msg.Delay = time.Hour
 			err := q.Add(msg)
-			Expect(err).To(MatchError("fake error #3"))
+			Expect(err).NotTo(HaveOccurred())
 
 			err = q.Close()
 			Expect(err).NotTo(HaveOccurred())

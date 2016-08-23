@@ -35,6 +35,13 @@ func NewMessage(args ...interface{}) *Message {
 	}
 }
 
+func NewMessageOnce(delay time.Duration, args ...interface{}) *Message {
+	msg := NewMessage(args...)
+	msg.Name = fmt.Sprintf("%s:%d", fmt.Sprint(args), timeSlot(delay))
+	msg.Delay = delay
+	return msg
+}
+
 func WrapMessage(msg *Message) *Message {
 	msg0 := NewMessage(msg)
 	msg0.Name = msg.Name
@@ -58,4 +65,12 @@ func (m *Message) SetValue(name string, value interface{}) {
 
 func (m *Message) Value(name string) interface{} {
 	return m.values[name]
+}
+
+func timeSlot(resolution time.Duration) int64 {
+	resolutionInSeconds := int64(resolution / time.Second)
+	if resolutionInSeconds <= 0 {
+		return 0
+	}
+	return time.Now().Unix() / resolutionInSeconds
 }
