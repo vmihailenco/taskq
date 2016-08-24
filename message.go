@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"gopkg.in/vmihailenco/msgpack.v2"
 )
 
 var ErrDuplicate = errors.New("queue: message with such name already exists")
@@ -37,7 +39,7 @@ func NewMessage(args ...interface{}) *Message {
 
 func NewMessageOnce(delay time.Duration, args ...interface{}) *Message {
 	msg := NewMessage(args...)
-	msg.Name = fmt.Sprintf("%s:%d", fmt.Sprint(args), timeSlot(delay))
+	msg.Name = argsName(append(args, timeSlot(delay)))
 	msg.Delay = delay
 	return msg
 }
@@ -73,4 +75,9 @@ func timeSlot(resolution time.Duration) int64 {
 		return 0
 	}
 	return time.Now().Unix() / resolutionInSeconds
+}
+
+func argsName(args []interface{}) string {
+	b, _ := msgpack.Marshal(args...)
+	return string(b)
 }

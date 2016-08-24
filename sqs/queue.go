@@ -121,6 +121,9 @@ func (q *Queue) add(msg *queue.Message) error {
 	if err != nil {
 		return err
 	}
+	if body == "" {
+		body = "_" // SQS requires body.
+	}
 
 	in := &sqs.SendMessageInput{
 		QueueUrl:    aws.String(q.queueURL()),
