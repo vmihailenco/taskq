@@ -126,7 +126,8 @@ func (q *Queue) isUniqueName(name string) bool {
 		return true
 	}
 	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.Name(), name)
-	return !q.opt.Storage.Exists(key)
+	exists := q.opt.Storage.Exists(key)
+	return !exists
 }
 
 func (q *Queue) ReserveN(n int) ([]queue.Message, error) {

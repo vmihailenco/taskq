@@ -47,6 +47,8 @@ func redisRing() *redis.Ring {
 }
 
 func testProcessor(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
 
 	ch := make(chan time.Time)
@@ -83,6 +85,8 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 }
 
 func testDelay(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
@@ -114,6 +118,8 @@ func testDelay(t *testing.T, q processor.Queuer) {
 }
 
 func testRetry(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)
@@ -154,6 +160,8 @@ func testRetry(t *testing.T, q processor.Queuer) {
 }
 
 func testNamedMessage(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
 
 	ch := make(chan time.Time, 10)
@@ -198,8 +206,62 @@ func testNamedMessage(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testRateLimit(t *testing.T, q processor.Queuer) {
+func testCallOnce(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
+	ring := redisRing()
+
+	ch := make(chan time.Time, 10)
+	handler := func() error {
+		log.Println(time.Now())
+		ch <- time.Now()
+		return nil
+	}
+
+	go func() {
+		for i := 0; i < 3; i++ {
+			for j := 0; j < 10; j++ {
+				err := q.CallOnce(time.Second)
+				if err != nil && err != queue.ErrDuplicate {
+					t.Fatal(err)
+				}
+			}
+
+			time.Sleep(time.Second)
+		}
+	}()
+
+	p := processor.Start(q, &queue.Options{
+		Handler: handler,
+		Redis:   ring,
+	})
+	go printStats(p)
+
+	for i := 0; i < 3; i++ {
+		select {
+		case <-ch:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("message was not processed")
+		}
+	}
+
+	select {
+	case <-ch:
+		t.Fatalf("message was processed twice")
+	default:
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testRateLimit(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
+	_ = q.Purge()
+	ring := redisRing()
 
 	var count int64
 	handler := func() error {
@@ -225,7 +287,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 		Handler:      handler,
 		WorkerNumber: 2,
 		RateLimit:    timerate.Every(time.Second),
-		Redis:        redisRing(),
+		Redis:        ring,
 	})
 	go printStats(p)
 
@@ -250,6 +312,8 @@ func (RateLimitError) Delay() time.Duration {
 }
 
 func testDelayer(t *testing.T, q processor.Queuer) {
+	t.Parallel()
+
 	_ = q.Purge()
 
 	handlerCh := make(chan time.Time, 10)

@@ -39,6 +39,13 @@ func TestSQSNamedMessage(t *testing.T) {
 	}))
 }
 
+func TestSQSCallOnce(t *testing.T) {
+	testCallOnce(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
+		Name:  "test-sqs-call0once",
+		Redis: redisRing(),
+	}))
+}
+
 func TestSQSRateLimit(t *testing.T) {
 	testRateLimit(t, mysqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
 		Name: "test-sqs-rate-limit",

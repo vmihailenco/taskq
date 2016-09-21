@@ -27,6 +27,12 @@ func TestIronmqNamedMessage(t *testing.T) {
 	}))
 }
 
+func TestIronmqCallOnce(t *testing.T) {
+	testCallOnce(t, ironmq.NewQueue(mq.New("test-ironmq-call-once"), &queue.Options{
+		Redis: redisRing(),
+	}))
+}
+
 func TestIronmqRateLimit(t *testing.T) {
 	testRateLimit(t, ironmq.NewQueue(mq.New("test-ironmq-rate-limit"), &queue.Options{}))
 }

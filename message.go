@@ -40,7 +40,7 @@ func NewMessage(args ...interface{}) *Message {
 func NewMessageOnce(delay time.Duration, args ...interface{}) *Message {
 	msg := NewMessage(args...)
 	msg.Name = argsName(append(args, timeSlot(delay)))
-	msg.Delay = delay
+	msg.Delay = delay + time.Second
 	return msg
 }
 
