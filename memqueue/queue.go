@@ -58,20 +58,6 @@ func (q *Queue) SetNoDelay(noDelay bool) {
 	q.noDelay = noDelay
 }
 
-func (q *Queue) Add(msg *queue.Message) error {
-	return q.addMessage(msg)
-}
-
-func (q *Queue) Call(args ...interface{}) error {
-	msg := queue.NewMessage(args...)
-	return q.Add(msg)
-}
-
-func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessageOnce(delay, args...)
-	return q.Add(msg)
-}
-
 func (q *Queue) Close() error {
 	return q.CloseTimeout(30 * time.Second)
 }
@@ -92,6 +78,20 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	case <-done:
 		return nil
 	}
+}
+
+func (q *Queue) Add(msg *queue.Message) error {
+	return q.addMessage(msg)
+}
+
+func (q *Queue) Call(args ...interface{}) error {
+	msg := queue.NewMessage(args...)
+	return q.Add(msg)
+}
+
+func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
+	msg := queue.NewMessageOnce(delay, args...)
+	return q.Add(msg)
 }
 
 func (q *Queue) addMessage(msg *queue.Message) error {

@@ -23,6 +23,8 @@ type Queue struct {
 
 	mu        sync.RWMutex
 	_queueURL string
+
+	p *processor.Processor
 }
 
 var _ processor.Queuer = (*Queue)(nil)
@@ -66,7 +68,10 @@ func (q *Queue) Options() *queue.Options {
 }
 
 func (q *Queue) Processor() *processor.Processor {
-	return processor.New(q, q.opt)
+	if q.p == nil {
+		q.p = processor.New(q, q.opt)
+	}
+	return q.p
 }
 
 func (q *Queue) queueURL() string {
@@ -257,5 +262,14 @@ func (q *Queue) Purge() error {
 }
 
 func (q *Queue) Close() error {
-	return q.memqueue.Close()
+	var retErr error
+	if err := q.memqueue.Close(); err != nil && retErr == nil {
+		retErr = err
+	}
+	if q.p != nil {
+		if err := q.p.Stop(); err != nil && retErr == nil {
+			retErr = err
+		}
+	}
+	return retErr
 }

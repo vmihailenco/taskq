@@ -14,7 +14,7 @@ import (
 
 const consumerBackoff = time.Second
 const maxBackoff = 12 * time.Hour
-const stopTimeout = time.Minute
+const stopTimeout = 30 * time.Second
 
 var ErrNotSupported = errors.New("processor: not supported")
 
@@ -135,11 +135,11 @@ func (p *Processor) startWorkers() bool {
 }
 
 func (p *Processor) Stop() error {
-	return p.StopTimeout(30 * time.Second)
+	return p.StopTimeout(stopTimeout)
 }
 
 func (p *Processor) StopTimeout(timeout time.Duration) error {
-	return p.stopWorkersTimeout(stopTimeout)
+	return p.stopWorkersTimeout(timeout)
 }
 
 func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
