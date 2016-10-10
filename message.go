@@ -3,6 +3,7 @@ package queue
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"gopkg.in/vmihailenco/msgpack.v2"
@@ -40,7 +41,9 @@ func NewMessage(args ...interface{}) *Message {
 func NewMessageOnce(delay time.Duration, args ...interface{}) *Message {
 	msg := NewMessage(args...)
 	msg.Name = argsName(append(args, timeSlot(delay)))
-	msg.Delay = delay + time.Second
+	msg.Delay = delay
+	// Some random delay to better distribute the load.
+	msg.Delay += time.Duration(rand.Intn(5)+1) * time.Second
 	return msg
 }
 

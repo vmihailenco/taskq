@@ -240,7 +240,7 @@ func testCallOnce(t *testing.T, q processor.Queuer) {
 	for i := 0; i < 3; i++ {
 		select {
 		case <-ch:
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Fatalf("message was not processed")
 		}
 	}
