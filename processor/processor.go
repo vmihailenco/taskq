@@ -46,6 +46,10 @@ type Processor struct {
 	_started uint32
 	stop     chan struct{}
 
+	errCount   uint32
+	delayCount uint32
+	delaySec   uint32
+
 	inFlight    uint32
 	deleting    uint32
 	processed   uint32
@@ -167,6 +171,20 @@ func (p *Processor) stopped() bool {
 	return atomic.LoadUint32(&p._started) == 0
 }
 
+func (p *Processor) paused() time.Duration {
+	const threshold = 100
+
+	if atomic.LoadUint32(&p.delayCount) > threshold {
+		return time.Duration(atomic.LoadUint32(&p.delaySec)) * time.Second
+	}
+
+	if atomic.LoadUint32(&p.errCount) > threshold {
+		return time.Minute
+	}
+
+	return 0
+}
+
 func (p *Processor) ProcessAll() error {
 	p.startWorkers()
 	var noWork int
@@ -228,11 +246,19 @@ func (p *Processor) messageFetcher() {
 			break
 		}
 
+		if pauseTime := p.paused(); pauseTime > 0 {
+			p.resetPause()
+			log.Printf("%s is automatically paused for %s", p.q, pauseTime)
+			time.Sleep(pauseTime)
+			continue
+		}
+
 		_, err := p.fetchMessages()
 		if err != nil {
 			if err == ErrNotSupported {
 				break
 			}
+
 			log.Printf("%s ReserveN failed: %s (sleeping for %s)", p.q, err, consumerBackoff)
 			time.Sleep(consumerBackoff)
 			continue
@@ -335,7 +361,7 @@ func (p *Processor) dequeueMessage() (*queue.Message, bool) {
 }
 
 func (p *Processor) release(msg *queue.Message, reason error) {
-	delay := p.backoff(msg, reason)
+	delay := p.releaseBackoff(msg, reason)
 
 	if reason != nil {
 		log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
@@ -347,20 +373,29 @@ func (p *Processor) release(msg *queue.Message, reason error) {
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
-func (p *Processor) backoff(msg *queue.Message, reason error) time.Duration {
+func (p *Processor) releaseBackoff(msg *queue.Message, reason error) time.Duration {
 	if reason != nil {
 		if delayer, ok := reason.(Delayer); ok {
-			return delayer.Delay()
+			delay := delayer.Delay()
+			if delay > time.Minute {
+				atomic.StoreUint32(&p.delaySec, uint32(delay/time.Second))
+				atomic.AddUint32(&p.delayCount, 1)
+			}
+			return delay
 		}
 	}
+
 	if msg.Delay > 0 {
 		return msg.Delay
 	}
+
 	return exponentialBackoff(p.opt.MinBackoff, msg.ReservedCount)
 }
 
 func (p *Processor) delete(msg *queue.Message, reason error) {
-	if reason != nil {
+	if reason == nil {
+		p.resetPause()
+	} else {
 		log.Printf("%s handler failed: %s", p.q, reason)
 
 		if p.fallbackHandler != nil {
@@ -393,6 +428,11 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 			break
 		}
 	}
+}
+
+func (p *Processor) resetPause() {
+	atomic.StoreUint32(&p.errCount, 0)
+	atomic.StoreUint32(&p.delayCount, 0)
 }
 
 func exponentialBackoff(dur time.Duration, retry int) time.Duration {
