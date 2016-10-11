@@ -95,8 +95,12 @@ func (q *Queue) queueURL() string {
 }
 
 func (q *Queue) createQueue() (string, error) {
+	visTimeout := strconv.Itoa(int(q.opt.ReservationTimeout / time.Second))
 	in := &sqs.CreateQueueInput{
 		QueueName: aws.String(q.Name()),
+		Attributes: map[string]*string{
+			"VisibilityTimeout": &visTimeout,
+		},
 	}
 	out, err := q.sqs.CreateQueue(in)
 	if err != nil {

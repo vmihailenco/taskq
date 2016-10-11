@@ -38,19 +38,29 @@ type Options struct {
 	// Number of scavengers deleting messages.
 	ScavengerNumber int
 
+	// Messages are prefetched and stored in buffer of this size.
 	BufferSize int
 
-	// Number of tries/releases after which the task fails permanently
+	// Time after which the reserved message is returned to the queue.
+	ReservationTimeout time.Duration
+
+	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
 	RetryLimit int
 
 	// Minimum time between retries.
 	MinBackoff time.Duration
 
+	// Processing rate limit.
 	RateLimit timerate.Limit
 
-	Redis       Redis
-	Storage     Storage
+	// Redis client that is used for storing messages metadata.
+	Redis Redis
+
+	// Optional storage interface.
+	Storage Storage
+
+	// Optional rate limiter interface.
 	RateLimiter RateLimiter
 
 	inited bool
@@ -76,6 +86,9 @@ func (opt *Options) Init() {
 	}
 	if opt.RateLimit == 0 {
 		opt.RateLimit = timerate.Inf
+	}
+	if opt.ReservationTimeout == 0 {
+		opt.ReservationTimeout = 300 * time.Second
 	}
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 10

@@ -115,7 +115,7 @@ func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
 	if n > 100 {
 		n = 100
 	}
-	mqMsgs, err := q.q.LongPoll(n, 300, 1, false)
+	mqMsgs, err := q.q.LongPoll(n, int(q.opt.ReservationTimeout/time.Second), 1, false)
 	if err != nil {
 		if v, ok := err.(api.HTTPResponseError); ok && v.StatusCode() == 404 {
 			if strings.Contains(v.Error(), "Message not found") {

@@ -191,7 +191,7 @@ func testNamedMessage(t *testing.T, q processor.Queuer) {
 
 	select {
 	case <-ch:
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatalf("message was not processed")
 	}
 
@@ -291,6 +291,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	go printStats(p)
 
 	time.Sleep(5 * time.Second)
+
 	if n := atomic.LoadInt64(&count); n != 5 && n != 6 {
 		t.Fatalf("processed %d messages, wanted 5", n)
 	}
