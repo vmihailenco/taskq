@@ -38,15 +38,6 @@ func NewMessage(args ...interface{}) *Message {
 	}
 }
 
-func NewMessageOnce(delay time.Duration, args ...interface{}) *Message {
-	msg := NewMessage(args...)
-	msg.Name = argsName(append(args, timeSlot(delay)))
-	msg.Delay = delay
-	// Some random delay to better distribute the load.
-	msg.Delay += time.Duration(rand.Intn(5)+1) * time.Second
-	return msg
-}
-
 func WrapMessage(msg *Message) *Message {
 	msg0 := NewMessage(msg)
 	msg0.Name = msg.Name
@@ -55,6 +46,13 @@ func WrapMessage(msg *Message) *Message {
 
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
+}
+
+func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
+	m.Name = argsName(append(args, timeSlot(delay)))
+	m.Delay = delay
+	// Some random delay to better distribute the load.
+	m.Delay += time.Duration(rand.Intn(5)+1) * time.Second
 }
 
 func (m *Message) MarshalArgs() (string, error) {

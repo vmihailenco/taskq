@@ -90,7 +90,8 @@ func (q *Queue) Call(args ...interface{}) error {
 }
 
 func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessageOnce(delay, args...)
+	msg := queue.NewMessage(args...)
+	msg.SetDelayName(delay, args...)
 	return q.Add(msg)
 }
 
