@@ -161,7 +161,7 @@ func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
 
 	select {
 	case <-time.After(timeout):
-		return fmt.Errorf("workers did not stop after %s seconds", timeout)
+		return fmt.Errorf("workers did not stop after %s", timeout)
 	case <-stopped:
 		return p.delBatch.Wait()
 	}

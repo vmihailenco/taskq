@@ -74,7 +74,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 
 	select {
 	case <-time.After(timeout):
-		return fmt.Errorf("workers did not stop after %s seconds", timeout)
+		return fmt.Errorf("workers did not stop after %s", timeout)
 	case <-done:
 		return nil
 	}
