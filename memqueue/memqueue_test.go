@@ -11,8 +11,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v4"
-	"gopkg.in/redis.v4"
+	"gopkg.in/go-redis/rate.v5"
+	"gopkg.in/redis.v5"
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/memqueue"

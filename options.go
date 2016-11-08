@@ -5,11 +5,12 @@ import (
 	"time"
 
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v4"
-	"gopkg.in/redis.v4"
+	"gopkg.in/go-redis/rate.v5"
+	"gopkg.in/redis.v5"
 )
 
 type Redis interface {
+	Del(...string) *redis.IntCmd
 	SetNX(string, interface{}, time.Duration) *redis.BoolCmd
 	SAdd(key string, members ...interface{}) *redis.IntCmd
 	SMembers(key string) *redis.StringSliceCmd

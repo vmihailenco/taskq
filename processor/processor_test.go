@@ -9,7 +9,7 @@ import (
 	"time"
 
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/redis.v4"
+	"gopkg.in/redis.v5"
 
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/processor"
