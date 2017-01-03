@@ -419,7 +419,6 @@ func (p *Processor) deleteBatch(msgs []*queue.Message) {
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
 	const decay = float64(1) / 100
-
 	ms := float64(dur / time.Millisecond)
 	for {
 		avg := atomic.LoadUint32(&p.avgDuration)

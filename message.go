@@ -38,16 +38,11 @@ func NewMessage(args ...interface{}) *Message {
 	}
 }
 
-func WrapMessage(msg *Message) *Message {
-	msg0 := NewMessage(msg)
-	msg0.Name = msg.Name
-	return msg0
-}
-
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
 }
 
+// SetDelayName sets delay and unique message name using the args.
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	m.Name = argsName(append(args, timeSlot(delay)))
 	m.Delay = delay

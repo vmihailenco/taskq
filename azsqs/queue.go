@@ -1,4 +1,4 @@
-package sqs
+package azsqs
 
 import (
 	"fmt"
@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sqs"
-
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/internal"
 	"gopkg.in/queue.v1/memqueue"
 	"gopkg.in/queue.v1/processor"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
 type Queue struct {
@@ -161,7 +161,7 @@ func (q *Queue) add(msg *queue.Message) error {
 }
 
 func (q *Queue) Add(msg *queue.Message) error {
-	return q.memqueue.Add(queue.WrapMessage(msg))
+	return q.memqueue.Add(internal.WrapMessage(msg))
 }
 
 func (q *Queue) Call(args ...interface{}) error {
