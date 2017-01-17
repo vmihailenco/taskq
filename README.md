@@ -1,16 +1,18 @@
-# SQS, IronMQ and in-memory queues with taskqueue-like API
+# SQS & IronMQ clients with rate-limiting and call once
 
-## Quickstart
+## Installation
+
+```bash
+go get -u gopkg.in/queue.v1
+```
+
+## Design
+
+go-queue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate-limiting and call once semantic.
+
+## API overview
 
 ```go
-q := memqueue.NewQueue(&queue.Options{
-    // Handler is retried on error.
-    Handler: func(name string) error {
-        fmt.Println("Hello", name)
-        return nil
-    },
-})
-
 // Invoke handler with arguments
 q.Call("World")
 
@@ -50,13 +52,19 @@ for i := 0; i < 100; i++ {
 }
 ```
 
-## Using SQS or IronMQ backends
+## SQS / IronMQ / memqueue
 
-Memqueue, SQS, and IronMQ share the same API and can be used interchangeably:
+SQS, IronMQ, and memqueue share the same API and can be used interchangeably.
 
 ### SQS
 
+azsqs package uses Amazon Simple Queue Service.
+
 ```go
+import "gopkg.in/queue.v1"
+import "gopkg.in/queue.v1/azsqs"
+import "github.com/aws/aws-sdk-go/service/sqs"
+
 awsAccountId := "123456789"
 q := azsqs.NewQueue(awsSQS(), awsAccountId, &queue.Options{
     Name: "sqs-queue-name",
@@ -65,6 +73,28 @@ q := azsqs.NewQueue(awsSQS(), awsAccountId, &queue.Options{
 
 ### IronMQ
 
+ironmq package uses IronMQ.
+
 ```go
+import "gopkg.in/queue.v1"
+import "gopkg.in/queue.v1/ironmq"
+import "github.com/iron-io/iron_go3/mq"
+
 q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &queue.Options{})
+```
+
+### Memqueue
+
+Memqueue is in-memory implementation primarily useful for local development / running tests. Unlike SQS and IronMQ it has running queue processor by default.
+
+```go
+import "gopkg.in/queue.v1"
+
+q := memqueue.NewQueue(&queue.Options{
+    // Handler is retried on error.
+    Handler: func(name string) error {
+        fmt.Println("Hello", name)
+        return nil
+    },
+})
 ```

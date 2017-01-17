@@ -3,10 +3,10 @@ package processor_test
 import (
 	"testing"
 
-	"github.com/iron-io/iron_go3/mq"
-
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/ironmq"
+
+	"github.com/iron-io/iron_go3/mq"
 )
 
 func TestIronmqProcessor(t *testing.T) {
