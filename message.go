@@ -12,18 +12,24 @@ import (
 var ErrDuplicate = errors.New("queue: message with such name already exists")
 
 type Message struct {
+	// SQS/IronMQ message id.
 	Id string
 
-	// An unique name for the message.
+	// Optional name for the message. Messages with the same name
+	// are processed once.
 	Name string
 
 	// Delay specifies the duration the queue must wait
 	// before executing the message.
 	Delay time.Duration
 
+	// Arguments that will be passed to the handler.
 	Args []interface{}
+
+	// Text representation of the Args.
 	Body string
 
+	// SQS/IronMQ reservation id.
 	ReservationId string
 
 	// The number of times the message has been reserved or released.
