@@ -58,6 +58,7 @@ type Processor struct {
 	avgDuration uint32
 }
 
+// New creates new Processor for the queue using provided processing options.
 func New(q Queuer, opt *queue.Options) *Processor {
 	opt.Init()
 	p := &Processor{
@@ -77,6 +78,7 @@ func New(q Queuer, opt *queue.Options) *Processor {
 	return p
 }
 
+// Starts creates new Processor and starts it.
 func Start(q Queuer, opt *queue.Options) *Processor {
 	p := New(q, opt)
 	p.Start()
@@ -90,6 +92,7 @@ func (p *Processor) String() string {
 	)
 }
 
+// Stats returns processor stats.
 func (p *Processor) Stats() *Stats {
 	return &Stats{
 		InFlight:    atomic.LoadUint32(&p.inFlight),
@@ -109,11 +112,13 @@ func (p *Processor) setFallbackHandler(handler interface{}) {
 	p.fallbackHandler = queue.NewHandler(handler)
 }
 
+// Add adds message to the processor internal queue.
 func (p *Processor) Add(msg *queue.Message) error {
 	p.queueMessage(msg)
 	return nil
 }
 
+// Start starts processing messages in the queue.
 func (p *Processor) Start() error {
 	if !p.startWorkers() {
 		return nil
@@ -138,12 +143,15 @@ func (p *Processor) startWorkers() bool {
 	return true
 }
 
-func (p *Processor) Stop() error {
-	return p.StopTimeout(stopTimeout)
-}
-
+// StopTimeout waits workers for timeout duration to finish processing current
+// messages and stops workers.
 func (p *Processor) StopTimeout(timeout time.Duration) error {
 	return p.stopWorkersTimeout(timeout)
+}
+
+// Stop is StopTimeout with 30 seconds timeout.
+func (p *Processor) Stop() error {
+	return p.StopTimeout(stopTimeout)
 }
 
 func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
@@ -185,6 +193,8 @@ func (p *Processor) paused() time.Duration {
 	return 0
 }
 
+// ProcessAll starts workers to process messages in the queue and then stops
+// them when all messages are processed.
 func (p *Processor) ProcessAll() error {
 	p.startWorkers()
 	var noWork int
@@ -209,6 +219,7 @@ func (p *Processor) ProcessAll() error {
 	return p.stopWorkersTimeout(stopTimeout)
 }
 
+// ProcessOne processes at most one message in the queue.
 func (p *Processor) ProcessOne() error {
 	msg, err := p.reserveOne()
 	if err != nil {
@@ -299,6 +310,7 @@ func (p *Processor) worker() {
 	}
 }
 
+// Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *queue.Message) error {
 	if msg.Delay > 0 {
 		p.release(msg, nil)
@@ -330,6 +342,7 @@ func (p *Processor) Process(msg *queue.Message) error {
 	return nil
 }
 
+// Purge discards messages from the internal queue.
 func (p *Processor) Purge() error {
 	for {
 		select {

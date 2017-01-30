@@ -13,6 +13,15 @@ go-queue is a thin wrapper for SQS and IronMQ clients that uses Redis to impleme
 ## API overview
 
 ```go
+// Create in-memory queue that prints greetings.
+q := memqueue.NewQueue(&queue.Options{
+    // Handler is retried on error.
+    Handler: func(name string) error {
+        fmt.Println("Hello", name)
+        return nil
+    },
+})
+
 // Invoke handler with arguments
 q.Call("World")
 
@@ -68,7 +77,21 @@ import "github.com/aws/aws-sdk-go/service/sqs"
 awsAccountId := "123456789"
 q := azsqs.NewQueue(awsSQS(), awsAccountId, &queue.Options{
     Name: "sqs-queue-name",
+    Handler: func(name string) error {
+        fmt.Println("Hello", name)
+        return nil
+    },
 })
+
+// Add message.
+q.Call("World")
+
+// Start processing queue.
+p := q.Processor()
+p.Start()
+
+// Stop processing.
+p.Stop()
 ```
 
 ### IronMQ
@@ -80,7 +103,22 @@ import "gopkg.in/queue.v1"
 import "gopkg.in/queue.v1/ironmq"
 import "github.com/iron-io/iron_go3/mq"
 
-q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &queue.Options{})
+q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &queue.Options{
+    Handler: func(name string) error {
+        fmt.Println("Hello", name)
+        return nil
+    },
+})
+
+// Add message.
+q.Call("World")
+
+// Start processing queue.
+p := q.Processor()
+p.Start()
+
+// Stop processing.
+p.Stop()
 ```
 
 ### Memqueue
@@ -91,7 +129,6 @@ Memqueue is in-memory implementation primarily useful for local development / ru
 import "gopkg.in/queue.v1"
 
 q := memqueue.NewQueue(&queue.Options{
-    // Handler is retried on error.
     Handler: func(name string) error {
         fmt.Println("Hello", name)
         return nil
