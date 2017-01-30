@@ -85,7 +85,7 @@ for i := 0; i < 100; i++ {
 // Say "Hello World" for Europe region only once with 1 hour delay.
 for i := 0; i < 100; i++ {
     msg := queue.NewMessage("hello")
-    msg.SetDelayName(delay, "europe") // autogenerate message name from args
+    msg.SetDelayName(delay, "europe") // set delay & autogenerate message name
     q.Add(msg)
 }
 ```
@@ -96,7 +96,7 @@ SQS, IronMQ, and memqueue share the same API and can be used interchangeably.
 
 ### SQS
 
-azsqs package uses Amazon Simple Queue Service.
+azsqs package uses Amazon Simple Queue Service as queue backend.
 
 ```go
 import "gopkg.in/queue.v1"
@@ -125,7 +125,7 @@ p.Stop()
 
 ### IronMQ
 
-ironmq package uses IronMQ.
+ironmq package uses IronMQ as queue backend.
 
 ```go
 import "gopkg.in/queue.v1"
@@ -152,7 +152,7 @@ p.Stop()
 
 ### In-memory
 
-Memqueue is in-memory implementation primarily useful for local development / unit testing. Unlike SQS and IronMQ it has running queue processor by default.
+memqueue is in-memory queue backend implementation primarily useful for local development / unit testing. Unlike SQS and IronMQ it has running queue processor by default.
 
 ```go
 import "gopkg.in/queue.v1"
