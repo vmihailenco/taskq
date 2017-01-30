@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	timerate "golang.org/x/time/rate"
-	"gopkg.in/redis.v5"
-
 	"gopkg.in/queue.v1"
 	"gopkg.in/queue.v1/processor"
+
+	timerate "golang.org/x/time/rate"
+	"gopkg.in/redis.v5"
 )
 
 func printStats(p *processor.Processor) {
