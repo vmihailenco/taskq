@@ -1,4 +1,4 @@
-# SQS & IronMQ clients with rate-limiting and call once
+# SQS & IronMQ clients with rate limiting and call once
 
 ## Installation
 
@@ -6,20 +6,42 @@
 go get -u gopkg.in/queue.v1
 ```
 
-## Design
+## Features
 
-go-queue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate-limiting and call once semantic.
+ - In-memory, SQS, and IronMQ clients.
+ - Queue processor can be run on separate server.
+ - Rate limiting.
+ - Call once.
+ - Automatic retries with exponential backoffs.
+ - Fallback handler for processing failed messages.
+ - Processed messages are deleted in batches.
+
+## Design overview
+
+go-queue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate limiting and call once semantic.
+
+go-queue consists of following packages:
+ - memqueue - in memory queue that can be used for Unit testing.
+ - azsqs - Amazon SQS client.
+ - ironmq - IronMQ client.
+ - processor - queue processor that works with memqueue, azsqs, and ironmq.
+
+rate limiting is implemented in the processor package using [go-redis rate](https://github.com/go-redis/rate). call once is implemented in the client(s) by checking if key that consists of message name exists in Redis database.
 
 ## API overview
 
 ```go
 // Create in-memory queue that prints greetings.
 q := memqueue.NewQueue(&queue.Options{
-    // Handler is retried on error.
+    // Handler is automatically retried on error.
     Handler: func(name string) error {
         fmt.Println("Hello", name)
         return nil
     },
+
+    Redis: redis.NewClient(&redis.Options{
+        Addr: ":6379",
+    }),
 })
 
 // Invoke handler with arguments

@@ -58,10 +58,10 @@ type Options struct {
 	// Redis client that is used for storing messages metadata.
 	Redis Redis
 
-	// Optional storage interface.
+	// Optional storage interface. The default is to use Redis.
 	Storage Storage
 
-	// Optional rate limiter interface.
+	// Optional rate limiter interface. The default is to use Redis.
 	RateLimiter RateLimiter
 
 	inited bool
