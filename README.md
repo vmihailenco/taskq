@@ -13,6 +13,7 @@ go get -u gopkg.in/queue.v1
  - Rate limiting.
  - Call once.
  - Automatic retries with exponential backoffs.
+ - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
  - Processed messages are deleted in batches.
 
@@ -173,4 +174,28 @@ err := p.ProcessOne()
 
 // Process all buffered messages.
 err := p.ProcessAll()
+```
+
+## Custom message delay
+
+If error returned by handler implements `Delay() time.Duration` that delay is used to postpone message processing.
+
+```go
+type RateLimitError string
+
+func (e RateLimitError) Error() string {
+    return string(e)
+}
+
+func (RateLimitError) Delay() time.Duration {
+    return time.Hour
+}
+
+func handler() error {
+    return RateLimitError("calm down")
+}
+
+q := memqueue.NewQueue(&queue.Options{
+    Handler: handler,
+})
 ```

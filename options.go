@@ -22,6 +22,16 @@ type Storage interface {
 	Exists(key string) bool
 }
 
+type storage struct {
+	Redis
+}
+
+var _ Storage = (*storage)(nil)
+
+func (s storage) Exists(key string) bool {
+	return !s.SetNX(key, "", 24*time.Hour).Val()
+}
+
 type RateLimiter interface {
 	AllowRate(name string, limit timerate.Limit) (delay time.Duration, allow bool)
 }
@@ -30,7 +40,9 @@ type Options struct {
 	// Queue name.
 	Name string
 
-	Handler         interface{}
+	// Function called to process a message.
+	Handler interface{}
+	// Function called to process failed message.
 	FallbackHandler interface{}
 
 	// Number of goroutines processing messages.
@@ -39,7 +51,7 @@ type Options struct {
 	// Number of scavengers deleting messages.
 	ScavengerNumber int
 
-	// Messages are prefetched and stored in buffer of this size.
+	// Size of the buffer where reserved messages are stored.
 	BufferSize int
 
 	// Time after which the reserved message is returned to the queue.
@@ -55,7 +67,7 @@ type Options struct {
 	// Processing rate limit.
 	RateLimit timerate.Limit
 
-	// Redis client that is used for storing messages metadata.
+	// Redis client that is used for storing metadata.
 	Redis Redis
 
 	// Optional storage interface. The default is to use Redis.
@@ -106,12 +118,4 @@ func (opt *Options) Init() {
 		fallbackLimiter := timerate.NewLimiter(opt.RateLimit, 1)
 		opt.RateLimiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
 	}
-}
-
-type storage struct {
-	Redis
-}
-
-func (s storage) Exists(key string) bool {
-	return !s.SetNX(key, "", 24*time.Hour).Val()
 }

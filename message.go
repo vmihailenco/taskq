@@ -11,25 +11,26 @@ import (
 
 var ErrDuplicate = errors.New("queue: message with such name already exists")
 
+// Message is used to create and retrieve messages from a queue.
 type Message struct {
 	// SQS/IronMQ message id.
 	Id string
 
 	// Optional name for the message. Messages with the same name
-	// are processed once.
+	// are processed only once.
 	Name string
 
 	// Delay specifies the duration the queue must wait
 	// before executing the message.
 	Delay time.Duration
 
-	// Arguments that will be passed to the handler.
+	// Function args passed to the handler.
 	Args []interface{}
 
 	// Text representation of the Args.
 	Body string
 
-	// SQS/IronMQ reservation id.
+	// SQS/IronMQ reservation id that is used to release/delete the message..
 	ReservationId string
 
 	// The number of times the message has been reserved or released.
@@ -48,7 +49,7 @@ func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
 }
 
-// SetDelayName sets delay and unique message name using the args.
+// SetDelayName sets delay and generates message name from the args.
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	m.Name = argsName(append(args, timeSlot(delay)))
 	m.Delay = delay

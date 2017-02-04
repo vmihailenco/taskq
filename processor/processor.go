@@ -31,6 +31,8 @@ type Stats struct {
 	AvgDuration time.Duration
 }
 
+// Processor reserves messages from the queue, processes them,
+// and then either releases or deletes messages from the queue.
 type Processor struct {
 	q   Queuer
 	opt *queue.Options
