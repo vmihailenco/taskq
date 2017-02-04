@@ -3,40 +3,47 @@ package processor_test
 import (
 	"testing"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/ironmq"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/ironmq"
 
 	"github.com/iron-io/iron_go3/mq"
 )
 
 func TestIronmqProcessor(t *testing.T) {
-	testProcessor(t, ironmq.NewQueue(mq.New("test-ironmq-processor"), &queue.Options{}))
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-processor")), &msgqueue.Options{})
+	testProcessor(t, q)
 }
 
 func TestIronmqDelay(t *testing.T) {
-	testDelay(t, ironmq.NewQueue(mq.New("test-ironmq-delay"), &queue.Options{}))
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-delay")), &msgqueue.Options{})
+	testDelay(t, q)
 }
 
 func TestIronmqRetry(t *testing.T) {
-	testRetry(t, ironmq.NewQueue(mq.New("test-ironmq-retry"), &queue.Options{}))
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-retry")), &msgqueue.Options{})
+	testRetry(t, q)
 }
 
 func TestIronmqNamedMessage(t *testing.T) {
-	testNamedMessage(t, ironmq.NewQueue(mq.New("test-ironmq-named-message"), &queue.Options{
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-named-message")), &msgqueue.Options{
 		Redis: redisRing(),
-	}))
+	})
+	testNamedMessage(t, q)
 }
 
 func TestIronmqCallOnce(t *testing.T) {
-	testCallOnce(t, ironmq.NewQueue(mq.New("test-ironmq-call-once"), &queue.Options{
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-call-once")), &msgqueue.Options{
 		Redis: redisRing(),
-	}))
+	})
+	testCallOnce(t, q)
 }
 
 func TestIronmqRateLimit(t *testing.T) {
-	testRateLimit(t, ironmq.NewQueue(mq.New("test-ironmq-rate-limit"), &queue.Options{}))
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-rate-limit")), &msgqueue.Options{})
+	testRateLimit(t, q)
 }
 
 func TestIronmqDelayer(t *testing.T) {
-	testDelayer(t, ironmq.NewQueue(mq.New("test-ironmq-delayer"), &queue.Options{}))
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-delayer")), &msgqueue.Options{})
+	testDelayer(t, q)
 }

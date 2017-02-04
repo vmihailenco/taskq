@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/internal"
-	"gopkg.in/queue.v1/memqueue"
-	"gopkg.in/queue.v1/processor"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/internal"
+	"gopkg.in/msgqueue.v1/memqueue"
+	"gopkg.in/msgqueue.v1/processor"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -18,7 +18,7 @@ import (
 type Queue struct {
 	sqs       *sqs.SQS
 	accountId string
-	opt       *queue.Options
+	opt       *msgqueue.Options
 	memqueue  *memqueue.Queue
 
 	mu        sync.RWMutex
@@ -29,7 +29,7 @@ type Queue struct {
 
 var _ processor.Queuer = (*Queue)(nil)
 
-func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
+func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	opt.Init()
 	q := Queue{
 		sqs:       sqs,
@@ -37,12 +37,12 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *queue.Options) *Queue {
 		opt:       opt,
 	}
 
-	memopt := queue.Options{
+	memopt := msgqueue.Options{
 		Name: opt.Name,
 
 		RetryLimit: 3,
 		MinBackoff: time.Second,
-		Handler:    queue.HandlerFunc(q.add),
+		Handler:    msgqueue.HandlerFunc(q.add),
 
 		Redis: opt.Redis,
 	}
@@ -63,7 +63,7 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("Queue<%s>", q.Name())
 }
 
-func (q *Queue) Options() *queue.Options {
+func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
@@ -121,10 +121,10 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) add(msg *queue.Message) error {
+func (q *Queue) add(msg *msgqueue.Message) error {
 	const maxDelay = 15 * time.Minute
 
-	msg = msg.Args[0].(*queue.Message)
+	msg = msg.Args[0].(*msgqueue.Message)
 
 	body, err := msg.MarshalArgs()
 	if err != nil {
@@ -160,22 +160,22 @@ func (q *Queue) add(msg *queue.Message) error {
 	return nil
 }
 
-func (q *Queue) Add(msg *queue.Message) error {
+func (q *Queue) Add(msg *msgqueue.Message) error {
 	return q.memqueue.Add(internal.WrapMessage(msg))
 }
 
 func (q *Queue) Call(args ...interface{}) error {
-	msg := queue.NewMessage(args...)
+	msg := msgqueue.NewMessage(args...)
 	return q.Add(msg)
 }
 
 func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessage(args...)
+	msg := msgqueue.NewMessage(args...)
 	msg.SetDelayName(delay, args...)
 	return q.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
+func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 	if n > 10 {
 		n = 10
 	}
@@ -191,7 +191,7 @@ func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
 		return nil, err
 	}
 
-	msgs := make([]queue.Message, len(out.Messages))
+	msgs := make([]msgqueue.Message, len(out.Messages))
 	for i, sqsMsg := range out.Messages {
 		var reservedCount int
 		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
@@ -211,7 +211,7 @@ func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
 			}
 		}
 
-		msgs[i] = queue.Message{
+		msgs[i] = msgqueue.Message{
 			Body:          *sqsMsg.Body,
 			Delay:         delay,
 			ReservationId: *sqsMsg.ReceiptHandle,
@@ -222,7 +222,7 @@ func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
 	return msgs, nil
 }
 
-func (q *Queue) Release(msg *queue.Message, delay time.Duration) error {
+func (q *Queue) Release(msg *msgqueue.Message, delay time.Duration) error {
 	in := &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(q.queueURL()),
 		ReceiptHandle:     &msg.ReservationId,
@@ -232,7 +232,7 @@ func (q *Queue) Release(msg *queue.Message, delay time.Duration) error {
 	return err
 }
 
-func (q *Queue) Delete(msg *queue.Message) error {
+func (q *Queue) Delete(msg *msgqueue.Message) error {
 	in := &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(q.queueURL()),
 		ReceiptHandle: &msg.ReservationId,
@@ -241,7 +241,7 @@ func (q *Queue) Delete(msg *queue.Message) error {
 	return err
 }
 
-func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
+func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
 	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
 	for i, msg := range msgs {
 		entries[i] = &sqs.DeleteMessageBatchRequestEntry{

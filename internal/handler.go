@@ -1,17 +1,17 @@
 package internal
 
-import "gopkg.in/queue.v1"
+import "gopkg.in/msgqueue.v1"
 
-func WrapMessage(msg *queue.Message) *queue.Message {
-	msg0 := queue.NewMessage(msg)
+func WrapMessage(msg *msgqueue.Message) *msgqueue.Message {
+	msg0 := msgqueue.NewMessage(msg)
 	msg0.Name = msg.Name
 	return msg0
 }
 
-func MessageUnwrapperHandler(fn interface{}) queue.HandlerFunc {
-	h := queue.NewHandler(fn)
-	return queue.HandlerFunc(func(msg *queue.Message) error {
-		msg = msg.Args[0].(*queue.Message)
+func MessageUnwrapperHandler(fn interface{}) msgqueue.HandlerFunc {
+	h := msgqueue.NewHandler(fn)
+	return msgqueue.HandlerFunc(func(msg *msgqueue.Message) error {
+		msg = msg.Args[0].(*msgqueue.Message)
 		return h.HandleMessage(msg)
 	})
 }

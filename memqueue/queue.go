@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/processor"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/processor"
 )
 
 const redisPrefix = "memqueue"
 
 type Queue struct {
-	opt *queue.Options
+	opt *msgqueue.Options
 
 	sync    bool
 	noDelay bool
@@ -23,7 +23,7 @@ type Queue struct {
 
 var _ processor.Queuer = (*Queue)(nil)
 
-func NewQueue(opt *queue.Options) *Queue {
+func NewQueue(opt *msgqueue.Options) *Queue {
 	opt.Init()
 	q := Queue{
 		opt: opt,
@@ -42,7 +42,7 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("Memqueue<%s>", q.Name())
 }
 
-func (q *Queue) Options() *queue.Options {
+func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
@@ -80,30 +80,30 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	}
 }
 
-func (q *Queue) Add(msg *queue.Message) error {
+func (q *Queue) Add(msg *msgqueue.Message) error {
 	return q.addMessage(msg)
 }
 
 func (q *Queue) Call(args ...interface{}) error {
-	msg := queue.NewMessage(args...)
+	msg := msgqueue.NewMessage(args...)
 	return q.Add(msg)
 }
 
 func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
-	msg := queue.NewMessage(args...)
+	msg := msgqueue.NewMessage(args...)
 	msg.SetDelayName(delay, args...)
 	return q.Add(msg)
 }
 
-func (q *Queue) addMessage(msg *queue.Message) error {
+func (q *Queue) addMessage(msg *msgqueue.Message) error {
 	if !q.isUniqueName(msg.Name) {
-		return queue.ErrDuplicate
+		return msgqueue.ErrDuplicate
 	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
 
-func (q *Queue) enqueueMessage(msg *queue.Message) error {
+func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
 	var delay time.Duration
 	delay, msg.Delay = msg.Delay, 0
 	msg.ReservedCount++
@@ -131,21 +131,21 @@ func (q *Queue) isUniqueName(name string) bool {
 	return !exists
 }
 
-func (q *Queue) ReserveN(n int) ([]queue.Message, error) {
+func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 	return nil, processor.ErrNotSupported
 }
 
-func (q *Queue) Release(msg *queue.Message, dur time.Duration) error {
+func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {
 	msg.Delay = dur
 	return q.enqueueMessage(msg)
 }
 
-func (q *Queue) Delete(msg *queue.Message) error {
+func (q *Queue) Delete(msg *msgqueue.Message) error {
 	q.wg.Done()
 	return nil
 }
 
-func (q *Queue) DeleteBatch(msgs []*queue.Message) error {
+func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
 	for _, msg := range msgs {
 		if err := q.Delete(msg); err != nil {
 			return err

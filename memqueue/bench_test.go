@@ -3,12 +3,12 @@ package memqueue_test
 import (
 	"testing"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/memqueue"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/memqueue"
 )
 
 func BenchmarkCallAsync(b *testing.B) {
-	q := memqueue.NewQueue(&queue.Options{
+	q := memqueue.NewQueue(&msgqueue.Options{
 		Handler:    func() {},
 		BufferSize: 1000000,
 	})
@@ -24,7 +24,7 @@ func BenchmarkCallAsync(b *testing.B) {
 }
 
 func BenchmarkNamedMessage(b *testing.B) {
-	q := memqueue.NewQueue(&queue.Options{
+	q := memqueue.NewQueue(&msgqueue.Options{
 		Redis:      redisRing(),
 		Handler:    func() {},
 		BufferSize: 1000000,
@@ -35,7 +35,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			msg := queue.NewMessage()
+			msg := msgqueue.NewMessage()
 			msg.Name = "myname"
 			q.Add(msg)
 		}

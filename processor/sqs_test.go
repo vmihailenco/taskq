@@ -1,59 +1,66 @@
 package processor_test
 
 import (
+	"os"
 	"testing"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/azsqs"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/azsqs"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
+
+var accountId string
+
+func init() {
+	accountId = os.Getenv("AWS_ACCOUNT_ID")
+}
 
 func awsSQS() *sqs.SQS {
 	return sqs.New(session.New())
 }
 
 func TestSQSProcessor(t *testing.T) {
-	testProcessor(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name: "test-sqs-processor",
+	testProcessor(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("sqs-processor"),
 	}))
 }
 
 func TestSQSDelay(t *testing.T) {
-	testDelay(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name: "test-sqs-delay",
+	testDelay(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("sqs-delay"),
 	}))
 }
 
 func TestSQSRetry(t *testing.T) {
-	testRetry(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name: "test-sqs-retry",
+	testRetry(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("sqs-retry"),
 	}))
 }
 
 func TestSQSNamedMessage(t *testing.T) {
-	testNamedMessage(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name:  "test-sqs-named-message",
+	testNamedMessage(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name:  queueName("sqs-named-message"),
 		Redis: redisRing(),
 	}))
 }
 
 func TestSQSCallOnce(t *testing.T) {
-	testCallOnce(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name:  "test-sqs-call-once",
+	testCallOnce(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name:  queueName("sqs-call-once"),
 		Redis: redisRing(),
 	}))
 }
 
 func TestSQSRateLimit(t *testing.T) {
-	testRateLimit(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name: "test-sqs-rate-limit",
+	testRateLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("sqs-rate-limit"),
 	}))
 }
 
 func TestSQSDelayer(t *testing.T) {
-	testDelayer(t, azsqs.NewQueue(awsSQS(), "788427328026", &queue.Options{
-		Name: "test-sqs-delayer",
+	testDelayer(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("sqs-delayer"),
 	}))
 }

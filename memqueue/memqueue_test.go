@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/memqueue"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	timerate "golang.org/x/time/rate"
 	"gopkg.in/go-redis/rate.v5"
 	"gopkg.in/redis.v5"
-
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/memqueue"
 )
 
 func TestMemqueue(t *testing.T) {
@@ -32,7 +32,7 @@ var _ = Describe("message with args", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&queue.Options{
+		q := memqueue.NewQueue(&msgqueue.Options{
 			Handler: handler,
 		})
 		q.Call("string", 42)
@@ -54,7 +54,7 @@ var _ = Describe("message with invalid number of args", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&queue.Options{
+		q := memqueue.NewQueue(&msgqueue.Options{
 			Handler:    handler,
 			RetryLimit: 1,
 		})
@@ -79,15 +79,15 @@ var _ = Describe("message with invalid number of args", func() {
 
 var _ = Describe("handler that expects Message", func() {
 	ch := make(chan bool, 10)
-	handler := func(msg *queue.Message) error {
+	handler := func(msg *msgqueue.Message) error {
 		Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
 		ch <- true
 		return nil
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&queue.Options{
-			Handler: queue.HandlerFunc(handler),
+		q := memqueue.NewQueue(&msgqueue.Options{
+			Handler: msgqueue.HandlerFunc(handler),
 		})
 		q.Call("string", 42)
 
@@ -116,7 +116,7 @@ var _ = Describe("message retry timing", func() {
 	BeforeEach(func() {
 		count = 0
 		ch = make(chan time.Time, 10)
-		q = memqueue.NewQueue(&queue.Options{
+		q = memqueue.NewQueue(&msgqueue.Options{
 			Handler:    handler,
 			RetryLimit: 3,
 			MinBackoff: backoff,
@@ -146,7 +146,7 @@ var _ = Describe("message retry timing", func() {
 		var now time.Time
 
 		BeforeEach(func() {
-			msg := queue.NewMessage()
+			msg := msgqueue.NewMessage()
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
@@ -169,7 +169,7 @@ var _ = Describe("message retry timing", func() {
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
 
-			q = memqueue.NewQueue(&queue.Options{
+			q = memqueue.NewQueue(&msgqueue.Options{
 				Handler:    handler,
 				RetryLimit: 3,
 				MinBackoff: backoff,
@@ -180,7 +180,7 @@ var _ = Describe("message retry timing", func() {
 		It("is processed immediately", func() {
 			now := time.Now()
 
-			msg := queue.NewMessage()
+			msg := msgqueue.NewMessage()
 			msg.Delay = time.Hour
 			err := q.Add(msg)
 			Expect(err).NotTo(HaveOccurred())
@@ -209,7 +209,7 @@ var _ = Describe("failing queue with error handler", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&queue.Options{
+		q = memqueue.NewQueue(&msgqueue.Options{
 			Handler:         handler,
 			FallbackHandler: fallbackHandler,
 			RetryLimit:      1,
@@ -233,7 +233,7 @@ var _ = Describe("named message", func() {
 	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&queue.Options{
+		q := memqueue.NewQueue(&msgqueue.Options{
 			Redis:   redisRing(),
 			Handler: handler,
 		})
@@ -244,7 +244,7 @@ var _ = Describe("named message", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer wg.Done()
-				msg := queue.NewMessage()
+				msg := msgqueue.NewMessage()
 				msg.Name = "myname"
 				q.Add(msg)
 			}()
@@ -274,7 +274,7 @@ var _ = Describe("CallOnce", func() {
 	BeforeEach(func() {
 		now = time.Now()
 
-		q := memqueue.NewQueue(&queue.Options{
+		q := memqueue.NewQueue(&msgqueue.Options{
 			Redis:   redisRing(),
 			Handler: handler,
 		})
@@ -312,7 +312,7 @@ var _ = Describe("stress testing", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&queue.Options{
+		q = memqueue.NewQueue(&msgqueue.Options{
 			Handler: handler,
 		})
 
@@ -344,7 +344,7 @@ var _ = Describe("stress testing failing queue", func() {
 	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&queue.Options{
+		q = memqueue.NewQueue(&msgqueue.Options{
 			Handler:         handler,
 			FallbackHandler: fallbackHandler,
 			RetryLimit:      1,
@@ -368,7 +368,7 @@ var _ = Describe("Queue", func() {
 	var q *memqueue.Queue
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&queue.Options{
+		q = memqueue.NewQueue(&msgqueue.Options{
 			Redis:     redisRing(),
 			Handler:   func() {},
 			RateLimit: timerate.Every(time.Second),

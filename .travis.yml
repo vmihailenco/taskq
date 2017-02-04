@@ -5,8 +5,7 @@ services:
   - redis-server
 
 go:
-  - 1.5
-  - 1.6
+  - 1.7
   - tip
 
 matrix:
@@ -16,11 +15,10 @@ matrix:
 install:
   - go get github.com/onsi/ginkgo
   - go get github.com/onsi/gomega
-  - go get gopkg.in/redis.v4
-  - go get gopkg.in/go-redis/rate.v4
+  - go get gopkg.in/redis.v5
+  - go get gopkg.in/go-redis/rate.v5
   - go get gopkg.in/vmihailenco/msgpack.v2
-  - go get github.com/golang/snappy
   - go get github.com/iron-io/iron_go3/mq
   - go get github.com/aws/aws-sdk-go/service/sqs
   - mkdir -p $HOME/gopath/src/gopkg.in
-  - mv `pwd` $HOME/gopath/src/gopkg.in/memqueue.v1
+  - mv `pwd` $HOME/gopath/src/gopkg.in/msgqueue.v1

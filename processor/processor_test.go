@@ -3,17 +3,23 @@ package processor_test
 import (
 	"errors"
 	"log"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"gopkg.in/queue.v1"
-	"gopkg.in/queue.v1/processor"
+	"gopkg.in/msgqueue.v1"
+	"gopkg.in/msgqueue.v1/processor"
 
 	timerate "golang.org/x/time/rate"
 	"gopkg.in/redis.v5"
 )
+
+func queueName(s string) string {
+	return "test-" + s + "-" + strings.Replace(runtime.Version(), ".", "", -1)
+}
 
 func printStats(p *processor.Processor) {
 	var old *processor.Stats
@@ -63,13 +69,13 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 		return nil
 	}
 
-	msg := queue.NewMessage("hello", "world")
+	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler: handler,
 	})
 
@@ -94,14 +100,14 @@ func testDelay(t *testing.T, q processor.Queuer) {
 		handlerCh <- time.Now()
 	}
 
-	msg := queue.NewMessage()
+	msg := msgqueue.NewMessage()
 	msg.Delay = 3 * time.Second
 	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler: handler,
 	})
 	start := time.Now()
@@ -134,13 +140,13 @@ func testRetry(t *testing.T, q processor.Queuer) {
 		return nil
 	}
 
-	msg := queue.NewMessage("hello", "world")
+	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler:         handler,
 		FallbackHandler: fallbackHandler,
 		RetryLimit:      3,
@@ -175,17 +181,17 @@ func testNamedMessage(t *testing.T, q processor.Queuer) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			msg := queue.NewMessage()
+			msg := msgqueue.NewMessage()
 			msg.Name = "the-name"
 			err := q.Add(msg)
-			if err != nil && err != queue.ErrDuplicate {
+			if err != nil && err != msgqueue.ErrDuplicate {
 				t.Fatal(err)
 			}
 		}()
 	}
 	wg.Wait()
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler: handler,
 	})
 
@@ -222,7 +228,7 @@ func testCallOnce(t *testing.T, q processor.Queuer) {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
 				err := q.CallOnce(time.Second)
-				if err != nil && err != queue.ErrDuplicate {
+				if err != nil && err != msgqueue.ErrDuplicate {
 					t.Fatal(err)
 				}
 			}
@@ -231,7 +237,7 @@ func testCallOnce(t *testing.T, q processor.Queuer) {
 		}
 	}()
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler: handler,
 		Redis:   ring,
 	})
@@ -273,7 +279,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			msg := queue.NewMessage()
+			msg := msgqueue.NewMessage()
 			err := q.Add(msg)
 			if err != nil {
 				t.Fatal(err)
@@ -282,7 +288,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	}
 	wg.Wait()
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler:      handler,
 		WorkerNumber: 2,
 		RateLimit:    timerate.Every(time.Second),
@@ -322,7 +328,7 @@ func testDelayer(t *testing.T, q processor.Queuer) {
 		return RateLimitError("fake error")
 	}
 
-	p := processor.Start(q, &queue.Options{
+	p := processor.Start(q, &msgqueue.Options{
 		Handler:    handler,
 		MinBackoff: time.Second,
 	})
