@@ -120,6 +120,19 @@ func (p *Processor) Add(msg *msgqueue.Message) error {
 	return nil
 }
 
+// Add adds message to the processor internal queue with specified delay.
+func (p *Processor) AddDelay(msg *msgqueue.Message, delay time.Duration) error {
+	if delay == 0 {
+		return p.Add(msg)
+	}
+
+	atomic.AddUint32(&p.inFlight, 1)
+	time.AfterFunc(delay, func() {
+		p.ch <- msg
+	})
+	return nil
+}
+
 // Start starts processing messages in the queue.
 func (p *Processor) Start() error {
 	if !p.startWorkers() {
@@ -204,10 +217,9 @@ func (p *Processor) ProcessAll() error {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
 		n, err := p.fetchMessages()
 		if err != nil {
-			if err == ErrNotSupported {
-				break
+			if err != ErrNotSupported {
+				return err
 			}
-			return err
 		}
 		if n == 0 && isIdle {
 			noWork++
@@ -216,6 +228,10 @@ func (p *Processor) ProcessAll() error {
 		}
 		if noWork == 2 {
 			break
+		}
+		if err == ErrNotSupported {
+			// Don't burn CPU.
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 	return p.stopWorkersTimeout(stopTimeout)

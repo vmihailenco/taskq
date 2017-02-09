@@ -36,7 +36,7 @@ type Message struct {
 	// The number of times the message has been reserved or released.
 	ReservedCount int
 
-	values map[string]interface{}
+	values map[interface{}]interface{}
 }
 
 func NewMessage(args ...interface{}) *Message {
@@ -61,15 +61,15 @@ func (m *Message) MarshalArgs() (string, error) {
 	return encodeArgs(m.Args)
 }
 
-func (m *Message) SetValue(name string, value interface{}) {
+func (m *Message) SetValue(key, value interface{}) {
 	if m.values == nil {
-		m.values = make(map[string]interface{})
+		m.values = make(map[interface{}]interface{})
 	}
-	m.values[name] = value
+	m.values[key] = value
 }
 
-func (m *Message) Value(name string) interface{} {
-	return m.values[name]
+func (m *Message) Value(key interface{}) interface{} {
+	return m.values[key]
 }
 
 func timeSlot(resolution time.Duration) int64 {

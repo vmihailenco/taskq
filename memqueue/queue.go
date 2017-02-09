@@ -116,9 +116,7 @@ func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
 		return q.p.Add(msg)
 	}
 
-	time.AfterFunc(delay, func() {
-		q.p.Add(msg)
-	})
+	q.p.AddDelay(msg, delay)
 	return nil
 }
 
