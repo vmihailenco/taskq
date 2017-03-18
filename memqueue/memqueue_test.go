@@ -263,7 +263,7 @@ var _ = Describe("named message", func() {
 
 var _ = Describe("CallOnce", func() {
 	var now time.Time
-	delay := 200 * time.Millisecond
+	delay := time.Second
 
 	ch := make(chan time.Time, 10)
 	handler := func(slot int64) error {

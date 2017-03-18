@@ -35,8 +35,6 @@ type Message struct {
 
 	// The number of times the message has been reserved or released.
 	ReservedCount int
-
-	values map[interface{}]interface{}
 }
 
 func NewMessage(args ...interface{}) *Message {
@@ -59,17 +57,6 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 
 func (m *Message) MarshalArgs() (string, error) {
 	return encodeArgs(m.Args)
-}
-
-func (m *Message) SetValue(key, value interface{}) {
-	if m.values == nil {
-		m.values = make(map[interface{}]interface{})
-	}
-	m.values[key] = value
-}
-
-func (m *Message) Value(key interface{}) interface{} {
-	return m.values[key]
 }
 
 func timeSlot(resolution time.Duration) int64 {
