@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
+	"github.com/go-msgqueue/msgqueue"
 )
 
 type Batcher struct {

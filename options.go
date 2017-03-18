@@ -4,9 +4,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/go-redis/rate"
+	"github.com/go-redis/redis"
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v5"
-	"gopkg.in/redis.v5"
 )
 
 type Redis interface {

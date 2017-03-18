@@ -3,7 +3,7 @@ package processor
 import (
 	"time"
 
-	"gopkg.in/msgqueue.v1"
+	"github.com/go-msgqueue/msgqueue"
 )
 
 type Queuer interface {

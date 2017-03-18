@@ -3,8 +3,8 @@ package processor_test
 import (
 	"testing"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/ironmq"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/ironmq"
 
 	"github.com/iron-io/iron_go3/mq"
 )

@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/internal"
-	"gopkg.in/msgqueue.v1/memqueue"
-	"gopkg.in/msgqueue.v1/processor"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
+	"github.com/go-msgqueue/msgqueue/memqueue"
+	"github.com/go-msgqueue/msgqueue/processor"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"

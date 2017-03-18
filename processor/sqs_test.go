@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/azsqs"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/azsqs"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"

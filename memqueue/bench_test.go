@@ -3,8 +3,8 @@ package memqueue_test
 import (
 	"testing"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/memqueue"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/memqueue"
 )
 
 func BenchmarkCallAsync(b *testing.B) {

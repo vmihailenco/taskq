@@ -1,6 +1,6 @@
 package internal
 
-import "gopkg.in/msgqueue.v1"
+import "github.com/go-msgqueue/msgqueue"
 
 func WrapMessage(msg *msgqueue.Message) *msgqueue.Message {
 	msg0 := msgqueue.NewMessage(msg)

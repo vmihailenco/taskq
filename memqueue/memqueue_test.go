@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/memqueue"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/memqueue"
 
+	"github.com/go-redis/rate"
+	"github.com/go-redis/redis"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/go-redis/rate.v5"
-	"gopkg.in/redis.v5"
 )
 
 func TestMemqueue(t *testing.T) {

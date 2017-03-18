@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/internal"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 )
 
 const consumerBackoff = time.Second

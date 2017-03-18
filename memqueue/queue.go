@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/processor"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/processor"
 )
 
 const redisPrefix = "memqueue"

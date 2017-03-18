@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/msgqueue.v1"
-	"gopkg.in/msgqueue.v1/processor"
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/processor"
 
+	"github.com/go-redis/redis"
 	timerate "golang.org/x/time/rate"
-	"gopkg.in/redis.v5"
 )
 
 func queueName(s string) string {
