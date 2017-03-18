@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-go get -u gopkg.in/msgqueue.v1
+go get -u github.com/go-msgqueue/msgqueue
 ```
 
 ## Features
@@ -19,9 +19,9 @@ go get -u gopkg.in/msgqueue.v1
 
 ## Design overview
 
-go-queue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate limiting and call once semantic.
+go-msgqueue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate limiting and call once semantic.
 
-go-queue consists of following packages:
+go-msgqueue consists of following packages:
  - memqueue - in memory queue that can be used for local unit testing.
  - azsqs - Amazon SQS client.
  - ironmq - IronMQ client.
@@ -32,8 +32,8 @@ rate limiting is implemented in the processor package using [go-redis rate](http
 ## API overview
 
 ```go
-import "gopkg.in/msgqueue.v1"
-import "gopkg.in/redis.v5"
+import "github.com/go-msgqueue/msgqueue"
+import "github.com/go-redis/redis"
 import timerate "golang.org/x/time/rate"
 
 // Create in-memory queue that prints greetings.
@@ -100,8 +100,8 @@ SQS, IronMQ, and memqueue share the same API and can be used interchangeably.
 azsqs package uses Amazon Simple Queue Service as queue backend.
 
 ```go
-import "gopkg.in/msgqueue.v1"
-import "gopkg.in/msgqueue.v1/azsqs"
+import "github.com/go-msgqueue/msgqueue"
+import "github.com/go-msgqueue/msgqueue/azsqs"
 import "github.com/aws/aws-sdk-go/service/sqs"
 
 awsAccountId := "123456789"
@@ -129,8 +129,8 @@ p.Stop()
 ironmq package uses IronMQ as queue backend.
 
 ```go
-import "gopkg.in/msgqueue.v1"
-import "gopkg.in/msgqueue.v1/ironmq"
+import "github.com/go-msgqueue/msgqueue"
+import "github.com/go-msgqueue/msgqueue/ironmq"
 import "github.com/iron-io/iron_go3/mq"
 
 q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &msgqueue.Options{
@@ -156,7 +156,7 @@ p.Stop()
 memqueue is in-memory queue backend implementation primarily useful for local development / unit testing. Unlike SQS and IronMQ it has running queue processor by default.
 
 ```go
-import "gopkg.in/msgqueue.v1"
+import "github.com/go-msgqueue/msgqueue"
 
 q := memqueue.NewQueue(&msgqueue.Options{
     Handler: func(name string) error {
