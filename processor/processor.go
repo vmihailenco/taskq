@@ -158,15 +158,15 @@ func (p *Processor) startWorkers() bool {
 	return true
 }
 
+// Stop is StopTimeout with 30 seconds timeout.
+func (p *Processor) Stop() error {
+	return p.StopTimeout(stopTimeout)
+}
+
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
 func (p *Processor) StopTimeout(timeout time.Duration) error {
 	return p.stopWorkersTimeout(timeout)
-}
-
-// Stop is StopTimeout with 30 seconds timeout.
-func (p *Processor) Stop() error {
-	return p.StopTimeout(stopTimeout)
 }
 
 func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
@@ -337,7 +337,6 @@ func (p *Processor) Process(msg *msgqueue.Message) error {
 
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
-	msg.SetValue("err", err)
 	p.updateAvgDuration(time.Since(start))
 
 	if err == nil {
@@ -354,10 +353,7 @@ func (p *Processor) Process(msg *msgqueue.Message) error {
 		p.delete(msg, err)
 	}
 
-	if v := msg.Value("err"); v != nil {
-		return v.(error)
-	}
-	return nil
+	return err
 }
 
 // Purge discards messages from the internal queue.

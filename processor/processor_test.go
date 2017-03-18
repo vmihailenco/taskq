@@ -81,7 +81,7 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 
 	select {
 	case <-ch:
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatalf("message was not processed")
 	}
 
@@ -100,8 +100,10 @@ func testDelay(t *testing.T, q processor.Queuer) {
 		handlerCh <- time.Now()
 	}
 
+	start := time.Now()
+
 	msg := msgqueue.NewMessage()
-	msg.Delay = 3 * time.Second
+	msg.Delay = 5 * time.Second
 	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +112,6 @@ func testDelay(t *testing.T, q processor.Queuer) {
 	p := processor.Start(q, &msgqueue.Options{
 		Handler: handler,
 	})
-	start := time.Now()
 
 	tm := <-handlerCh
 	sub := tm.Sub(start)
@@ -161,7 +162,7 @@ func testRetry(t *testing.T, q processor.Queuer) {
 	}
 
 	if n := atomic.LoadInt64(&fallbackCount); n != 1 {
-		t.Fatalf("fallbach handler is called %d times, wanted 1", n)
+		t.Fatalf("fallback handler is called %d times, wanted 1", n)
 	}
 }
 
@@ -298,7 +299,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 
 	time.Sleep(5 * time.Second)
 
-	if n := atomic.LoadInt64(&count); n != 5 && n != 6 {
+	if n := atomic.LoadInt64(&count); n-5 > 2 {
 		t.Fatalf("processed %d messages, wanted 5", n)
 	}
 
@@ -314,7 +315,7 @@ func (e RateLimitError) Error() string {
 }
 
 func (RateLimitError) Delay() time.Duration {
-	return 3 * time.Second
+	return 5 * time.Second
 }
 
 func testDelayer(t *testing.T, q processor.Queuer) {
@@ -328,17 +329,18 @@ func testDelayer(t *testing.T, q processor.Queuer) {
 		return RateLimitError("fake error")
 	}
 
-	p := processor.Start(q, &msgqueue.Options{
-		Handler:    handler,
-		MinBackoff: time.Second,
-	})
-
 	err := q.Call()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
+	p := processor.Start(q, &msgqueue.Options{
+		Handler:    handler,
+		MinBackoff: time.Second,
+		RetryLimit: 3,
+	})
+
+	timings := []time.Duration{0, 5 * time.Second, 5 * time.Second}
 	testTimings(t, handlerCh, timings)
 
 	if err := p.Stop(); err != nil {
@@ -347,7 +349,7 @@ func testDelayer(t *testing.T, q processor.Queuer) {
 }
 
 func durEqual(d1, d2 time.Duration) bool {
-	return d1 >= d2 && d2-d1 < 2*time.Second
+	return d1 >= d2 && d2-d1 < 3*time.Second
 }
 
 func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
