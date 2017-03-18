@@ -15,14 +15,14 @@ func (e RateLimitError) Error() string {
 }
 
 func (RateLimitError) Delay() time.Duration {
-	return 2 * time.Second
+	return 3 * time.Second
 }
 
-func Example_rateLimit() {
+func Example_customRateLimit() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
 		Handler: func() error {
-			fmt.Println(timeSince(start))
+			fmt.Println("retried in", timeSince(start))
 			return RateLimitError("calm down")
 		},
 		RetryLimit: 2,
@@ -33,6 +33,6 @@ func Example_rateLimit() {
 
 	q.Call()
 	q.Processor().ProcessAll()
-	// Output: 0s
-	// 2s
+	// Output: retried in 0s
+	// retried in 3s
 }

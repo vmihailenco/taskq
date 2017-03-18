@@ -3,22 +3,38 @@ package msgqueue_test
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/memqueue"
+
+	"github.com/go-redis/redis"
+	timerate "golang.org/x/time/rate"
 )
 
+func redisRing() *redis.Ring {
+	ring := redis.NewRing(&redis.RingOptions{
+		Addrs:    map[string]string{"0": ":6379"},
+		PoolSize: 100,
+	})
+	err := ring.FlushDb().Err()
+	if err != nil {
+		panic(err)
+	}
+	return ring
+}
+
 func timeSince(start time.Time) time.Duration {
-	// Truncate.
-	return time.Since(start) / time.Second * time.Second
+	secs := float64(time.Since(start)) / float64(time.Second)
+	return time.Duration(math.Floor(secs)) * time.Second
 }
 
 func Example_retryOnError() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
 		Handler: func() error {
-			fmt.Println(timeSince(start))
+			fmt.Println("retried in", timeSince(start))
 			return errors.New("fake error")
 		},
 		RetryLimit: 3,
@@ -29,16 +45,16 @@ func Example_retryOnError() {
 
 	q.Call()
 	q.Processor().ProcessAll()
-	// Output: 0s
-	// 1s
-	// 3s
+	// Output: retried in 0s
+	// retried in 1s
+	// retried in 3s
 }
 
 func Example_messageDelay() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
 		Handler: func() {
-			fmt.Println(timeSince(start))
+			fmt.Println("processed with delay", timeSince(start))
 		},
 	})
 	defer q.Close()
@@ -48,5 +64,24 @@ func Example_messageDelay() {
 	msg.Delay = time.Second
 	q.Add(msg)
 	q.Processor().ProcessAll()
-	// Output: 1s
+	// Output: processed with delay 1s
+}
+
+func Example_rateLimit() {
+	start := time.Now()
+	q := memqueue.NewQueue(&msgqueue.Options{
+		Handler:   func() {},
+		Redis:     redisRing(),
+		RateLimit: timerate.Every(time.Second),
+	})
+
+	for i := 0; i < 3; i++ {
+		q.Call()
+	}
+
+	// Close queue to make sure all messages are processed.
+	_ = q.Close()
+
+	fmt.Println("3 messages processed in", timeSince(start))
+	// Output: 3 messages processed in 2s
 }
