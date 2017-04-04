@@ -17,4 +17,6 @@ type Queuer interface {
 	Delete(msg *msgqueue.Message) error
 	DeleteBatch(msg []*msgqueue.Message) error
 	Purge() error
+	Close() error
+	CloseTimeout(time.Duration) error
 }

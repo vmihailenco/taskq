@@ -97,18 +97,22 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 	return nil
 }
 
+// Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
 	return q.memqueue.Add(internal.WrapMessage(msg))
 }
 
+// Call creates a message using the args and adds it to the queue.
 func (q *Queue) Call(args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
 	return q.Add(msg)
 }
 
-func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
+// CallOnce works like Call, but it adds message with same args
+// only once in a period.
+func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
-	msg.SetDelayName(delay, args...)
+	msg.SetDelayName(period, args...)
 	return q.Add(msg)
 }
 
@@ -178,17 +182,23 @@ func (q *Queue) Purge() error {
 	return q.q.Clear()
 }
 
+// Close is CloseTimeout with 30 seconds timeout.
 func (q *Queue) Close() error {
-	var retErr error
-	if err := q.memqueue.Close(); err != nil && retErr == nil {
-		retErr = err
+	return q.CloseTimeout(30 * time.Second)
+}
+
+// Close closes the queue waiting for pending messages to be processed.
+func (q *Queue) CloseTimeout(timeout time.Duration) error {
+	var firstErr error
+	if err := q.memqueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+		firstErr = err
 	}
 	if q.p != nil {
-		if err := q.p.Stop(); err != nil && retErr == nil {
-			retErr = err
+		if err := q.p.StopTimeout(timeout); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return retErr
+	return firstErr
 }
 
 func retry(fn func() error) error {
