@@ -85,3 +85,26 @@ func Example_rateLimit() {
 	fmt.Println("3 messages processed in", timeSince(start))
 	// Output: 3 messages processed in 2s
 }
+
+func Example_once() {
+	q := memqueue.NewQueue(&msgqueue.Options{
+		Handler: func(name string) {
+			fmt.Println("hello", name)
+		},
+		Redis:     redisRing(),
+		RateLimit: timerate.Every(time.Second),
+	})
+
+	for _, name := range []string{"world", "adele"} {
+		for i := 0; i < 10; i++ {
+			// Call once in a second.
+			q.CallOnce(time.Second, name)
+		}
+	}
+
+	// Close queue to make sure all messages are processed.
+	_ = q.Close()
+
+	// Output: hello world
+	// hello adele
+}
