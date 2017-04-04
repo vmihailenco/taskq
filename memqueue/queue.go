@@ -58,10 +58,12 @@ func (q *Queue) SetNoDelay(noDelay bool) {
 	q.noDelay = noDelay
 }
 
+// Close is CloseTimeout with 30 seconds timeout.
 func (q *Queue) Close() error {
 	return q.CloseTimeout(30 * time.Second)
 }
 
+// Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	defer q.p.Stop()
 	defer unregisterQueue(q)
@@ -80,18 +82,22 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	}
 }
 
+// Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
 	return q.addMessage(msg)
 }
 
+// Call creates a message using the args and adds it to the queue.
 func (q *Queue) Call(args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
 	return q.Add(msg)
 }
 
-func (q *Queue) CallOnce(delay time.Duration, args ...interface{}) error {
+// CallOnce works like Call, but it adds message with same args
+// only once in a period.
+func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
-	msg.SetDelayName(delay, args...)
+	msg.SetDelayName(period, args...)
 	return q.Add(msg)
 }
 
