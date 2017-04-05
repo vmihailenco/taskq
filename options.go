@@ -39,6 +39,8 @@ type RateLimiter interface {
 type Options struct {
 	// Queue name.
 	Name string
+	// Queue group name.
+	GroupName string
 
 	// Function called to process a message.
 	Handler interface{}
@@ -85,6 +87,9 @@ func (opt *Options) Init() {
 	}
 	opt.inited = true
 
+	if opt.GroupName == "" {
+		opt.GroupName = opt.Name
+	}
 	if opt.WorkerNumber == 0 {
 		opt.WorkerNumber = 10 * runtime.NumCPU()
 	}

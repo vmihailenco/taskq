@@ -38,7 +38,8 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	}
 
 	memopt := msgqueue.Options{
-		Name: opt.Name,
+		Name:      opt.Name,
+		GroupName: opt.GroupName,
 
 		RetryLimit: 3,
 		MinBackoff: time.Second,

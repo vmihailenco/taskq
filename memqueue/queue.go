@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/go-msgqueue/msgqueue/processor"
 )
 
@@ -130,13 +131,13 @@ func (q *Queue) isUniqueName(name string) bool {
 	if name == "" {
 		return true
 	}
-	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.Name(), name)
+	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.opt.GroupName, name)
 	exists := q.opt.Storage.Exists(key)
 	return !exists
 }
 
 func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
-	return nil, processor.ErrNotSupported
+	return nil, internal.ErrNotSupported
 }
 
 func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {

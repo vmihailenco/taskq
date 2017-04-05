@@ -16,8 +16,6 @@ const consumerBackoff = time.Second
 const maxBackoff = 12 * time.Hour
 const stopTimeout = 30 * time.Second
 
-var ErrNotSupported = errors.New("processor: not supported")
-
 type Delayer interface {
 	Delay() time.Duration
 }
@@ -217,7 +215,7 @@ func (p *Processor) ProcessAll() error {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
 		n, err := p.fetchMessages()
 		if err != nil {
-			if err != ErrNotSupported {
+			if err != internal.ErrNotSupported {
 				return err
 			}
 		}
@@ -229,7 +227,7 @@ func (p *Processor) ProcessAll() error {
 		if noWork == 2 {
 			break
 		}
-		if err == ErrNotSupported {
+		if err == internal.ErrNotSupported {
 			// Don't burn CPU.
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -258,7 +256,7 @@ func (p *Processor) reserveOne() (*msgqueue.Message, error) {
 	}
 
 	msgs, err := p.q.ReserveN(1)
-	if err != nil && err != ErrNotSupported {
+	if err != nil && err != internal.ErrNotSupported {
 		return nil, err
 	}
 	if len(msgs) == 0 {
@@ -284,7 +282,7 @@ func (p *Processor) messageFetcher() {
 
 		_, err := p.fetchMessages()
 		if err != nil {
-			if err == ErrNotSupported {
+			if err == internal.ErrNotSupported {
 				break
 			}
 

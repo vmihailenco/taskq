@@ -36,7 +36,8 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 	}
 
 	memopt := msgqueue.Options{
-		Name: opt.Name,
+		Name:      opt.Name,
+		GroupName: opt.GroupName,
 
 		RetryLimit: 3,
 		MinBackoff: time.Second,
