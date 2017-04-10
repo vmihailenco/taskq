@@ -10,25 +10,26 @@ import (
 )
 
 type Redis interface {
-	Del(...string) *redis.IntCmd
-	SetNX(string, interface{}, time.Duration) *redis.BoolCmd
+	Del(keys ...string) *redis.IntCmd
+	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	SAdd(key string, members ...interface{}) *redis.IntCmd
 	SMembers(key string) *redis.StringSliceCmd
 	Pipelined(func(pipe *redis.Pipeline) error) ([]redis.Cmder, error)
 	Publish(channel, message string) *redis.IntCmd
+	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
 }
 
 type Storage interface {
 	Exists(key string) bool
 }
 
-type storage struct {
+type redisStorage struct {
 	Redis
 }
 
-var _ Storage = (*storage)(nil)
+var _ Storage = (*redisStorage)(nil)
 
-func (s storage) Exists(key string) bool {
+func (s redisStorage) Exists(key string) bool {
 	return !s.SetNX(key, "", 24*time.Hour).Val()
 }
 
@@ -49,6 +50,8 @@ type Options struct {
 
 	// Number of goroutines processing messages.
 	WorkerNumber int
+	// Global max number of workers which overrides WorkerNumber.
+	MaxWorkers int
 
 	// Number of scavengers deleting messages.
 	ScavengerNumber int
@@ -90,6 +93,9 @@ func (opt *Options) Init() {
 	if opt.GroupName == "" {
 		opt.GroupName = opt.Name
 	}
+	if opt.MaxWorkers > 0 {
+		opt.WorkerNumber = opt.MaxWorkers
+	}
 	if opt.WorkerNumber == 0 {
 		opt.WorkerNumber = 10 * runtime.NumCPU()
 	}
@@ -116,7 +122,7 @@ func (opt *Options) Init() {
 	}
 
 	if opt.Storage == nil {
-		opt.Storage = storage{opt.Redis}
+		opt.Storage = redisStorage{opt.Redis}
 	}
 
 	if opt.RateLimit != timerate.Inf && opt.RateLimiter == nil && opt.Redis != nil {

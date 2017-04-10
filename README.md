@@ -16,6 +16,7 @@ go get -u github.com/go-msgqueue/msgqueue
  - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
  - Processed messages are deleted in batches.
+ - Statistics.
 
 ## Design overview
 

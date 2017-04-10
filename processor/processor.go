@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bsm/redis-lock"
+
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
 )
@@ -38,8 +40,9 @@ type Processor struct {
 	handler         msgqueue.Handler
 	fallbackHandler msgqueue.Handler
 
-	ch chan *msgqueue.Message
-	wg sync.WaitGroup
+	ch    chan *msgqueue.Message
+	wg    sync.WaitGroup
+	locks []*lock.Lock
 
 	delBatch *internal.Batcher
 
@@ -66,6 +69,16 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 		opt: opt,
 
 		ch: make(chan *msgqueue.Message, opt.BufferSize),
+	}
+
+	if opt.MaxWorkers > 0 {
+		p.locks = make([]*lock.Lock, opt.MaxWorkers)
+		for i := 0; i < opt.MaxWorkers; i++ {
+			key := fmt.Sprintf("msgqueue-worker-lock:%d", i)
+			p.locks[i] = lock.NewLock(opt.Redis, key, &lock.LockOptions{
+				LockTimeout: opt.ReservationTimeout,
+			})
+		}
 	}
 
 	p.setHandler(opt.Handler)
@@ -151,7 +164,7 @@ func (p *Processor) startWorkers() bool {
 	p.stop = make(chan struct{})
 	p.wg.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
-		go p.worker()
+		go p.worker(i)
 	}
 	return true
 }
@@ -241,11 +254,11 @@ func (p *Processor) ProcessOne() error {
 	if err != nil {
 		return err
 	}
-	retErr := p.Process(msg)
-	if err := p.delBatch.Wait(); err != nil && retErr == nil {
-		retErr = err
+	firstErr := p.Process(msg)
+	if err := p.delBatch.Wait(); err != nil && firstErr == nil {
+		firstErr = err
 	}
-	return retErr
+	return firstErr
 }
 
 func (p *Processor) reserveOne() (*msgqueue.Message, error) {
@@ -275,7 +288,7 @@ func (p *Processor) messageFetcher() {
 
 		if pauseTime := p.paused(); pauseTime > 0 {
 			p.resetPause()
-			log.Printf("%s is automatically paused for %s", p.q, pauseTime)
+			log.Printf("%s is automatically paused for dur=%s", p.q, pauseTime)
 			time.Sleep(pauseTime)
 			continue
 		}
@@ -286,7 +299,7 @@ func (p *Processor) messageFetcher() {
 				break
 			}
 
-			log.Printf("%s ReserveN failed: %s (sleeping for %s)", p.q, err, consumerBackoff)
+			log.Printf("%s ReserveN failed: %s (sleeping for dur=%s)", p.q, err, consumerBackoff)
 			time.Sleep(consumerBackoff)
 			continue
 		}
@@ -304,7 +317,7 @@ func (p *Processor) fetchMessages() (int, error) {
 	return len(msgs), nil
 }
 
-func (p *Processor) worker() {
+func (p *Processor) worker(id int) {
 	defer p.wg.Done()
 	for {
 		msg, ok := p.dequeueMessage()
@@ -322,7 +335,15 @@ func (p *Processor) worker() {
 			}
 		}
 
+		if p.opt.MaxWorkers > 0 {
+			p.lockWorker(id)
+		}
+
 		p.Process(msg)
+
+		if p.opt.MaxWorkers > 0 {
+			p.unlockWorker(id)
+		}
 	}
 }
 
@@ -389,7 +410,7 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 	delay := p.releaseBackoff(msg, reason)
 
 	if reason != nil {
-		log.Printf("%s handler failed (retry in %s): %s", p.q, delay, reason)
+		log.Printf("%s handler failed (retry in dur=%s): %s", p.q, delay, reason)
 	}
 	if err := p.q.Release(msg, delay); err != nil {
 		log.Printf("%s Release failed: %s", p.q, err)
@@ -457,6 +478,26 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 func (p *Processor) resetPause() {
 	atomic.StoreUint32(&p.errCount, 0)
 	atomic.StoreUint32(&p.delayCount, 0)
+}
+
+func (p *Processor) lockWorker(id int) {
+	lock := p.locks[id]
+	for {
+		ok, err := lock.Lock()
+		if err != nil {
+			log.Printf("lock.Lock failed: %s", err)
+			return
+		}
+		if ok {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func (p *Processor) unlockWorker(id int) {
+	lock := p.locks[id]
+	lock.Unlock()
 }
 
 func exponentialBackoff(dur time.Duration, retry int) time.Duration {
