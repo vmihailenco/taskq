@@ -18,6 +18,7 @@ install:
   - go get github.com/onsi/gomega
   - go get github.com/go-redis/redis
   - go get github.com/go-redis/rate
+  - go get github.com/bsm/redis-lock
   - go get gopkg.in/vmihailenco/msgpack.v2
   - go get github.com/iron-io/iron_go3/mq
   - go get github.com/aws/aws-sdk-go/service/sqs
