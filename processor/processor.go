@@ -74,7 +74,7 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 	if opt.MaxWorkers > 0 {
 		p.locks = make([]*lock.Lock, opt.MaxWorkers)
 		for i := 0; i < opt.MaxWorkers; i++ {
-			key := fmt.Sprintf("msgqueue-worker-lock:%d", i)
+			key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), i)
 			p.locks[i] = lock.NewLock(opt.Redis, key, &lock.LockOptions{
 				LockTimeout: opt.ReservationTimeout,
 			})
