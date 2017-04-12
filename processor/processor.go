@@ -157,6 +157,12 @@ func (p *Processor) AddDelay(msg *msgqueue.Message, delay time.Duration) error {
 	return nil
 }
 
+// Process is low-level API to process message bypassing the internal queue.
+func (p *Processor) Process(msg *msgqueue.Message) error {
+	p.wg.Add(1)
+	return p.process(-1, msg)
+}
+
 // Start starts processing messages in the queue.
 func (p *Processor) Start() error {
 	if !p.startWorkers() {
@@ -355,11 +361,6 @@ func (p *Processor) worker(id int) {
 
 		p.process(id, msg)
 	}
-}
-
-// Process is low-level API to process message bypassing the internal queue.
-func (p *Processor) Process(msg *msgqueue.Message) error {
-	return p.process(-1, msg)
 }
 
 func (p *Processor) process(workerId int, msg *msgqueue.Message) error {
