@@ -70,7 +70,9 @@ func Example_messageDelay() {
 func Example_rateLimit() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
-		Handler:   func() {},
+		Handler: func() {
+			fmt.Println(timeSince(start))
+		},
 		Redis:     redisRing(),
 		RateLimit: timerate.Every(time.Second),
 	})
@@ -82,8 +84,9 @@ func Example_rateLimit() {
 	// Close queue to make sure all messages are processed.
 	_ = q.Close()
 
-	fmt.Println("3 messages processed in", timeSince(start))
-	// Output: 3 messages processed in 2s
+	// Output: 0s
+	// 0s
+	// 1s
 }
 
 func Example_once() {
