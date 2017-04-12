@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,14 +41,18 @@ type Processor struct {
 	handler         msgqueue.Handler
 	fallbackHandler msgqueue.Handler
 
-	ch    chan *msgqueue.Message
-	wg    sync.WaitGroup
-	locks []*lock.Lock
+	wg sync.WaitGroup
+	ch chan *msgqueue.Message
+
+	workersWG   sync.WaitGroup
+	stopWorkers chan struct{}
+
+	workerChans []chan struct{}
+	workerLocks []*lock.Lock
 
 	delBatch *internal.Batcher
 
 	_started uint32
-	stop     chan struct{}
 
 	errCount   uint32
 	delayCount uint32
@@ -72,13 +77,18 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 	}
 
 	if opt.MaxWorkers > 0 {
-		p.locks = make([]*lock.Lock, opt.MaxWorkers)
+		p.workerChans = make([]chan struct{}, opt.MaxWorkers)
+		p.workerLocks = make([]*lock.Lock, opt.MaxWorkers)
 		for i := 0; i < opt.MaxWorkers; i++ {
+			p.workerChans[i] = make(chan struct{}, 1)
+
 			key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), i)
-			p.locks[i] = lock.NewLock(opt.Redis, key, &lock.LockOptions{
+			p.workerLocks[i] = lock.NewLock(opt.Redis, key, &lock.LockOptions{
 				LockTimeout: opt.ReservationTimeout,
 			})
 		}
+
+		go p.readWorkerMessages()
 	}
 
 	p.setHandler(opt.Handler)
@@ -86,7 +96,7 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	p.delBatch = internal.NewBatcher(p.opt.ScavengerNumber, p.deleteBatch)
+	p.delBatch = internal.NewBatcher(p.opt.WorkerNumber, p.deleteBatch)
 
 	return p
 }
@@ -100,8 +110,8 @@ func Start(q Queuer, opt *msgqueue.Options) *Processor {
 
 func (p *Processor) String() string {
 	return fmt.Sprintf(
-		"Processor<%s workers=%d scavengers=%d buffer=%d>",
-		p.q.Name(), p.opt.WorkerNumber, p.opt.ScavengerNumber, p.opt.BufferSize,
+		"Processor<%s workers=%d buffer=%d>",
+		p.q.Name(), p.opt.WorkerNumber, p.opt.BufferSize,
 	)
 }
 
@@ -127,7 +137,9 @@ func (p *Processor) setFallbackHandler(handler interface{}) {
 
 // Add adds message to the processor internal queue.
 func (p *Processor) Add(msg *msgqueue.Message) error {
-	p.queueMessage(msg)
+	p.wg.Add(1)
+	atomic.AddUint32(&p.inFlight, 1)
+	p.ch <- msg
 	return nil
 }
 
@@ -137,6 +149,7 @@ func (p *Processor) AddDelay(msg *msgqueue.Message, delay time.Duration) error {
 		return p.Add(msg)
 	}
 
+	p.wg.Add(1)
 	atomic.AddUint32(&p.inFlight, 1)
 	time.AfterFunc(delay, func() {
 		p.ch <- msg
@@ -150,7 +163,7 @@ func (p *Processor) Start() error {
 		return nil
 	}
 
-	p.wg.Add(1)
+	p.workersWG.Add(1)
 	go p.messageFetcher()
 
 	return nil
@@ -161,8 +174,8 @@ func (p *Processor) startWorkers() bool {
 		return false
 	}
 
-	p.stop = make(chan struct{})
-	p.wg.Add(p.opt.WorkerNumber)
+	p.stopWorkers = make(chan struct{})
+	p.workersWG.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
 		go p.worker(i)
 	}
@@ -171,7 +184,7 @@ func (p *Processor) startWorkers() bool {
 
 // Stop is StopTimeout with 30 seconds timeout.
 func (p *Processor) Stop() error {
-	return p.StopTimeout(stopTimeout)
+	return p.stopWorkersTimeout(stopTimeout)
 }
 
 // StopTimeout waits workers for timeout duration to finish processing current
@@ -185,19 +198,20 @@ func (p *Processor) stopWorkersTimeout(timeout time.Duration) error {
 		return nil
 	}
 
-	close(p.stop)
-
-	stopped := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-		close(stopped)
+		close(done)
 	}()
 
 	select {
 	case <-time.After(timeout):
 		return fmt.Errorf("workers did not stop after %s", timeout)
-	case <-stopped:
-		return p.delBatch.Wait()
+	case <-done:
+		close(p.stopWorkers)
+		p.workersWG.Wait()
+		p.delBatch.Wait()
+		return nil
 	}
 }
 
@@ -254,6 +268,7 @@ func (p *Processor) ProcessOne() error {
 	if err != nil {
 		return err
 	}
+
 	firstErr := p.Process(msg)
 	if err := p.delBatch.Wait(); err != nil && firstErr == nil {
 		firstErr = err
@@ -273,14 +288,14 @@ func (p *Processor) reserveOne() (*msgqueue.Message, error) {
 		return nil, err
 	}
 	if len(msgs) == 0 {
-		return nil, errors.New("queue is empty")
+		return nil, errors.New("msgqueue: queue is empty")
 	}
 	atomic.AddUint32(&p.inFlight, 1)
 	return &msgs[0], nil
 }
 
 func (p *Processor) messageFetcher() {
-	defer p.wg.Done()
+	defer p.workersWG.Done()
 	for {
 		if p.stopped() {
 			break
@@ -288,7 +303,7 @@ func (p *Processor) messageFetcher() {
 
 		if pauseTime := p.paused(); pauseTime > 0 {
 			p.resetPause()
-			log.Printf("%s is automatically paused for dur=%s", p.q, pauseTime)
+			log.Printf("msgqueue: %s is automatically paused for dur=%s", p.q, pauseTime)
 			time.Sleep(pauseTime)
 			continue
 		}
@@ -299,7 +314,10 @@ func (p *Processor) messageFetcher() {
 				break
 			}
 
-			log.Printf("%s ReserveN failed: %s (sleeping for dur=%s)", p.q, err, consumerBackoff)
+			log.Printf(
+				"msgqueue: %s ReserveN failed: %s (sleeping for dur=%s)",
+				p.q, err, consumerBackoff,
+			)
 			time.Sleep(consumerBackoff)
 			continue
 		}
@@ -312,13 +330,13 @@ func (p *Processor) fetchMessages() (int, error) {
 		return 0, err
 	}
 	for i := range msgs {
-		p.queueMessage(&msgs[i])
+		p.Add(&msgs[i])
 	}
 	return len(msgs), nil
 }
 
 func (p *Processor) worker(id int) {
-	defer p.wg.Done()
+	defer p.workersWG.Done()
 	for {
 		msg, ok := p.dequeueMessage()
 		if !ok {
@@ -335,28 +353,32 @@ func (p *Processor) worker(id int) {
 			}
 		}
 
-		if p.opt.MaxWorkers > 0 {
-			p.lockWorker(id)
-		}
-
-		p.Process(msg)
-
-		if p.opt.MaxWorkers > 0 {
-			p.unlockWorker(id)
-		}
+		p.process(id, msg)
 	}
 }
 
 // Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *msgqueue.Message) error {
+	return p.process(-1, msg)
+}
+
+func (p *Processor) process(workerId int, msg *msgqueue.Message) error {
 	if msg.Delay > 0 {
 		p.release(msg, nil)
 		return nil
 	}
 
+	if workerId >= 0 && p.opt.MaxWorkers > 0 {
+		p.lockWorker(workerId)
+	}
+
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
 	p.updateAvgDuration(time.Since(start))
+
+	if workerId >= 0 && p.opt.MaxWorkers > 0 {
+		p.unlockWorker(workerId)
+	}
 
 	if err == nil {
 		atomic.AddUint32(&p.processed, 1)
@@ -387,16 +409,11 @@ func (p *Processor) Purge() error {
 	}
 }
 
-func (p *Processor) queueMessage(msg *msgqueue.Message) {
-	atomic.AddUint32(&p.inFlight, 1)
-	p.ch <- msg
-}
-
 func (p *Processor) dequeueMessage() (*msgqueue.Message, bool) {
 	select {
 	case msg := <-p.ch:
 		return msg, true
-	case <-p.stop:
+	case <-p.stopWorkers:
 		select {
 		case msg := <-p.ch:
 			return msg, true
@@ -417,6 +434,7 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 	}
 
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	p.wg.Done()
 }
 
 func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Duration {
@@ -458,9 +476,12 @@ func (p *Processor) delete(msg *msgqueue.Message, reason error) {
 
 func (p *Processor) deleteBatch(msgs []*msgqueue.Message) {
 	if err := p.q.DeleteBatch(msgs); err != nil {
-		log.Printf("%s DeleteBatch failed: %s", p.q, err)
+		log.Printf("msgqueue: %s DeleteBatch failed: %s", p.q, err)
 	}
 	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
+	for i := 0; i < len(msgs); i++ {
+		p.wg.Done()
+	}
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
@@ -480,24 +501,66 @@ func (p *Processor) resetPause() {
 	atomic.StoreUint32(&p.delayCount, 0)
 }
 
+func (p *Processor) redisWorkerFreeChannel() string {
+	return p.q.Name() + ":" + "worker-free"
+}
+
+func (p *Processor) readWorkerMessages() {
+	pubsub := p.opt.Redis.Subscribe(p.redisWorkerFreeChannel())
+	ch := pubsub.Channel()
+	for {
+		msg, ok := <-ch
+		if !ok {
+			break
+		}
+
+		workerId, err := strconv.Atoi(msg.Payload)
+		if err != nil {
+			log.Printf("msgqueue: invalid workerId=%q", workerId)
+			continue
+		}
+
+		workerCh := p.workerChans[workerId]
+		select {
+		case workerCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
 func (p *Processor) lockWorker(id int) {
-	lock := p.locks[id]
+	const timeout = 1234 * time.Millisecond
+
+	ch := p.workerChans[id]
+	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
 		if err != nil {
-			log.Printf("lock.Lock failed: %s", err)
+			log.Printf("msgqueue: redlock.Lock failed: %s", err)
 			return
 		}
 		if ok {
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+
+		select {
+		case <-ch:
+		case <-time.After(timeout):
+		}
 	}
 }
 
 func (p *Processor) unlockWorker(id int) {
-	lock := p.locks[id]
-	lock.Unlock()
+	lock := p.workerLocks[id]
+	if err := lock.Unlock(); err != nil {
+		log.Printf("msgqueue: redlock.Unlock failed: %s", err)
+	}
+
+	channel := p.redisWorkerFreeChannel()
+	err := p.opt.Redis.Publish(channel, strconv.Itoa(id)).Err()
+	if err != nil {
+		log.Printf("msgqueue: redis.Publish failed: %s", err)
+	}
 }
 
 func exponentialBackoff(dur time.Duration, retry int) time.Duration {

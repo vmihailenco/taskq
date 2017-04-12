@@ -66,21 +66,8 @@ func (q *Queue) Close() error {
 
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	defer q.p.Stop()
-	defer unregisterQueue(q)
-
-	done := make(chan struct{})
-	go func() {
-		q.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-time.After(timeout):
-		return fmt.Errorf("workers did not stop after %s", timeout)
-	case <-done:
-		return nil
-	}
+	unregisterQueue(q)
+	return q.p.Stop()
 }
 
 // Add adds message to the queue.
@@ -106,7 +93,6 @@ func (q *Queue) addMessage(msg *msgqueue.Message) error {
 	if !q.isUniqueName(msg.Name) {
 		return msgqueue.ErrDuplicate
 	}
-	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
 
@@ -146,7 +132,6 @@ func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {
 }
 
 func (q *Queue) Delete(msg *msgqueue.Message) error {
-	q.wg.Done()
 	return nil
 }
 

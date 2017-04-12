@@ -15,8 +15,9 @@ type Redis interface {
 	SAdd(key string, members ...interface{}) *redis.IntCmd
 	SMembers(key string) *redis.StringSliceCmd
 	Pipelined(func(pipe *redis.Pipeline) error) ([]redis.Cmder, error)
-	Publish(channel, message string) *redis.IntCmd
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
+	Publish(channel, message string) *redis.IntCmd
+	Subscribe(channels ...string) *redis.PubSub
 }
 
 type Storage interface {
@@ -52,9 +53,6 @@ type Options struct {
 	WorkerNumber int
 	// Global max number of workers which overrides WorkerNumber.
 	MaxWorkers int
-
-	// Number of scavengers deleting messages.
-	ScavengerNumber int
 
 	// Size of the buffer where reserved messages are stored.
 	BufferSize int
@@ -98,9 +96,6 @@ func (opt *Options) Init() {
 	}
 	if opt.WorkerNumber == 0 {
 		opt.WorkerNumber = 10 * runtime.NumCPU()
-	}
-	if opt.ScavengerNumber == 0 {
-		opt.ScavengerNumber = runtime.NumCPU() + 1
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.WorkerNumber

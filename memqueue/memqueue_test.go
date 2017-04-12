@@ -397,7 +397,7 @@ var _ = Describe("Queue", func() {
 
 		It("processes one message", func() {
 			err := q.Processor().ProcessOne()
-			Expect(err).To(MatchError("queue is empty"))
+			Expect(err).To(MatchError("msgqueue: queue is empty"))
 
 			err = q.Processor().ProcessAll()
 			Expect(err).NotTo(HaveOccurred())
