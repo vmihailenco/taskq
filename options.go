@@ -17,7 +17,6 @@ type Redis interface {
 	Pipelined(func(pipe *redis.Pipeline) error) ([]redis.Cmder, error)
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
 	Publish(channel, message string) *redis.IntCmd
-	Subscribe(channels ...string) *redis.PubSub
 }
 
 type Storage interface {

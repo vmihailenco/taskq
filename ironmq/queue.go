@@ -59,7 +59,7 @@ func (q *Queue) Name() string {
 }
 
 func (q *Queue) String() string {
-	return fmt.Sprintf("Queue<%s>", q.Name())
+	return fmt.Sprintf("Queue<Name=%s>", q.Name())
 }
 
 func (q *Queue) Options() *msgqueue.Options {
