@@ -7,7 +7,7 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 )
 
-const batcherTimeout = 2 * time.Second
+const batcherTimeout = 3 * time.Second
 
 type Batcher struct {
 	fn    func([]*msgqueue.Message)
@@ -107,7 +107,7 @@ func (b *Batcher) callOnTimeout() {
 			break
 		}
 
-		time.Sleep(3 * batcherTimeout)
+		time.Sleep(batcherTimeout)
 	}
 }
 
