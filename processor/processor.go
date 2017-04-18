@@ -196,11 +196,12 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 
 	p.delBatch.SetLimit(1)
 	defer p.delBatch.SetLimit(p.opt.WorkerNumber)
+	p.delBatch.Wait()
 
 	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-		done <- struct{}{}
+		close(done)
 	}()
 
 	select {
@@ -210,10 +211,12 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 
 	close(p.workersStop)
+
+	done = make(chan struct{})
 	go func() {
 		p.workersWG.Wait()
 		p.delBatch.Wait()
-		done <- struct{}{}
+		close(done)
 	}()
 
 	select {
