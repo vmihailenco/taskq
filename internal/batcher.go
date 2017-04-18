@@ -7,7 +7,7 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 )
 
-const batcherTimeout = time.Second
+const batcherTimeout = 2 * time.Second
 
 type Batcher struct {
 	fn    func([]*msgqueue.Message)
@@ -58,7 +58,7 @@ func (b *Batcher) Add(msg *msgqueue.Message) {
 
 	b.mu.Lock()
 	b.msgs = append(b.msgs, msg)
-	if len(b.msgs) > 0 && (len(b.msgs) > b.limit || b.timeoutReached()) {
+	if len(b.msgs) > b.limit || b.timeoutReached() {
 		msgs = b.msgs
 		b.msgs = nil
 	}
@@ -71,14 +71,13 @@ func (b *Batcher) Add(msg *msgqueue.Message) {
 }
 
 func (b *Batcher) callOnTimeout() {
-	defer b.wg.Done()
 	for {
 		var closed bool
 		var msgs []*msgqueue.Message
 
 		b.mu.Lock()
 		closed = b.closed
-		if len(b.msgs) > 0 && b.timeoutReached() {
+		if b.timeoutReached() {
 			msgs = b.msgs
 			b.msgs = nil
 		}
@@ -100,5 +99,5 @@ func (b *Batcher) callOnTimeout() {
 }
 
 func (b *Batcher) timeoutReached() bool {
-	return time.Since(b.lastMsgAt) > batcherTimeout
+	return len(b.msgs) > 0 && time.Since(b.lastMsgAt) > batcherTimeout
 }
