@@ -263,7 +263,7 @@ var _ = Describe("named message", func() {
 
 var _ = Describe("CallOnce", func() {
 	var now time.Time
-	delay := time.Second
+	delay := 3 * time.Second
 
 	ch := make(chan time.Time, 10)
 	handler := func(slot int64) error {
@@ -280,7 +280,7 @@ var _ = Describe("CallOnce", func() {
 		})
 
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 10; i++ {
 			wg.Add(1)
 			go func() {
 				defer GinkgoRecover()

@@ -194,10 +194,13 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	atomic.StoreUint32(&p.messageFetcherStop, 1)
 	defer atomic.StoreUint32(&p.messageFetcherStarted, 0)
 
+	p.delBatch.SetLimit(1)
+	defer p.delBatch.SetLimit(p.opt.WorkerNumber)
+
 	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-		close(done)
+		done <- struct{}{}
 	}()
 
 	select {
@@ -207,10 +210,18 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 
 	close(p.workersStop)
-	p.workersWG.Wait()
-	p.delBatch.Wait()
+	go func() {
+		p.workersWG.Wait()
+		p.delBatch.Wait()
+		done <- struct{}{}
+	}()
 
-	return nil
+	select {
+	case <-time.After(timeout):
+		return fmt.Errorf("workers were not stopped after %s", timeout)
+	case <-done:
+		return nil
+	}
 }
 
 func (p *Processor) paused() time.Duration {

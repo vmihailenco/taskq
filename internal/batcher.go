@@ -7,7 +7,7 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 )
 
-const batcherTimeout = time.Second
+const batcherTimeout = 2 * time.Second
 
 type Batcher struct {
 	fn    func([]*msgqueue.Message)
@@ -15,19 +15,30 @@ type Batcher struct {
 
 	wg sync.WaitGroup
 
-	mu        sync.Mutex
-	closed    bool
-	msgs      []*msgqueue.Message
-	lastMsgAt time.Time
+	mu         sync.Mutex
+	closed     bool
+	msgs       []*msgqueue.Message
+	firstMsgAt time.Time
 }
 
 func NewBatcher(limit int, fn func([]*msgqueue.Message)) *Batcher {
 	b := Batcher{
-		fn:    fn,
-		limit: limit,
+		fn: fn,
 	}
+	b.SetLimit(limit)
 	go b.callOnTimeout()
 	return &b
+}
+
+func (b *Batcher) SetLimit(limit int) {
+	const maxLimit = 10
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	b.mu.Lock()
+	b.limit = limit
+	b.mu.Unlock()
 }
 
 func (b *Batcher) Wait() error {
@@ -57,12 +68,14 @@ func (b *Batcher) Add(msg *msgqueue.Message) {
 	var msgs []*msgqueue.Message
 
 	b.mu.Lock()
+	if len(b.msgs) == 0 {
+		b.firstMsgAt = time.Now()
+	}
 	b.msgs = append(b.msgs, msg)
-	if len(b.msgs) > 0 && (len(b.msgs) > b.limit || b.timeoutReached()) {
+	if len(b.msgs) >= b.limit || b.timeoutReached() {
 		msgs = b.msgs
 		b.msgs = nil
 	}
-	b.lastMsgAt = time.Now()
 	b.mu.Unlock()
 
 	if len(msgs) > 0 {
@@ -71,17 +84,16 @@ func (b *Batcher) Add(msg *msgqueue.Message) {
 }
 
 func (b *Batcher) callOnTimeout() {
-	defer b.wg.Done()
 	for {
 		var closed bool
 		var msgs []*msgqueue.Message
 
 		b.mu.Lock()
-		closed = b.closed
-		if len(b.msgs) > 0 && b.timeoutReached() {
+		if b.timeoutReached() {
 			msgs = b.msgs
 			b.msgs = nil
 		}
+		closed = b.closed
 		b.mu.Unlock()
 
 		if len(msgs) > 0 {
@@ -100,5 +112,5 @@ func (b *Batcher) callOnTimeout() {
 }
 
 func (b *Batcher) timeoutReached() bool {
-	return time.Since(b.lastMsgAt) > batcherTimeout
+	return len(b.msgs) > 0 && time.Since(b.firstMsgAt) > batcherTimeout
 }

@@ -30,6 +30,11 @@ func timeSince(start time.Time) time.Duration {
 	return time.Duration(math.Floor(secs)) * time.Second
 }
 
+func timeSinceCeil(start time.Time) time.Duration {
+	secs := float64(time.Since(start)) / float64(time.Second)
+	return time.Duration(math.Ceil(secs)) * time.Second
+}
+
 func Example_retryOnError() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
@@ -71,22 +76,24 @@ func Example_rateLimit() {
 	start := time.Now()
 	q := memqueue.NewQueue(&msgqueue.Options{
 		Handler: func() {
-			fmt.Println(timeSince(start))
+			fmt.Println(timeSinceCeil(start))
 		},
 		Redis:     redisRing(),
 		RateLimit: timerate.Every(time.Second),
 	})
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		q.Call()
 	}
 
 	// Close queue to make sure all messages are processed.
 	_ = q.Close()
 
-	// Output: 0s
-	// 0s
+	// Output: 1s
 	// 1s
+	// 2s
+	// 3s
+	// 4s
 }
 
 func Example_once() {
