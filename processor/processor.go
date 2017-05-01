@@ -77,9 +77,9 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 		ch: make(chan *msgqueue.Message, opt.BufferSize),
 	}
 
-	if opt.MaxWorkers > 0 {
-		p.workerLocks = make([]*lock.Lock, opt.MaxWorkers)
-		for i := 0; i < opt.MaxWorkers; i++ {
+	if opt.WorkerLimit > 0 {
+		p.workerLocks = make([]*lock.Lock, opt.WorkerLimit)
+		for i := 0; i < opt.WorkerLimit; i++ {
 			key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), i)
 			p.workerLocks[i] = lock.NewLock(opt.Redis, key, &lock.LockOptions{
 				LockTimeout: opt.ReservationTimeout,
@@ -357,12 +357,12 @@ func (p *Processor) fetchMessages() (int, error) {
 func (p *Processor) worker(id int) {
 	defer p.workersWG.Done()
 
-	if p.opt.MaxWorkers > 0 {
+	if p.opt.WorkerLimit > 0 {
 		defer p.unlockWorker(id)
 	}
 
 	for {
-		if p.opt.MaxWorkers > 0 {
+		if p.opt.WorkerLimit > 0 {
 			p.lockWorker(id)
 		}
 

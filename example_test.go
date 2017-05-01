@@ -126,8 +126,8 @@ func Example_maxWorkers() {
 			fmt.Println(timeSince(start))
 			time.Sleep(time.Second)
 		},
-		Redis:      redisRing(),
-		MaxWorkers: 1,
+		Redis:       redisRing(),
+		WorkerLimit: 1,
 	})
 
 	for i := 0; i < 3; i++ {

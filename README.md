@@ -1,4 +1,4 @@
-# SQS & IronMQ clients with rate limiting and call once [![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg?branch=v1)](https://travis-ci.org/go-msgqueue/msgqueue)
+# Golang task/job queue with SQS & IronMQ backends [![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg?branch=v1)](https://travis-ci.org/go-msgqueue/msgqueue)
 
 ## Installation
 
@@ -11,6 +11,7 @@ go get -u github.com/go-msgqueue/msgqueue
  - SQS, IronMQ, and in-memory clients.
  - Queue processor can be run on separate server.
  - Rate limiting.
+ - Global limit of workers.
  - Call once.
  - Automatic retries with exponential backoffs.
  - Automatic pausing when all messages in queue fail.

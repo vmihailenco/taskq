@@ -50,8 +50,8 @@ type Options struct {
 
 	// Number of goroutines processing messages.
 	WorkerNumber int
-	// Global max number of workers which overrides WorkerNumber.
-	MaxWorkers int
+	// Global limit of concurrently running workers. Overrides WorkerNumber.
+	WorkerLimit int
 
 	// Size of the buffer where reserved messages are stored.
 	BufferSize int
@@ -90,8 +90,8 @@ func (opt *Options) Init() {
 	if opt.GroupName == "" {
 		opt.GroupName = opt.Name
 	}
-	if opt.MaxWorkers > 0 {
-		opt.WorkerNumber = opt.MaxWorkers
+	if opt.WorkerLimit > 0 {
+		opt.WorkerNumber = opt.WorkerLimit
 	}
 	if opt.WorkerNumber == 0 {
 		opt.WorkerNumber = 10 * runtime.NumCPU()
