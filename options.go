@@ -14,7 +14,7 @@ type Redis interface {
 	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	SAdd(key string, members ...interface{}) *redis.IntCmd
 	SMembers(key string) *redis.StringSliceCmd
-	Pipelined(func(pipe *redis.Pipeline) error) ([]redis.Cmder, error)
+	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
 	Publish(channel, message string) *redis.IntCmd
 }
