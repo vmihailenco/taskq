@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis"
+	"golang.org/x/time/rate"
+
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/processor"
-
-	"github.com/go-redis/redis"
-	timerate "golang.org/x/time/rate"
 )
 
 func queueName(s string) string {
@@ -292,7 +292,7 @@ func testRateLimit(t *testing.T, q processor.Queuer) {
 	p := processor.Start(q, &msgqueue.Options{
 		Handler:      handler,
 		WorkerNumber: 2,
-		RateLimit:    timerate.Every(time.Second),
+		RateLimit:    rate.Every(time.Second),
 		Redis:        ring,
 	})
 	go printStats(p)

@@ -43,17 +43,16 @@ type Processor struct {
 	wg sync.WaitGroup
 	ch chan *msgqueue.Message
 
-	workersWG sync.WaitGroup
-
+	workersWG   sync.WaitGroup
 	workerLocks []*lock.Lock
-
-	delBatch *internal.Batcher
 
 	workersStarted uint32
 	workersStop    chan struct{}
 
 	messageFetcherStarted uint32
 	messageFetcherStop    uint32
+
+	delBatch *internal.Batcher
 
 	errCount   uint32
 	delayCount uint32
@@ -173,7 +172,7 @@ func (p *Processor) startWorkers() bool {
 	p.workersStop = make(chan struct{})
 	p.workersWG.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
-		go p.worker(i)
+		go p.worker(i, p.workersStop)
 	}
 
 	return true
@@ -211,6 +210,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 
 	close(p.workersStop)
+	p.workersStop = nil
 
 	done = make(chan struct{})
 	go func() {
@@ -249,12 +249,14 @@ func (p *Processor) ProcessAll() error {
 	var noWork int
 	for {
 		isIdle := atomic.LoadUint32(&p.inFlight) == 0
+
 		n, err := p.fetchMessages()
 		if err != nil {
 			if err != internal.ErrNotSupported {
 				return err
 			}
 		}
+
 		if n == 0 && isIdle {
 			noWork++
 		} else {
@@ -263,11 +265,13 @@ func (p *Processor) ProcessAll() error {
 		if noWork == 2 {
 			break
 		}
+
 		if err == internal.ErrNotSupported {
-			// Don't burn CPU.
+			// Don't burn CPU waiting.
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+
 	return p.Stop()
 }
 
@@ -354,7 +358,7 @@ func (p *Processor) fetchMessages() (int, error) {
 	return len(msgs), nil
 }
 
-func (p *Processor) worker(id int) {
+func (p *Processor) worker(id int, stop <-chan struct{}) {
 	defer p.workersWG.Done()
 
 	if p.opt.WorkerLimit > 0 {
@@ -366,19 +370,9 @@ func (p *Processor) worker(id int) {
 			p.lockWorker(id)
 		}
 
-		msg, ok := p.dequeueMessage()
+		msg, ok := p.dequeueMessage(stop)
 		if !ok {
 			break
-		}
-
-		if p.opt.RateLimiter != nil {
-			for {
-				delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
-				if allow {
-					break
-				}
-				time.Sleep(delay)
-			}
 		}
 
 		p.process(id, msg)
@@ -425,19 +419,53 @@ func (p *Processor) Purge() error {
 	}
 }
 
-func (p *Processor) dequeueMessage() (*msgqueue.Message, bool) {
+func (p *Processor) dequeueMessage(stop <-chan struct{}) (*msgqueue.Message, bool) {
 	p.startMessageFetcher()
+
+	if p.opt.RateLimiter != nil {
+		select {
+		case <-p.allowRate(stop):
+		case <-stop:
+			return p.dequeueMessageOrStop()
+		}
+	}
+
 	select {
 	case msg := <-p.ch:
 		return msg, true
-	case <-p.workersStop:
-		select {
-		case msg := <-p.ch:
-			return msg, true
-		default:
-			return nil, false
-		}
+	case <-stop:
+		return p.dequeueMessageOrStop()
 	}
+}
+
+func (p *Processor) dequeueMessageOrStop() (*msgqueue.Message, bool) {
+	select {
+	case msg := <-p.ch:
+		return msg, true
+	default:
+		return nil, false
+	}
+}
+
+func (p *Processor) allowRate(stop <-chan struct{}) <-chan struct{} {
+	allowCh := make(chan struct{})
+	go func() {
+		for {
+			delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
+			if allow {
+				close(allowCh)
+				return
+			}
+
+			time.Sleep(delay)
+			select {
+			case <-stop:
+				return
+			default:
+			}
+		}
+	}()
+	return allowCh
 }
 
 func (p *Processor) release(msg *msgqueue.Message, reason error) {
