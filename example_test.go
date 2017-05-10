@@ -6,11 +6,11 @@ import (
 	"math"
 	"time"
 
+	"github.com/go-redis/redis"
+	"golang.org/x/time/rate"
+
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/memqueue"
-
-	"github.com/go-redis/redis"
-	timerate "golang.org/x/time/rate"
 )
 
 func redisRing() *redis.Ring {
@@ -79,7 +79,7 @@ func Example_rateLimit() {
 			fmt.Println(timeSinceCeil(start))
 		},
 		Redis:     redisRing(),
-		RateLimit: timerate.Every(time.Second),
+		RateLimit: rate.Every(time.Second),
 	})
 
 	for i := 0; i < 5; i++ {
@@ -102,7 +102,7 @@ func Example_once() {
 			fmt.Println("hello", name)
 		},
 		Redis:     redisRing(),
-		RateLimit: timerate.Every(time.Second),
+		RateLimit: rate.Every(time.Second),
 	})
 
 	for _, name := range []string{"world", "adele"} {

@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/memqueue"
-
-	"github.com/go-redis/rate"
 	"github.com/go-redis/redis"
+	"github.com/go-redis/redis_rate"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	timerate "golang.org/x/time/rate"
+	"golang.org/x/time/rate"
+
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/memqueue"
 )
 
 func TestMemqueue(t *testing.T) {
@@ -371,7 +371,7 @@ var _ = Describe("Queue", func() {
 		q = memqueue.NewQueue(&msgqueue.Options{
 			Redis:     redisRing(),
 			Handler:   func() {},
-			RateLimit: timerate.Every(time.Second),
+			RateLimit: rate.Every(time.Second),
 		})
 	})
 
@@ -494,7 +494,8 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func rateLimiter() *rate.Limiter {
-	fallbackLimiter := timerate.NewLimiter(timerate.Every(time.Millisecond), 100)
-	return rate.NewLimiter(redisRing(), fallbackLimiter)
+func rateLimiter() *redis_rate.Limiter {
+	l := redis_rate.NewLimiter(redisRing())
+	l.Fallback = rate.NewLimiter(rate.Every(time.Millisecond), 100)
+	return l
 }

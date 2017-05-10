@@ -4,9 +4,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-redis/rate"
 	"github.com/go-redis/redis"
-	timerate "golang.org/x/time/rate"
+	"github.com/go-redis/redis_rate"
+	"golang.org/x/time/rate"
 )
 
 type Redis interface {
@@ -34,7 +34,7 @@ func (s redisStorage) Exists(key string) bool {
 }
 
 type RateLimiter interface {
-	AllowRate(name string, limit timerate.Limit) (delay time.Duration, allow bool)
+	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
 }
 
 type Options struct {
@@ -67,7 +67,7 @@ type Options struct {
 	MinBackoff time.Duration
 
 	// Processing rate limit.
-	RateLimit timerate.Limit
+	RateLimit rate.Limit
 
 	// Redis client that is used for storing metadata.
 	Redis Redis
@@ -103,7 +103,7 @@ func (opt *Options) Init() {
 		}
 	}
 	if opt.RateLimit == 0 {
-		opt.RateLimit = timerate.Inf
+		opt.RateLimit = rate.Inf
 	}
 	if opt.ReservationTimeout == 0 {
 		opt.ReservationTimeout = 300 * time.Second
@@ -119,8 +119,9 @@ func (opt *Options) Init() {
 		opt.Storage = redisStorage{opt.Redis}
 	}
 
-	if opt.RateLimit != timerate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
-		fallbackLimiter := timerate.NewLimiter(opt.RateLimit, 1)
-		opt.RateLimiter = rate.NewLimiter(opt.Redis, fallbackLimiter)
+	if opt.RateLimit != rate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
+		limiter := redis_rate.NewLimiter(opt.Redis)
+		limiter.Fallback = rate.NewLimiter(opt.RateLimit, 1)
+		opt.RateLimiter = limiter
 	}
 }

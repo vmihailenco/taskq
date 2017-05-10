@@ -36,7 +36,7 @@ rate limiting is implemented in the processor package using [go-redis rate](http
 ```go
 import "github.com/go-msgqueue/msgqueue"
 import "github.com/go-redis/redis"
-import timerate "golang.org/x/time/rate"
+import "golang.org/x/time/rate"
 
 // Create in-memory queue that prints greetings.
 q := memqueue.NewQueue(&msgqueue.Options{
@@ -46,7 +46,7 @@ q := memqueue.NewQueue(&msgqueue.Options{
         return nil
     },
 
-    RateLimit: timerate.Every(time.Second),
+    RateLimit: rate.Every(time.Second),
 
     // Redis is only needed for rate limiting and call once.
     Redis: redis.NewClient(&redis.Options{
