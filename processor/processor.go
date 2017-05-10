@@ -554,7 +554,6 @@ func (p *Processor) lockWorker(id int) {
 		ok, err := lock.Lock()
 		if err != nil {
 			log.Printf("msgqueue: redlock.Lock failed: %s", err)
-			return
 		}
 		if ok {
 			return
