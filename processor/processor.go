@@ -73,7 +73,7 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 		q:   q,
 		opt: opt,
 
-		ch: make(chan *msgqueue.Message, opt.BufferSize),
+		ch: make(chan *msgqueue.Message, opt.BufferSize-1),
 	}
 
 	if opt.WorkerLimit > 0 {
