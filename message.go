@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"gopkg.in/vmihailenco/msgpack.v2"
+	"github.com/vmihailenco/msgpack"
 )
 
 var ErrDuplicate = errors.New("queue: message with such name already exists")

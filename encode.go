@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"gopkg.in/vmihailenco/msgpack.v2"
+	"github.com/vmihailenco/msgpack"
 )
 
 func encodeArgs(args []interface{}) (string, error) {
