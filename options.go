@@ -62,9 +62,10 @@ type Options struct {
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
 	RetryLimit int
-
-	// Minimum time between retries.
+	// Minimum backoff time between retries.
 	MinBackoff time.Duration
+	// Maximum backoff time between retries.
+	MaxBackoff time.Duration
 
 	// Processing rate limit.
 	RateLimit rate.Limit
@@ -113,6 +114,9 @@ func (opt *Options) Init() {
 	}
 	if opt.MinBackoff == 0 {
 		opt.MinBackoff = 30 * time.Second
+	}
+	if opt.MaxBackoff == 0 {
+		opt.MaxBackoff = 12 * time.Hour
 	}
 
 	if opt.Storage == nil {

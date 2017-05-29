@@ -18,7 +18,9 @@ import (
 )
 
 func queueName(s string) string {
-	return "test-" + s + "-" + strings.Replace(runtime.Version(), ".", "", -1)
+	version := strings.Split(runtime.Version(), " ")[0]
+	version = strings.Replace(version, ".", "", -1)
+	return "test-" + s + "-" + version
 }
 
 func printStats(p *processor.Processor) {

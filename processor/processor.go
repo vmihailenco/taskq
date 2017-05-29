@@ -15,7 +15,6 @@ import (
 )
 
 const consumerBackoff = time.Second
-const maxBackoff = 12 * time.Hour
 const stopTimeout = 30 * time.Second
 
 type Delayer interface {
@@ -54,9 +53,8 @@ type Processor struct {
 
 	delBatch *internal.Batcher
 
-	errCount   uint32
-	delayCount uint32
-	delaySec   uint32
+	errCount uint32
+	delaySec uint32
 
 	inFlight    uint32
 	deleting    uint32
@@ -230,15 +228,15 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 func (p *Processor) paused() time.Duration {
 	const threshold = 100
 
-	if atomic.LoadUint32(&p.delayCount) > threshold {
-		return time.Duration(atomic.LoadUint32(&p.delaySec)) * time.Second
+	if atomic.LoadUint32(&p.errCount) < threshold {
+		return 0
 	}
 
-	if atomic.LoadUint32(&p.errCount) > threshold {
+	sec := atomic.LoadUint32(&p.delaySec)
+	if sec == 0 {
 		return time.Minute
 	}
-
-	return 0
+	return time.Duration(sec) * time.Second
 }
 
 // ProcessAll starts workers to process messages in the queue and then stops
@@ -391,11 +389,13 @@ func (p *Processor) process(workerId int, msg *msgqueue.Message) error {
 	p.updateAvgDuration(time.Since(start))
 
 	if err == nil {
+		p.resetPause()
 		atomic.AddUint32(&p.processed, 1)
 		p.delete(msg, nil)
 		return nil
 	}
 
+	atomic.AddUint32(&p.errCount, 1)
 	if msg.ReservedCount < p.opt.RetryLimit {
 		atomic.AddUint32(&p.retries, 1)
 		p.release(msg, err)
@@ -472,6 +472,17 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 	delay := p.releaseBackoff(msg, reason)
 
 	if reason != nil {
+		new := uint32(delay / time.Second)
+		for {
+			old := atomic.LoadUint32(&p.delaySec)
+			if new > old {
+				break
+			}
+			if atomic.CompareAndSwapUint32(&p.delaySec, old, new) {
+				break
+			}
+		}
+
 		log.Printf("%s handler failed (retry in dur=%s): %s", p.q, delay, reason)
 	}
 	if err := p.q.Release(msg, delay); err != nil {
@@ -485,12 +496,7 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Duration {
 	if reason != nil {
 		if delayer, ok := reason.(Delayer); ok {
-			delay := delayer.Delay()
-			if delay > time.Minute {
-				atomic.StoreUint32(&p.delaySec, uint32(delay/time.Second))
-				atomic.AddUint32(&p.delayCount, 1)
-			}
-			return delay
+			return delayer.Delay()
 		}
 	}
 
@@ -498,13 +504,11 @@ func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Dur
 		return msg.Delay
 	}
 
-	return exponentialBackoff(p.opt.MinBackoff, msg.ReservedCount)
+	return exponentialBackoff(p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
 }
 
 func (p *Processor) delete(msg *msgqueue.Message, reason error) {
-	if reason == nil {
-		p.resetPause()
-	} else {
+	if reason != nil {
 		log.Printf("%s handler failed: %s", p.q, reason)
 
 		if p.fallbackHandler != nil {
@@ -542,8 +546,8 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 }
 
 func (p *Processor) resetPause() {
+	atomic.StoreUint32(&p.delaySec, 0)
 	atomic.StoreUint32(&p.errCount, 0)
-	atomic.StoreUint32(&p.delayCount, 0)
 }
 
 func (p *Processor) lockWorker(id int) {
@@ -569,10 +573,10 @@ func (p *Processor) unlockWorker(id int) {
 	}
 }
 
-func exponentialBackoff(dur time.Duration, retry int) time.Duration {
-	dur <<= uint(retry - 1)
-	if dur > maxBackoff {
-		dur = maxBackoff
+func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
+	dur := min << uint(retry-1)
+	if dur >= min && dur < max {
+		return dur
 	}
-	return dur
+	return max
 }
