@@ -112,7 +112,7 @@ func (opt *Options) Init() {
 		opt.RetryLimit = 10
 	}
 	if opt.MinBackoff == 0 {
-		opt.MinBackoff = 3 * time.Second
+		opt.MinBackoff = 30 * time.Second
 	}
 
 	if opt.Storage == nil {
