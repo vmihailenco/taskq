@@ -24,7 +24,7 @@ func queueName(s string) string {
 }
 
 func printStats(p *processor.Processor) {
-	var old *processor.Stats
+	var old *msgqueue.Stats
 	for _ = range time.Tick(3 * time.Second) {
 		st := p.Stats()
 		if st == nil {
