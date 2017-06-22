@@ -1,4 +1,4 @@
-package processor
+package msgqueue
 
 import (
 	"errors"
@@ -9,9 +9,7 @@ import (
 
 	"github.com/bsm/redis-lock"
 
-	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
-	"github.com/go-msgqueue/msgqueue/internal/msgbatcher"
 )
 
 const stopTimeout = 30 * time.Second
@@ -20,7 +18,7 @@ type Delayer interface {
 	Delay() time.Duration
 }
 
-type Stats struct {
+type ProcessorStats struct {
 	InFlight    uint32
 	Deleting    uint32
 	Processed   uint32
@@ -32,14 +30,14 @@ type Stats struct {
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
-	q   msgqueue.Queue
-	opt *msgqueue.Options
+	q   Queue
+	opt *Options
 
-	handler         msgqueue.Handler
-	fallbackHandler msgqueue.Handler
+	handler         Handler
+	fallbackHandler Handler
 
 	wg sync.WaitGroup
-	ch chan *msgqueue.Message
+	ch chan *Message
 
 	workersWG   sync.WaitGroup
 	workerLocks []*lock.Lock
@@ -50,7 +48,7 @@ type Processor struct {
 	messageFetcherStarted uint32
 	messageFetcherStop    uint32
 
-	delBatch *msgbatcher.Batcher
+	delBatch *msgBatcher
 
 	errCount uint32
 	delaySec uint32
@@ -64,13 +62,13 @@ type Processor struct {
 }
 
 // New creates new Processor for the queue using provided processing options.
-func New(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
+func NewProcessor(q Queue, opt *Options) *Processor {
 	opt.Init()
 	p := &Processor{
 		q:   q,
 		opt: opt,
 
-		ch: make(chan *msgqueue.Message, opt.BufferSize-1),
+		ch: make(chan *Message, opt.BufferSize-1),
 	}
 
 	if opt.WorkerLimit > 0 {
@@ -88,14 +86,14 @@ func New(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	p.delBatch = msgbatcher.New(p.opt.WorkerNumber, p.deleteBatch)
+	p.delBatch = newMsgBatcher(p.opt.WorkerNumber, p.deleteBatch)
 
 	return p
 }
 
 // Starts creates new Processor and starts it.
-func Start(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
-	p := New(q, opt)
+func StartProcessor(q Queue, opt *Options) *Processor {
+	p := NewProcessor(q, opt)
 	p.Start()
 	return p
 }
@@ -108,8 +106,8 @@ func (p *Processor) String() string {
 }
 
 // Stats returns processor stats.
-func (p *Processor) Stats() *Stats {
-	return &Stats{
+func (p *Processor) Stats() *ProcessorStats {
+	return &ProcessorStats{
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
@@ -120,15 +118,15 @@ func (p *Processor) Stats() *Stats {
 }
 
 func (p *Processor) setHandler(handler interface{}) {
-	p.handler = msgqueue.NewHandler(handler)
+	p.handler = NewHandler(handler)
 }
 
 func (p *Processor) setFallbackHandler(handler interface{}) {
-	p.fallbackHandler = msgqueue.NewHandler(handler)
+	p.fallbackHandler = NewHandler(handler)
 }
 
 // Add adds message to the processor internal queue.
-func (p *Processor) Add(msg *msgqueue.Message) error {
+func (p *Processor) Add(msg *Message) error {
 	p.wg.Add(1)
 	atomic.AddUint32(&p.inFlight, 1)
 	p.ch <- msg
@@ -136,7 +134,7 @@ func (p *Processor) Add(msg *msgqueue.Message) error {
 }
 
 // Add adds message to the processor internal queue with specified delay.
-func (p *Processor) AddDelay(msg *msgqueue.Message, delay time.Duration) error {
+func (p *Processor) AddDelay(msg *Message, delay time.Duration) error {
 	if delay == 0 {
 		return p.Add(msg)
 	}
@@ -150,7 +148,7 @@ func (p *Processor) AddDelay(msg *msgqueue.Message, delay time.Duration) error {
 }
 
 // Process is low-level API to process message bypassing the internal queue.
-func (p *Processor) Process(msg *msgqueue.Message) error {
+func (p *Processor) Process(msg *Message) error {
 	p.wg.Add(1)
 	return p.process(-1, msg)
 }
@@ -287,7 +285,7 @@ func (p *Processor) ProcessOne() error {
 	return firstErr
 }
 
-func (p *Processor) reserveOne() (*msgqueue.Message, error) {
+func (p *Processor) reserveOne() (*Message, error) {
 	select {
 	case msg := <-p.ch:
 		return msg, nil
@@ -383,7 +381,7 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 
 }
 
-func (p *Processor) process(workerId int, msg *msgqueue.Message) error {
+func (p *Processor) process(workerId int, msg *Message) error {
 	if msg.Delay > 0 {
 		p.release(msg, nil)
 		return nil
@@ -424,7 +422,7 @@ func (p *Processor) Purge() error {
 	}
 }
 
-func (p *Processor) dequeueMessage(stop <-chan struct{}) (*msgqueue.Message, bool) {
+func (p *Processor) dequeueMessage(stop <-chan struct{}) (*Message, bool) {
 	p.startMessageFetcher()
 
 	if p.opt.RateLimiter != nil {
@@ -443,7 +441,7 @@ func (p *Processor) dequeueMessage(stop <-chan struct{}) (*msgqueue.Message, boo
 	}
 }
 
-func (p *Processor) dequeueMessageOrStop() (*msgqueue.Message, bool) {
+func (p *Processor) dequeueMessageOrStop() (*Message, bool) {
 	select {
 	case msg := <-p.ch:
 		return msg, true
@@ -473,7 +471,7 @@ func (p *Processor) allowRate(stop <-chan struct{}) <-chan struct{} {
 	return allowCh
 }
 
-func (p *Processor) release(msg *msgqueue.Message, reason error) {
+func (p *Processor) release(msg *Message, reason error) {
 	delay := p.releaseBackoff(msg, reason)
 
 	if reason != nil {
@@ -498,7 +496,7 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 	p.wg.Done()
 }
 
-func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Duration {
+func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
 	if reason != nil {
 		if delayer, ok := reason.(Delayer); ok {
 			return delayer.Delay()
@@ -512,7 +510,7 @@ func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Dur
 	return exponentialBackoff(p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
 }
 
-func (p *Processor) delete(msg *msgqueue.Message, reason error) {
+func (p *Processor) delete(msg *Message, reason error) {
 	if reason != nil {
 		internal.Logf("%s handler failed: %s", p.q, reason)
 
@@ -528,7 +526,7 @@ func (p *Processor) delete(msg *msgqueue.Message, reason error) {
 	p.delBatch.Add(msg)
 }
 
-func (p *Processor) deleteBatch(msgs []*msgqueue.Message) {
+func (p *Processor) deleteBatch(msgs []*Message) {
 	if err := p.q.DeleteBatch(msgs); err != nil {
 		internal.Logf("%s DeleteBatch failed: %s", p.q, err)
 	}

@@ -1,4 +1,4 @@
-package processor_test
+package msgqueue_test
 
 import (
 	"testing"

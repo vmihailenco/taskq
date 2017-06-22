@@ -1,14 +1,14 @@
-package processor_test
+package msgqueue_test
 
 import (
 	"os"
 	"testing"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/azsqs"
-
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+
+	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/azsqs"
 )
 
 var accountId string

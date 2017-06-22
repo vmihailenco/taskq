@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
-	"github.com/go-msgqueue/msgqueue/processor"
 )
 
 type manager struct{}
@@ -17,7 +16,11 @@ func (manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
 }
 
 func (manager) Queues() []msgqueue.Queue {
-	return Queues()
+	var queues []msgqueue.Queue
+	for _, q := range Queues() {
+		queues = append(queues, q)
+	}
+	return queues
 }
 
 func NewManager() msgqueue.Manager {
@@ -30,7 +33,7 @@ type Queue struct {
 	sync    bool
 	noDelay bool
 
-	p  *processor.Processor
+	p  *msgqueue.Processor
 	wg sync.WaitGroup
 }
 
@@ -41,7 +44,7 @@ func NewQueue(opt *msgqueue.Options) *Queue {
 	q := Queue{
 		opt: opt,
 	}
-	q.p = processor.Start(&q, opt)
+	q.p = msgqueue.StartProcessor(&q, opt)
 
 	registerQueue(&q)
 	return &q
@@ -59,7 +62,7 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
-func (q *Queue) Processor() msgqueue.Processor {
+func (q *Queue) Processor() *msgqueue.Processor {
 	return q.p
 }
 

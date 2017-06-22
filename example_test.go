@@ -6,24 +6,11 @@ import (
 	"math"
 	"time"
 
-	"github.com/go-redis/redis"
 	"golang.org/x/time/rate"
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/memqueue"
 )
-
-func redisRing() *redis.Ring {
-	ring := redis.NewRing(&redis.RingOptions{
-		Addrs:    map[string]string{"0": ":6379"},
-		PoolSize: 100,
-	})
-	err := ring.FlushDb().Err()
-	if err != nil {
-		panic(err)
-	}
-	return ring
-}
 
 func timeSince(start time.Time) time.Duration {
 	secs := float64(time.Since(start)) / float64(time.Second)
