@@ -104,15 +104,21 @@ azsqs package uses Amazon Simple Queue Service as queue backend.
 ```go
 import "github.com/go-msgqueue/msgqueue"
 import "github.com/go-msgqueue/msgqueue/azsqs"
-import "github.com/aws/aws-sdk-go/service/sqs"
 
-awsAccountId := "123456789"
-q := azsqs.NewQueue(awsSQS(), awsAccountId, &msgqueue.Options{
-    Name: "sqs-queue-name",
-    Handler: func(name string) error {
-        fmt.Println("Hello", name)
-        return nil
-    },
+// This helper function is provided for hard-coded credentials.
+// TOKEN here is an optional identifier, and an empty string can be used.
+// It's suggested to use env vars or a credentials file. See https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html for more details
+creds := azsqs.CreateCredentials("KEY_ID", "SECRET", "TOKEN")
+
+// SQSManager is used to handle session and client initialisation
+man, _ := azsqs.NewSQSManager("REGION", "ACCOUNT_ID", creds)
+
+q := man.NewQueue(&msgqueue.Options{
+  Name: "sqs-queue-name",
+  Handler: func(name string) {
+    fmt.Println("Hello", name)
+    return nil
+  }
 })
 
 // Add message.
@@ -124,6 +130,9 @@ p.Start()
 
 // Stop processing.
 p.Stop()
+
+// Or to wait until finished processing:
+p.ProcessAll()
 ```
 
 ### IronMQ
@@ -133,13 +142,15 @@ ironmq package uses IronMQ as queue backend.
 ```go
 import "github.com/go-msgqueue/msgqueue"
 import "github.com/go-msgqueue/msgqueue/ironmq"
-import "github.com/iron-io/iron_go3/mq"
 
-q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &msgqueue.Options{
-    Handler: func(name string) error {
-        fmt.Println("Hello", name)
-        return nil
-    },
+// Host format is XXXX.iron.io
+man := ironmq.NewIronManager("HOST ", "PROJECT_ID", "TOKEN")
+
+q := man.NewQueue(&msgqueue.Options{
+  Name: "iron-queue-name",
+  Handler: func(name string) {
+    fmt.Println("hello", name)
+  },
 })
 
 // Add message.
@@ -151,6 +162,9 @@ p.Start()
 
 // Stop processing.
 p.Stop()
+
+// Or to wait until finished processing:
+p.ProcessAll()
 ```
 
 ### In-memory

@@ -20,15 +20,6 @@ type Delayer interface {
 	Delay() time.Duration
 }
 
-type Stats struct {
-	InFlight    uint32
-	Deleting    uint32
-	Processed   uint32
-	Retries     uint32
-	Fails       uint32
-	AvgDuration time.Duration
-}
-
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
@@ -108,8 +99,8 @@ func (p *Processor) String() string {
 }
 
 // Stats returns processor stats.
-func (p *Processor) Stats() *Stats {
-	return &Stats{
+func (p *Processor) Stats() *msgqueue.Stats {
+	return &msgqueue.Stats{
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
