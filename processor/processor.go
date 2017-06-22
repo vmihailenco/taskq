@@ -3,7 +3,6 @@ package processor
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,9 +11,9 @@ import (
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
+	"github.com/go-msgqueue/msgqueue/internal/msgbatcher"
 )
 
-const consumerBackoff = time.Second
 const stopTimeout = 30 * time.Second
 
 type Delayer interface {
@@ -51,7 +50,7 @@ type Processor struct {
 	messageFetcherStarted uint32
 	messageFetcherStop    uint32
 
-	delBatch *internal.Batcher
+	delBatch *msgbatcher.Batcher
 
 	errCount uint32
 	delaySec uint32
@@ -89,7 +88,7 @@ func New(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	p.delBatch = internal.NewBatcher(p.opt.WorkerNumber, p.deleteBatch)
+	p.delBatch = msgbatcher.New(p.opt.WorkerNumber, p.deleteBatch)
 
 	return p
 }
@@ -168,8 +167,8 @@ func (p *Processor) startWorkers() bool {
 	}
 
 	p.workersStop = make(chan struct{})
-	p.workersWG.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
+		p.workersWG.Add(1)
 		go p.worker(i, p.workersStop)
 	}
 
@@ -228,7 +227,8 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 func (p *Processor) paused() time.Duration {
 	const threshold = 100
 
-	if atomic.LoadUint32(&p.errCount) < threshold {
+	if p.opt.PauseErrorsThreshold == 0 ||
+		atomic.LoadUint32(&p.errCount) < uint32(p.opt.PauseErrorsThreshold) {
 		return 0
 	}
 
@@ -311,13 +311,18 @@ func (p *Processor) startMessageFetcher() bool {
 	if !atomic.CompareAndSwapUint32(&p.messageFetcherStarted, 0, 1) {
 		return false
 	}
+
 	p.workersWG.Add(1)
 	go p.messageFetcher()
+
 	return true
 }
 
 func (p *Processor) messageFetcher() {
+	const consumerBackoff = time.Second
+
 	defer p.workersWG.Done()
+
 	for {
 		if atomic.LoadUint32(&p.messageFetcherStop) == 1 {
 			break
@@ -325,7 +330,7 @@ func (p *Processor) messageFetcher() {
 
 		if pauseTime := p.paused(); pauseTime > 0 {
 			p.resetPause()
-			log.Printf("msgqueue: %s is automatically paused for dur=%s", p.q, pauseTime)
+			internal.Logf("%s is automatically paused for dur=%s", p.q, pauseTime)
 			time.Sleep(pauseTime)
 			continue
 		}
@@ -336,8 +341,8 @@ func (p *Processor) messageFetcher() {
 				break
 			}
 
-			log.Printf(
-				"msgqueue: %s ReserveN failed: %s (sleeping for dur=%s)",
+			internal.Logf(
+				"%s ReserveN failed: %s (sleeping for dur=%s)",
 				p.q, err, consumerBackoff,
 			)
 			time.Sleep(consumerBackoff)
@@ -483,10 +488,10 @@ func (p *Processor) release(msg *msgqueue.Message, reason error) {
 			}
 		}
 
-		log.Printf("%s handler failed (retry in dur=%s): %s", p.q, delay, reason)
+		internal.Logf("%s handler failed (retry in dur=%s): %s", p.q, delay, reason)
 	}
 	if err := p.q.Release(msg, delay); err != nil {
-		log.Printf("%s Release failed: %s", p.q, err)
+		internal.Logf("%s Release failed: %s", p.q, err)
 	}
 
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
@@ -509,11 +514,11 @@ func (p *Processor) releaseBackoff(msg *msgqueue.Message, reason error) time.Dur
 
 func (p *Processor) delete(msg *msgqueue.Message, reason error) {
 	if reason != nil {
-		log.Printf("%s handler failed: %s", p.q, reason)
+		internal.Logf("%s handler failed: %s", p.q, reason)
 
 		if p.fallbackHandler != nil {
 			if err := p.fallbackHandler.HandleMessage(msg); err != nil {
-				log.Printf("%s fallback handler failed: %s", p.q, err)
+				internal.Logf("%s fallback handler failed: %s", p.q, err)
 			}
 		}
 	}
@@ -525,7 +530,7 @@ func (p *Processor) delete(msg *msgqueue.Message, reason error) {
 
 func (p *Processor) deleteBatch(msgs []*msgqueue.Message) {
 	if err := p.q.DeleteBatch(msgs); err != nil {
-		log.Printf("msgqueue: %s DeleteBatch failed: %s", p.q, err)
+		internal.Logf("%s DeleteBatch failed: %s", p.q, err)
 	}
 	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
 	for i := 0; i < len(msgs); i++ {
@@ -557,7 +562,7 @@ func (p *Processor) lockWorker(id int) {
 	for {
 		ok, err := lock.Lock()
 		if err != nil {
-			log.Printf("msgqueue: redlock.Lock failed: %s", err)
+			internal.Logf("redlock.Lock failed: %s", err)
 		}
 		if ok {
 			return
@@ -569,7 +574,7 @@ func (p *Processor) lockWorker(id int) {
 func (p *Processor) unlockWorker(id int) {
 	lock := p.workerLocks[id]
 	if err := lock.Unlock(); err != nil {
-		log.Printf("msgqueue: redlock.Unlock failed: %s", err)
+		internal.Logf("redlock.Unlock failed: %s", err)
 	}
 }
 

@@ -48,7 +48,7 @@ type Options struct {
 	// Function called to process failed message.
 	FallbackHandler interface{}
 
-	// Number of goroutines processing messages.
+	// Number of worker goroutines processing messages.
 	WorkerNumber int
 	// Global limit of concurrently running workers. Overrides WorkerNumber.
 	WorkerLimit int
@@ -66,6 +66,10 @@ type Options struct {
 	MinBackoff time.Duration
 	// Maximum backoff time between retries.
 	MaxBackoff time.Duration
+
+	// Number of consecutive failures after which queue processing is paused.
+	// Default is 100 failures.
+	PauseErrorsThreshold int
 
 	// Processing rate limit.
 	RateLimit rate.Limit
@@ -91,11 +95,12 @@ func (opt *Options) Init() {
 	if opt.GroupName == "" {
 		opt.GroupName = opt.Name
 	}
+
 	if opt.WorkerLimit > 0 {
 		opt.WorkerNumber = opt.WorkerLimit
 	}
 	if opt.WorkerNumber == 0 {
-		opt.WorkerNumber = 10 * runtime.NumCPU()
+		opt.WorkerNumber = 4 * runtime.NumCPU()
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.WorkerNumber
@@ -103,12 +108,22 @@ func (opt *Options) Init() {
 			opt.BufferSize = 10
 		}
 	}
+
+	switch opt.PauseErrorsThreshold {
+	case -1:
+		opt.PauseErrorsThreshold = 0
+	case 0:
+		opt.PauseErrorsThreshold = 100
+	}
+
 	if opt.RateLimit == 0 {
 		opt.RateLimit = rate.Inf
 	}
+
 	if opt.ReservationTimeout == 0 {
 		opt.ReservationTimeout = 300 * time.Second
 	}
+
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 10
 	}

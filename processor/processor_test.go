@@ -2,7 +2,6 @@ package processor_test
 
 import (
 	"errors"
-	"log"
 	"runtime"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/go-msgqueue/msgqueue/processor"
 )
 
@@ -35,7 +35,7 @@ func printStats(p *processor.Processor) {
 		}
 		old = st
 
-		log.Printf(
+		internal.Logf(
 			"%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
 			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
 		)
