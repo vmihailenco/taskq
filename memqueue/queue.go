@@ -10,7 +10,19 @@ import (
 	"github.com/go-msgqueue/msgqueue/processor"
 )
 
-const redisPrefix = "memqueue"
+type manager struct{}
+
+func (manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
+	return NewQueue(opt)
+}
+
+func (manager) Queues() []msgqueue.Queue {
+	return Queues()
+}
+
+func NewManager() msgqueue.Manager {
+	return manager{}
+}
 
 type Queue struct {
 	opt *msgqueue.Options
@@ -114,6 +126,8 @@ func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) isUniqueName(name string) bool {
+	const redisPrefix = "memqueue"
+
 	if name == "" {
 		return true
 	}

@@ -14,6 +14,24 @@ import (
 	"github.com/go-msgqueue/msgqueue/processor"
 )
 
+type manager struct {
+	mqueue mq.Queue
+}
+
+func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
+	return NewQueue(m.mqueue, opt)
+}
+
+func (manager) Queues() []msgqueue.Queue {
+	return Queues()
+}
+
+func NewManager(mqueue mq.Queue) msgqueue.Manager {
+	return &manager{
+		mqueue: mqueue,
+	}
+}
+
 type Queue struct {
 	q        mq.Queue
 	opt      *msgqueue.Options
