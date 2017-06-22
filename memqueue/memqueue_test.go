@@ -349,9 +349,10 @@ var _ = Describe("stress testing failing queue", func() {
 
 	BeforeEach(func() {
 		q = memqueue.NewQueue(&msgqueue.Options{
-			Handler:         handler,
-			FallbackHandler: fallbackHandler,
-			RetryLimit:      1,
+			Handler:              handler,
+			FallbackHandler:      fallbackHandler,
+			RetryLimit:           1,
+			PauseErrorsThreshold: -1,
 		})
 
 		for i := 0; i < n; i++ {

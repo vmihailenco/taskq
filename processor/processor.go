@@ -14,7 +14,6 @@ import (
 	"github.com/go-msgqueue/msgqueue/internal/msgbatcher"
 )
 
-const consumerBackoff = time.Second
 const stopTimeout = 30 * time.Second
 
 type Delayer interface {
@@ -168,8 +167,8 @@ func (p *Processor) startWorkers() bool {
 	}
 
 	p.workersStop = make(chan struct{})
-	p.workersWG.Add(p.opt.WorkerNumber)
 	for i := 0; i < p.opt.WorkerNumber; i++ {
+		p.workersWG.Add(1)
 		go p.worker(i, p.workersStop)
 	}
 
@@ -228,7 +227,8 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 func (p *Processor) paused() time.Duration {
 	const threshold = 100
 
-	if atomic.LoadUint32(&p.errCount) < threshold {
+	if p.opt.PauseErrorsThreshold == 0 ||
+		atomic.LoadUint32(&p.errCount) < uint32(p.opt.PauseErrorsThreshold) {
 		return 0
 	}
 
@@ -311,13 +311,18 @@ func (p *Processor) startMessageFetcher() bool {
 	if !atomic.CompareAndSwapUint32(&p.messageFetcherStarted, 0, 1) {
 		return false
 	}
+
 	p.workersWG.Add(1)
 	go p.messageFetcher()
+
 	return true
 }
 
 func (p *Processor) messageFetcher() {
+	const consumerBackoff = time.Second
+
 	defer p.workersWG.Done()
+
 	for {
 		if atomic.LoadUint32(&p.messageFetcherStop) == 1 {
 			break
