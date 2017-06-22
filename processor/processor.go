@@ -33,7 +33,7 @@ type Stats struct {
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
-	q   Queuer
+	q   msgqueue.Queue
 	opt *msgqueue.Options
 
 	handler         msgqueue.Handler
@@ -65,7 +65,7 @@ type Processor struct {
 }
 
 // New creates new Processor for the queue using provided processing options.
-func New(q Queuer, opt *msgqueue.Options) *Processor {
+func New(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
 	opt.Init()
 	p := &Processor{
 		q:   q,
@@ -95,7 +95,7 @@ func New(q Queuer, opt *msgqueue.Options) *Processor {
 }
 
 // Starts creates new Processor and starts it.
-func Start(q Queuer, opt *msgqueue.Options) *Processor {
+func Start(q msgqueue.Queue, opt *msgqueue.Options) *Processor {
 	p := New(q, opt)
 	p.Start()
 	return p

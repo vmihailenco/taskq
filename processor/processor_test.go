@@ -54,7 +54,7 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func testProcessor(t *testing.T, q processor.Queuer) {
+func testProcessor(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -92,7 +92,7 @@ func testProcessor(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testDelay(t *testing.T, q processor.Queuer) {
+func testDelay(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -126,7 +126,7 @@ func testDelay(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testRetry(t *testing.T, q processor.Queuer) {
+func testRetry(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -168,7 +168,7 @@ func testRetry(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testNamedMessage(t *testing.T, q processor.Queuer) {
+func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -215,7 +215,7 @@ func testNamedMessage(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testCallOnce(t *testing.T, q processor.Queuer) {
+func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -265,7 +265,7 @@ func testCallOnce(t *testing.T, q processor.Queuer) {
 	}
 }
 
-func testRateLimit(t *testing.T, q processor.Queuer) {
+func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()
@@ -320,7 +320,7 @@ func (RateLimitError) Delay() time.Duration {
 	return 5 * time.Second
 }
 
-func testDelayer(t *testing.T, q processor.Queuer) {
+func testDelayer(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()

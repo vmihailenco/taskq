@@ -22,7 +22,7 @@ type Queue struct {
 	wg sync.WaitGroup
 }
 
-var _ processor.Queuer = (*Queue)(nil)
+var _ msgqueue.Queue = (*Queue)(nil)
 
 func NewQueue(opt *msgqueue.Options) *Queue {
 	opt.Init()
@@ -47,7 +47,7 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
-func (q *Queue) Processor() *processor.Processor {
+func (q *Queue) Processor() msgqueue.Processor {
 	return q.p
 }
 
