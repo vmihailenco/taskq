@@ -15,6 +15,26 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+type manager struct {
+	sqs       *sqs.SQS
+	accountId string
+}
+
+func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
+	return NewQueue(m.sqs, m.accountId, opt)
+}
+
+func (manager) Queues() []msgqueue.Queue {
+	return Queues()
+}
+
+func NewManager(sqs *sqs.SQS, accountId string) msgqueue.Manager {
+	return &manager{
+		sqs:       sqs,
+		accountId: accountId,
+	}
+}
+
 type Queue struct {
 	sqs       *sqs.SQS
 	accountId string

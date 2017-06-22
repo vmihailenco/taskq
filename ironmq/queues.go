@@ -3,16 +3,18 @@ package ironmq
 import (
 	"fmt"
 	"sync"
+
+	"github.com/go-msgqueue/msgqueue"
 )
 
 const redisQueuesKey = "queues:ironmq"
 
 var (
 	queuesMu sync.Mutex
-	queues   []*Queue
+	queues   []msgqueue.Queue
 )
 
-func Queues() []*Queue {
+func Queues() []msgqueue.Queue {
 	defer queuesMu.Unlock()
 	queuesMu.Lock()
 	return queues

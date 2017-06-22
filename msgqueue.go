@@ -29,3 +29,8 @@ type Queue interface {
 	Close() error
 	CloseTimeout(timeout time.Duration) error
 }
+
+type Manager interface {
+	NewQueue(*Options) Queue
+	Queues() []Queue
+}

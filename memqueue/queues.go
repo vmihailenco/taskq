@@ -3,6 +3,8 @@ package memqueue
 import (
 	"fmt"
 	"sync"
+
+	"github.com/go-msgqueue/msgqueue"
 )
 
 var (
@@ -10,11 +12,11 @@ var (
 	queues   = make(map[string]*Queue)
 )
 
-func Queues() []*Queue {
+func Queues() []msgqueue.Queue {
 	defer queuesMu.Unlock()
 	queuesMu.Lock()
 
-	qs := make([]*Queue, 0, len(queues))
+	qs := make([]msgqueue.Queue, 0, len(queues))
 	for _, q := range queues {
 		qs = append(qs, q)
 	}
