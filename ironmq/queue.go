@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iron-io/iron_go3/api"
+	"github.com/iron-io/iron_go3/mq"
+
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/go-msgqueue/msgqueue/memqueue"
 	"github.com/go-msgqueue/msgqueue/processor"
-
-	"github.com/iron-io/iron_go3/api"
-	"github.com/iron-io/iron_go3/mq"
 )
 
 type Queue struct {
@@ -22,7 +22,7 @@ type Queue struct {
 	p *processor.Processor
 }
 
-var _ processor.Queuer = (*Queue)(nil)
+var _ msgqueue.Queue = (*Queue)(nil)
 
 func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 	if opt.Name == "" {
@@ -66,7 +66,7 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
-func (q *Queue) Processor() *processor.Processor {
+func (q *Queue) Processor() msgqueue.Processor {
 	if q.p == nil {
 		q.p = processor.New(q, q.opt)
 	}

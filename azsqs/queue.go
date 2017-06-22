@@ -27,7 +27,7 @@ type Queue struct {
 	p *processor.Processor
 }
 
-var _ processor.Queuer = (*Queue)(nil)
+var _ msgqueue.Queue = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	opt.Init()
@@ -68,7 +68,7 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
-func (q *Queue) Processor() *processor.Processor {
+func (q *Queue) Processor() msgqueue.Processor {
 	if q.p == nil {
 		q.p = processor.New(q, q.opt)
 	}

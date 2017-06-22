@@ -366,11 +366,15 @@ var _ = Describe("stress testing failing queue", func() {
 
 var _ = Describe("Queue", func() {
 	var q *memqueue.Queue
+	var processed uint32
 
 	BeforeEach(func() {
+		processed = 0
 		q = memqueue.NewQueue(&msgqueue.Options{
-			Redis:     redisRing(),
-			Handler:   func() {},
+			Redis: redisRing(),
+			Handler: func() {
+				atomic.AddUint32(&processed, 1)
+			},
 			RateLimit: rate.Every(time.Second),
 		})
 	})
@@ -428,12 +432,8 @@ var _ = Describe("Queue", func() {
 				err := p.ProcessAll()
 				Expect(err).NotTo(HaveOccurred())
 
-				st := p.Stats()
-				Expect(st.InFlight).To(Equal(uint32(0)))
-				Expect(st.Deleting).To(Equal(uint32(0)))
-				Expect(st.Processed).To(Equal(uint32(3)))
-				Expect(st.Retries).To(Equal(uint32(0)))
-				Expect(st.Fails).To(Equal(uint32(0)))
+				n := atomic.LoadUint32(&processed)
+				Expect(n).To(Equal(uint32(3)))
 			})
 
 			It("processes one message", func() {
@@ -442,22 +442,14 @@ var _ = Describe("Queue", func() {
 				err := p.ProcessOne()
 				Expect(err).NotTo(HaveOccurred())
 
-				st := p.Stats()
-				Expect(st.InFlight).To(Equal(uint32(2)))
-				Expect(st.Deleting).To(Equal(uint32(0)))
-				Expect(st.Processed).To(Equal(uint32(1)))
-				Expect(st.Retries).To(Equal(uint32(0)))
-				Expect(st.Fails).To(Equal(uint32(0)))
+				n := atomic.LoadUint32(&processed)
+				Expect(n).To(Equal(uint32(1)))
 
 				err = p.ProcessAll()
 				Expect(err).NotTo(HaveOccurred())
 
-				st = p.Stats()
-				Expect(st.InFlight).To(Equal(uint32(0)))
-				Expect(st.Deleting).To(Equal(uint32(0)))
-				Expect(st.Processed).To(Equal(uint32(3)))
-				Expect(st.Retries).To(Equal(uint32(0)))
-				Expect(st.Fails).To(Equal(uint32(0)))
+				n = atomic.LoadUint32(&processed)
+				Expect(n).To(Equal(uint32(3)))
 			})
 		})
 	})
