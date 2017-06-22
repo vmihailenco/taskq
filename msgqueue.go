@@ -16,20 +16,9 @@ func SetLogger(logger *log.Logger) {
 	internal.Logger = logger
 }
 
-type Processor interface {
-	Process(msg *Message) error
-	ProcessOne() error
-	ProcessAll() error
-
-	Add(msg *Message) error
-	Start() error
-	Stop() error
-	StopTimeout(timeout time.Duration) error
-}
-
 type Queue interface {
 	Name() string
-	Processor() Processor
+	Processor() *Processor
 	Add(msg *Message) error
 	Call(args ...interface{}) error
 	CallOnce(dur time.Duration, args ...interface{}) error

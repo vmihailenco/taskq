@@ -1,4 +1,4 @@
-package processor_test
+package msgqueue_test
 
 import (
 	"errors"
@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
-	"github.com/go-msgqueue/msgqueue/processor"
 )
 
 func queueName(s string) string {
@@ -23,8 +22,8 @@ func queueName(s string) string {
 	return "test-" + s + "-" + version
 }
 
-func printStats(p *processor.Processor) {
-	var old *processor.Stats
+func printStats(p *msgqueue.Processor) {
+	var old *msgqueue.ProcessorStats
 	for _ = range time.Tick(3 * time.Second) {
 		st := p.Stats()
 		if st == nil {
@@ -77,7 +76,7 @@ func testProcessor(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler: handler,
 	})
 
@@ -111,7 +110,7 @@ func testDelay(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler: handler,
 	})
 
@@ -149,7 +148,7 @@ func testRetry(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler:         handler,
 		FallbackHandler: fallbackHandler,
 		RetryLimit:      3,
@@ -194,7 +193,7 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	}
 	wg.Wait()
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler: handler,
 	})
 
@@ -240,7 +239,7 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 		}
 	}()
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler: handler,
 		Redis:   ring,
 	})
@@ -291,7 +290,7 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	}
 	wg.Wait()
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler:      handler,
 		WorkerNumber: 2,
 		RateLimit:    rate.Every(time.Second),
@@ -310,16 +309,6 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-type RateLimitError string
-
-func (e RateLimitError) Error() string {
-	return string(e)
-}
-
-func (RateLimitError) Delay() time.Duration {
-	return 5 * time.Second
-}
-
 func testDelayer(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
@@ -336,13 +325,13 @@ func testDelayer(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := processor.Start(q, &msgqueue.Options{
+	p := msgqueue.StartProcessor(q, &msgqueue.Options{
 		Handler:    handler,
 		MinBackoff: time.Second,
 		RetryLimit: 3,
 	})
 
-	timings := []time.Duration{0, 5 * time.Second, 5 * time.Second}
+	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
 
 	if err := p.Stop(); err != nil {

@@ -1,28 +1,26 @@
-package msgbatcher
+package msgqueue
 
 import (
 	"sync"
 	"time"
-
-	"github.com/go-msgqueue/msgqueue"
 )
 
 const batcherTimeout = 3 * time.Second
 
-type Batcher struct {
-	fn    func([]*msgqueue.Message)
+type msgBatcher struct {
+	fn    func([]*Message)
 	limit int
 
 	wg sync.WaitGroup
 
 	mu         sync.Mutex
 	closed     bool
-	msgs       []*msgqueue.Message
+	msgs       []*Message
 	firstMsgAt time.Time
 }
 
-func New(limit int, fn func([]*msgqueue.Message)) *Batcher {
-	b := Batcher{
+func newMsgBatcher(limit int, fn func([]*Message)) *msgBatcher {
+	b := msgBatcher{
 		fn: fn,
 	}
 	b.SetLimit(limit)
@@ -30,7 +28,7 @@ func New(limit int, fn func([]*msgqueue.Message)) *Batcher {
 	return &b
 }
 
-func (b *Batcher) SetLimit(limit int) {
+func (b *msgBatcher) SetLimit(limit int) {
 	const maxLimit = 10
 	if limit > maxLimit {
 		limit = maxLimit
@@ -41,7 +39,7 @@ func (b *Batcher) SetLimit(limit int) {
 	b.mu.Unlock()
 }
 
-func (b *Batcher) Wait() error {
+func (b *msgBatcher) Wait() error {
 	b.mu.Lock()
 	b.wait()
 	b.mu.Unlock()
@@ -49,14 +47,14 @@ func (b *Batcher) Wait() error {
 	return nil
 }
 
-func (b *Batcher) wait() {
+func (b *msgBatcher) wait() {
 	if len(b.msgs) > 0 {
 		b.fn(b.msgs)
 		b.msgs = nil
 	}
 }
 
-func (b *Batcher) Close() error {
+func (b *msgBatcher) Close() error {
 	b.mu.Lock()
 	b.closed = true
 	b.wait()
@@ -64,8 +62,8 @@ func (b *Batcher) Close() error {
 	return nil
 }
 
-func (b *Batcher) Add(msg *msgqueue.Message) {
-	var msgs []*msgqueue.Message
+func (b *msgBatcher) Add(msg *Message) {
+	var msgs []*Message
 
 	b.mu.Lock()
 	if len(b.msgs) == 0 {
@@ -83,10 +81,10 @@ func (b *Batcher) Add(msg *msgqueue.Message) {
 	}
 }
 
-func (b *Batcher) callOnTimeout() {
+func (b *msgBatcher) callOnTimeout() {
 	for {
 		var closed bool
-		var msgs []*msgqueue.Message
+		var msgs []*Message
 
 		b.mu.Lock()
 		if b.timeoutReached() {
@@ -111,6 +109,6 @@ func (b *Batcher) callOnTimeout() {
 	}
 }
 
-func (b *Batcher) timeoutReached() bool {
+func (b *msgBatcher) timeoutReached() bool {
 	return len(b.msgs) > 0 && time.Since(b.firstMsgAt) > batcherTimeout
 }

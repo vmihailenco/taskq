@@ -9,7 +9,6 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal/msgutil"
 	"github.com/go-msgqueue/msgqueue/memqueue"
-	"github.com/go-msgqueue/msgqueue/processor"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -25,7 +24,11 @@ func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
 }
 
 func (manager) Queues() []msgqueue.Queue {
-	return Queues()
+	var queues []msgqueue.Queue
+	for _, q := range Queues() {
+		queues = append(queues, q)
+	}
+	return queues
 }
 
 func NewManager(sqs *sqs.SQS, accountId string) msgqueue.Manager {
@@ -44,7 +47,7 @@ type Queue struct {
 	mu        sync.RWMutex
 	_queueURL string
 
-	p *processor.Processor
+	p *msgqueue.Processor
 }
 
 var _ msgqueue.Queue = (*Queue)(nil)
@@ -88,9 +91,9 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
-func (q *Queue) Processor() msgqueue.Processor {
+func (q *Queue) Processor() *msgqueue.Processor {
 	if q.p == nil {
-		q.p = processor.New(q, q.opt)
+		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
 }
