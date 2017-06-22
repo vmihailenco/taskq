@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/iron-io/iron_go3/api"
+	iron_config "github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 
 	"github.com/go-msgqueue/msgqueue"
@@ -14,11 +15,12 @@ import (
 )
 
 type manager struct {
-	mqueue mq.Queue
+	cfg *iron_config.Settings
 }
 
 func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
-	return NewQueue(m.mqueue, opt)
+	q := mq.ConfigNew(opt.Name, m.cfg)
+	return NewQueue(q, opt)
 }
 
 func (manager) Queues() []msgqueue.Queue {
@@ -29,9 +31,9 @@ func (manager) Queues() []msgqueue.Queue {
 	return queues
 }
 
-func NewManager(mqueue mq.Queue) msgqueue.Manager {
+func NewManager(cfg *iron_config.Settings) msgqueue.Manager {
 	return &manager{
-		mqueue: mqueue,
+		cfg: cfg,
 	}
 }
 
