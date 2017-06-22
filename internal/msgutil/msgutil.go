@@ -1,4 +1,4 @@
-package internal
+package msgutil
 
 import "github.com/go-msgqueue/msgqueue"
 

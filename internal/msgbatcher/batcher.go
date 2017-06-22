@@ -1,4 +1,4 @@
-package internal
+package msgbatcher
 
 import (
 	"sync"
@@ -21,7 +21,7 @@ type Batcher struct {
 	firstMsgAt time.Time
 }
 
-func NewBatcher(limit int, fn func([]*msgqueue.Message)) *Batcher {
+func New(limit int, fn func([]*msgqueue.Message)) *Batcher {
 	b := Batcher{
 		fn: fn,
 	}

@@ -1,8 +1,20 @@
 package msgqueue
 
 import (
+	"log"
+	"os"
 	"time"
+
+	"github.com/go-msgqueue/msgqueue/internal"
 )
+
+func init() {
+	SetLogger(log.New(os.Stderr, "msgqueue: ", log.LstdFlags))
+}
+
+func SetLogger(logger *log.Logger) {
+	internal.Logger = logger
+}
 
 type Processor interface {
 	Process(msg *Message) error

@@ -23,6 +23,10 @@ func TestMemqueue(t *testing.T) {
 	RunSpecs(t, "memqueue")
 }
 
+var _ = BeforeSuite(func() {
+	msgqueue.SetLogger(nil)
+})
+
 var _ = Describe("message with args", func() {
 	ch := make(chan bool, 10)
 	handler := func(s string, i int) {

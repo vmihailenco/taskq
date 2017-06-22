@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/internal"
+	"github.com/go-msgqueue/msgqueue/internal/msgutil"
 	"github.com/go-msgqueue/msgqueue/memqueue"
 	"github.com/go-msgqueue/msgqueue/processor"
 
@@ -68,7 +68,7 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 		Redis: opt.Redis,
 	}
 	if opt.Handler != nil {
-		memopt.FallbackHandler = internal.MessageUnwrapperHandler(opt.Handler)
+		memopt.FallbackHandler = msgutil.MessageUnwrapperHandler(opt.Handler)
 	}
 	q.memqueue = memqueue.NewQueue(&memopt)
 
@@ -183,7 +183,7 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.memqueue.Add(internal.WrapMessage(msg))
+	return q.memqueue.Add(msgutil.WrapMessage(msg))
 }
 
 // Call creates a message using the args and adds it to the queue.
