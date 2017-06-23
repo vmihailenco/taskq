@@ -83,24 +83,20 @@ func (b *msgBatcher) Add(msg *Message) {
 
 func (b *msgBatcher) callOnTimeout() {
 	for {
-		var closed bool
-		var msgs []*Message
-
 		b.mu.Lock()
 		if b.timeoutReached() {
-			msgs = b.msgs
+			msgs := b.msgs
 			b.msgs = nil
-		}
-		closed = b.closed
-		b.mu.Unlock()
 
-		if len(msgs) > 0 {
 			b.wg.Add(1)
 			go func() {
 				defer b.wg.Done()
 				b.fn(msgs)
 			}()
 		}
+		closed := b.closed
+		b.mu.Unlock()
+
 		if closed {
 			break
 		}

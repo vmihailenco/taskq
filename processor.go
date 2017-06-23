@@ -86,7 +86,7 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		p.setFallbackHandler(opt.FallbackHandler)
 	}
 
-	p.delBatch = newMsgBatcher(p.opt.WorkerNumber, p.deleteBatch)
+	p.delBatch = newMsgBatcher(p.opt.BufferSize, p.deleteBatch)
 
 	return p
 }

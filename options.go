@@ -106,11 +106,12 @@ func (opt *Options) Init() {
 	if opt.WorkerNumber == 0 {
 		opt.WorkerNumber = 4 * runtime.NumCPU()
 	}
+
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.WorkerNumber
-		if opt.BufferSize > 10 {
-			opt.BufferSize = 10
-		}
+	}
+	if opt.BufferSize > 10 {
+		opt.BufferSize = 10
 	}
 
 	switch opt.PauseErrorsThreshold {
