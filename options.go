@@ -58,6 +58,10 @@ type Options struct {
 
 	// Time after which the reserved message is returned to the queue.
 	ReservationTimeout time.Duration
+	// Time that a long polling receive call waits for a message to become
+	// available before returning an empty response.
+	// Default is 3 seconds.
+	WaitTimeout time.Duration
 
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
@@ -122,6 +126,9 @@ func (opt *Options) Init() {
 
 	if opt.ReservationTimeout == 0 {
 		opt.ReservationTimeout = 300 * time.Second
+	}
+	if opt.WaitTimeout == 0 {
+		opt.WaitTimeout = 3 * time.Second
 	}
 
 	if opt.RetryLimit == 0 {

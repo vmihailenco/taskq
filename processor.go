@@ -317,8 +317,6 @@ func (p *Processor) startMessageFetcher() bool {
 }
 
 func (p *Processor) messageFetcher() {
-	const consumerBackoff = time.Second
-
 	defer p.workersWG.Done()
 
 	for {
@@ -341,9 +339,9 @@ func (p *Processor) messageFetcher() {
 
 			internal.Logf(
 				"%s ReserveN failed: %s (sleeping for dur=%s)",
-				p.q, err, consumerBackoff,
+				p.q, err, p.opt.WaitTimeout,
 			)
-			time.Sleep(consumerBackoff)
+			time.Sleep(p.opt.WaitTimeout)
 		}
 	}
 }

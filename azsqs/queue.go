@@ -210,7 +210,7 @@ func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 	in := &sqs.ReceiveMessageInput{
 		QueueUrl:              aws.String(q.queueURL()),
 		MaxNumberOfMessages:   aws.Int64(int64(n)),
-		WaitTimeSeconds:       aws.Int64(1),
+		WaitTimeSeconds:       aws.Int64(int64(q.opt.WaitTimeout / time.Second)),
 		AttributeNames:        []*string{aws.String("ApproximateReceiveCount")},
 		MessageAttributeNames: []*string{aws.String("delay")},
 	}
