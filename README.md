@@ -201,3 +201,37 @@ q := memqueue.NewQueue(&msgqueue.Options{
     Handler: handler,
 })
 ```
+
+## Stats
+
+You can log local queue stats using following code:
+
+```go
+func printProcessorStats(p *msgqueue.Processor) {
+    var old *msgqueue.ProcessorStats
+    for _ = range time.Tick(3 * time.Second) {
+        st := p.Stats()
+        if st == nil {
+            break
+        }
+        if old != nil && *st == *old {
+            continue
+        }
+        old = st
+
+        log.Printf(
+            "%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
+            p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
+        )
+    }
+}
+
+go printProcessorStats(myqueue.Processor())
+```
+
+which will log something like this
+
+```
+Processor<myqueue workers=16 buffer=10>: inFlight=5 deleting=3 processed=28239 fails=0 retries=0 avg_dur=10ms
+Processor<myqueue workers=16 buffer=10>: inFlight=10 deleting=7 processed=30993 fails=0 retries=0 avg_dur=12ms
+```
