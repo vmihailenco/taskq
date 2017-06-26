@@ -186,21 +186,22 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 		return nil
 	}
 
-	atomic.StoreUint32(&p.messageFetcherStop, 1)
-	defer atomic.StoreUint32(&p.messageFetcherStarted, 0)
+	p.stopMessageFetcher()
 
 	p.delBatch.SetLimit(1)
-	defer p.delBatch.SetLimit(p.opt.WorkerNumber)
+	defer p.delBatch.SetLimit(p.opt.BufferSize)
 	p.delBatch.Wait()
 
 	done := make(chan struct{}, 1)
+	timeoutCh := time.After(2 * timeout)
+
 	go func() {
 		p.wg.Wait()
 		done <- struct{}{}
 	}()
 
 	select {
-	case <-time.After(timeout):
+	case <-timeoutCh:
 		return fmt.Errorf("messages were not processed after %s", timeout)
 	case <-done:
 	}
@@ -214,7 +215,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}()
 
 	select {
-	case <-time.After(timeout):
+	case <-timeoutCh:
 		return fmt.Errorf("workers were not stopped after %s", timeout)
 	case <-done:
 	}
@@ -225,7 +226,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}()
 
 	select {
-	case <-time.After(timeout):
+	case <-timeoutCh:
 		return fmt.Errorf("messages were not deleted after %s", timeout)
 	case <-done:
 	}
@@ -327,7 +328,12 @@ func (p *Processor) startMessageFetcher() bool {
 	return true
 }
 
+func (p *Processor) stopMessageFetcher() {
+	atomic.StoreUint32(&p.messageFetcherStop, 1)
+}
+
 func (p *Processor) messageFetcher() {
+	defer atomic.StoreUint32(&p.messageFetcherStarted, 0)
 	defer p.workersWG.Done()
 
 	for {
@@ -362,10 +368,42 @@ func (p *Processor) fetchMessages() (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	timeout := make(chan struct{})
+	timer := time.AfterFunc(p.opt.ReservationTimeout*4/5, func() {
+		close(timeout)
+	})
+	defer timer.Stop()
+
 	for i := range msgs {
-		p.Add(&msgs[i])
+		p.wg.Add(1)
+		atomic.AddUint32(&p.inFlight, 1)
+		select {
+		case p.ch <- &msgs[i]:
+		case <-timeout:
+			p.release(&msgs[i], nil)
+		}
 	}
+
+	select {
+	case <-timeout:
+		internal.Logf("%s is stuck - stopping message fetcher", p.q)
+		p.stopMessageFetcher()
+		p.releaseBuffer()
+	default:
+	}
+
 	return len(msgs), nil
+}
+
+func (p *Processor) releaseBuffer() {
+	for {
+		msg, ok := p.dequeueMessage()
+		if !ok {
+			return
+		}
+		p.release(msg, nil)
+	}
 }
 
 func (p *Processor) worker(id int, stop <-chan struct{}) {
@@ -382,7 +420,7 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 			}
 		}
 
-		msg, ok := p.dequeueMessage(stop)
+		msg, ok := p.waitMessageOrStop(stop)
 		if !ok {
 			return
 		}
@@ -433,14 +471,14 @@ func (p *Processor) Purge() error {
 	}
 }
 
-func (p *Processor) dequeueMessage(stop <-chan struct{}) (*Message, bool) {
+func (p *Processor) waitMessageOrStop(stop <-chan struct{}) (*Message, bool) {
 	p.startMessageFetcher()
 
 	if p.opt.RateLimiter != nil {
 		select {
 		case <-p.allowRate(stop):
 		case <-stop:
-			return p.dequeueMessageOrStop()
+			return p.dequeueMessage()
 		}
 	}
 
@@ -448,11 +486,11 @@ func (p *Processor) dequeueMessage(stop <-chan struct{}) (*Message, bool) {
 	case msg := <-p.ch:
 		return msg, true
 	case <-stop:
-		return p.dequeueMessageOrStop()
+		return p.dequeueMessage()
 	}
 }
 
-func (p *Processor) dequeueMessageOrStop() (*Message, bool) {
+func (p *Processor) dequeueMessage() (*Message, bool) {
 	select {
 	case msg := <-p.ch:
 		return msg, true
@@ -487,7 +525,7 @@ func (p *Processor) release(msg *Message, reason error) {
 
 	if reason != nil {
 		new := uint32(delay / time.Second)
-		for {
+		for new > 0 {
 			old := atomic.LoadUint32(&p.delaySec)
 			if new > old {
 				break
