@@ -220,7 +220,7 @@ func printProcessorStats(p *msgqueue.Processor) {
         old = st
 
         log.Printf(
-            "%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
+            "%s: in_flight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
             p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
         )
     }
@@ -232,6 +232,6 @@ go printProcessorStats(myqueue.Processor())
 which will log something like this
 
 ```
-Processor<myqueue workers=16 buffer=10>: inFlight=5 deleting=3 processed=28239 fails=0 retries=0 avg_dur=10ms
-Processor<myqueue workers=16 buffer=10>: inFlight=10 deleting=7 processed=30993 fails=0 retries=0 avg_dur=12ms
+Processor<myqueue workers=16 buffer=10>: in_flight=5 deleting=3 processed=28239 fails=0 retries=0 avg_dur=10ms
+Processor<myqueue workers=16 buffer=10>: in_flight=10 deleting=7 processed=30993 fails=0 retries=0 avg_dur=12ms
 ```
