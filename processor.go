@@ -3,6 +3,7 @@ package msgqueue
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -192,10 +193,10 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	defer p.delBatch.SetLimit(p.opt.WorkerNumber)
 	p.delBatch.Wait()
 
-	done := make(chan struct{})
+	done := make(chan struct{}, 1)
 	go func() {
 		p.wg.Wait()
-		close(done)
+		done <- struct{}{}
 	}()
 
 	select {
@@ -207,19 +208,29 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	close(p.workersStop)
 	p.workersStop = nil
 
-	done = make(chan struct{})
 	go func() {
 		p.workersWG.Wait()
-		p.delBatch.Wait()
-		close(done)
+		done <- struct{}{}
 	}()
 
 	select {
 	case <-time.After(timeout):
 		return fmt.Errorf("workers were not stopped after %s", timeout)
 	case <-done:
-		return nil
 	}
+
+	go func() {
+		p.delBatch.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return fmt.Errorf("messages were not deleted after %s", timeout)
+	case <-done:
+	}
+
+	return nil
 }
 
 func (p *Processor) paused() time.Duration {
@@ -366,12 +377,14 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 
 	for {
 		if p.opt.WorkerLimit > 0 {
-			p.lockWorker(id)
+			if !p.lockWorker(id, stop) {
+				return
+			}
 		}
 
 		msg, ok := p.dequeueMessage(stop)
 		if !ok {
-			break
+			return
 		}
 
 		p.process(id, msg)
@@ -551,9 +564,7 @@ func (p *Processor) resetPause() {
 	atomic.StoreUint32(&p.errCount, 0)
 }
 
-func (p *Processor) lockWorker(id int) {
-	const timeout = 1234 * time.Millisecond
-
+func (p *Processor) lockWorker(id int, stop <-chan struct{}) bool {
 	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
@@ -561,9 +572,15 @@ func (p *Processor) lockWorker(id int) {
 			internal.Logf("redlock.Lock failed: %s", err)
 		}
 		if ok {
-			return
+			return true
 		}
-		time.Sleep(timeout)
+
+		sleep := time.Duration(rand.Intn(1000)) * time.Millisecond
+		select {
+		case <-stop:
+			return false
+		case <-time.After(sleep):
+		}
 	}
 }
 
