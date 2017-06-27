@@ -140,7 +140,7 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	return q.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	if n > 100 {
 		n = 100
 	}
@@ -161,9 +161,9 @@ func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 		return nil, err
 	}
 
-	msgs := make([]msgqueue.Message, len(mqMsgs))
+	msgs := make([]*msgqueue.Message, len(mqMsgs))
 	for i, mqMsg := range mqMsgs {
-		msgs[i] = msgqueue.Message{
+		msgs[i] = &msgqueue.Message{
 			Id:   mqMsg.Id,
 			Body: mqMsg.Body,
 

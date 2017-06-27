@@ -32,11 +32,12 @@ func Example_retryOnError() {
 		RetryLimit: 3,
 		MinBackoff: time.Second,
 	})
-	defer q.Close()
-	q.Processor().Stop()
 
 	q.Call()
-	q.Processor().ProcessAll()
+
+	// Wait for all messages to be processed.
+	_ = q.Close()
+
 	// Output: retried in 0s
 	// retried in 1s
 	// retried in 3s
@@ -49,13 +50,14 @@ func Example_messageDelay() {
 			fmt.Println("processed with delay", timeSince(start))
 		},
 	})
-	defer q.Close()
-	q.Processor().Stop()
 
 	msg := msgqueue.NewMessage()
 	msg.Delay = time.Second
 	q.Add(msg)
-	q.Processor().ProcessAll()
+
+	// Wait for all messages to be processed.
+	_ = q.Close()
+
 	// Output: processed with delay 1s
 }
 
@@ -73,7 +75,7 @@ func Example_rateLimit() {
 		q.Call()
 	}
 
-	// Close queue to make sure all messages are processed.
+	// Wait for all messages to be processed.
 	_ = q.Close()
 
 	// Output: 1s
@@ -92,18 +94,15 @@ func Example_once() {
 		RateLimit: rate.Every(time.Second),
 	})
 
-	for _, name := range []string{"world", "adele"} {
-		for i := 0; i < 10; i++ {
-			// Call once in a second.
-			q.CallOnce(time.Second, name)
-		}
+	for i := 0; i < 10; i++ {
+		// Call once in a second.
+		q.CallOnce(time.Second, "world")
 	}
 
-	// Close queue to make sure all messages are processed.
+	// Wait for all messages to be processed.
 	_ = q.Close()
 
 	// Output: hello world
-	// hello adele
 }
 
 func Example_maxWorkers() {
@@ -121,7 +120,7 @@ func Example_maxWorkers() {
 		q.Call()
 	}
 
-	// Close queue to make sure all messages are processed.
+	// Wait for all messages to be processed.
 	_ = q.Close()
 
 	// Output: 0s
