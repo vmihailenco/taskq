@@ -658,7 +658,7 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 
 	for {
 		min := atomic.LoadUint32(&p.minDuration)
-		if us >= min || atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
+		if (min != 0 && us >= min) || atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
 			break
 		}
 	}
