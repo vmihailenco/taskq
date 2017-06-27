@@ -28,11 +28,12 @@ func Example_customRateLimit() {
 		RetryLimit: 2,
 		MinBackoff: time.Millisecond,
 	})
-	defer q.Close()
-	q.Processor().Stop()
 
 	q.Call()
-	q.Processor().ProcessAll()
+
+	// Wait for all messages to be processed.
+	_ = q.Close()
+
 	// Output: retried in 0s
 	// retried in 3s
 }

@@ -203,7 +203,7 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	return q.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	if n > 10 {
 		n = 10
 	}
@@ -219,7 +219,7 @@ func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 		return nil, err
 	}
 
-	msgs := make([]msgqueue.Message, len(out.Messages))
+	msgs := make([]*msgqueue.Message, len(out.Messages))
 	for i, sqsMsg := range out.Messages {
 		var reservedCount int
 		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
@@ -239,7 +239,7 @@ func (q *Queue) ReserveN(n int) ([]msgqueue.Message, error) {
 			}
 		}
 
-		msgs[i] = msgqueue.Message{
+		msgs[i] = &msgqueue.Message{
 			Body:          *sqsMsg.Body,
 			Delay:         delay,
 			ReservationId: *sqsMsg.ReceiptHandle,

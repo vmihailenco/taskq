@@ -63,22 +63,18 @@ func (b *msgBatcher) Close() error {
 }
 
 func (b *msgBatcher) Add(msg *Message) {
-	var msgs []*Message
-
 	b.mu.Lock()
+
 	if len(b.msgs) == 0 {
 		b.firstMsgAt = time.Now()
 	}
 	b.msgs = append(b.msgs, msg)
 	if len(b.msgs) >= b.limit || b.timeoutReached() {
-		msgs = b.msgs
+		b.fn(b.msgs)
 		b.msgs = nil
 	}
-	b.mu.Unlock()
 
-	if len(msgs) > 0 {
-		b.fn(msgs)
-	}
+	b.mu.Unlock()
 }
 
 func (b *msgBatcher) callOnTimeout() {

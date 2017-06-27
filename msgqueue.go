@@ -22,7 +22,7 @@ type Queue interface {
 	Add(msg *Message) error
 	Call(args ...interface{}) error
 	CallOnce(dur time.Duration, args ...interface{}) error
-	ReserveN(n int) ([]Message, error)
+	ReserveN(n int) ([]*Message, error)
 	Release(*Message, time.Duration) error
 	Delete(msg *Message) error
 	DeleteBatch(msg []*Message) error

@@ -15,6 +15,40 @@ import (
 
 const stopTimeout = 30 * time.Second
 
+const (
+	stateReady   = 0
+	stateStarted = 1
+	stateStopped = -1
+)
+
+func startWorker(state *int32) bool {
+	return atomic.CompareAndSwapInt32(state, stateReady, stateStarted)
+}
+
+func stopWorker(state *int32) bool {
+	for {
+		if atomic.CompareAndSwapInt32(state, stateStarted, stateStopped) {
+			return true
+		}
+
+		if atomic.LoadInt32(state) == stateStopped {
+			return false
+		}
+
+		if atomic.CompareAndSwapInt32(state, stateReady, stateStopped) {
+			return false
+		}
+	}
+}
+
+func resetWorker(state *int32) bool {
+	return atomic.CompareAndSwapInt32(state, stateStopped, stateReady)
+}
+
+func workerStopped(state *int32) bool {
+	return atomic.LoadInt32(state) != stateStarted
+}
+
 type Delayer interface {
 	Delay() time.Duration
 }
@@ -43,11 +77,14 @@ type Processor struct {
 	workersWG   sync.WaitGroup
 	workerLocks []*lock.Lock
 
-	workersStarted uint32
-	workersStop    chan struct{}
+	workersState int32
+	workersStop  chan struct{}
 
-	messageFetcherStarted uint32
-	messageFetcherStop    uint32
+	// 0 - ready
+	// 1 - started
+	// -1 - stopped
+	messageFetcherState int32
+	rateLimitAllowance  int
 
 	delBatch *msgBatcher
 
@@ -126,31 +163,19 @@ func (p *Processor) setFallbackHandler(handler interface{}) {
 	p.fallbackHandler = NewHandler(handler)
 }
 
-// Add adds message to the processor internal queue.
-func (p *Processor) Add(msg *Message) error {
+func (p *Processor) inc() {
 	p.wg.Add(1)
 	atomic.AddUint32(&p.inFlight, 1)
-	p.ch <- msg
-	return nil
 }
 
-// Add adds message to the processor internal queue with specified delay.
-func (p *Processor) AddDelay(msg *Message, delay time.Duration) error {
-	if delay == 0 {
-		return p.Add(msg)
-	}
-
-	p.wg.Add(1)
-	atomic.AddUint32(&p.inFlight, 1)
-	time.AfterFunc(delay, func() {
-		p.ch <- msg
-	})
-	return nil
+func (p *Processor) dec() {
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	p.wg.Done()
 }
 
 // Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *Message) error {
-	p.wg.Add(1)
+	p.inc()
 	return p.process(-1, msg)
 }
 
@@ -161,7 +186,7 @@ func (p *Processor) Start() error {
 }
 
 func (p *Processor) startWorkers() bool {
-	if !atomic.CompareAndSwapUint32(&p.workersStarted, 0, 1) {
+	if !startWorker(&p.workersState) {
 		return false
 	}
 
@@ -182,18 +207,20 @@ func (p *Processor) Stop() error {
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
 func (p *Processor) StopTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapUint32(&p.workersStarted, 1, 0) {
+	if !stopWorker(&p.workersState) {
 		return nil
 	}
+	defer resetWorker(&p.workersState)
 
 	p.stopMessageFetcher()
+	defer p.resetMessageFetcher()
 
 	p.delBatch.SetLimit(1)
 	defer p.delBatch.SetLimit(p.opt.BufferSize)
 	p.delBatch.Wait()
 
 	done := make(chan struct{}, 1)
-	timeoutCh := time.After(2 * timeout)
+	timeoutCh := time.After(timeout)
 
 	go func() {
 		p.wg.Wait()
@@ -260,9 +287,7 @@ func (p *Processor) ProcessAll() error {
 
 		n, err := p.fetchMessages()
 		if err != nil {
-			if err != internal.ErrNotSupported {
-				return err
-			}
+			return err
 		}
 
 		if n == 0 && isIdle {
@@ -272,11 +297,6 @@ func (p *Processor) ProcessAll() error {
 		}
 		if noWork == 2 {
 			break
-		}
-
-		if err == internal.ErrNotSupported {
-			// Don't burn CPU waiting.
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -305,7 +325,7 @@ func (p *Processor) reserveOne() (*Message, error) {
 	}
 
 	msgs, err := p.q.ReserveN(1)
-	if err != nil && err != internal.ErrNotSupported {
+	if err != nil {
 		return nil, err
 	}
 
@@ -313,31 +333,32 @@ func (p *Processor) reserveOne() (*Message, error) {
 		return nil, errors.New("msgqueue: queue is empty")
 	}
 
-	atomic.AddUint32(&p.inFlight, 1)
-	return &msgs[0], nil
+	p.inc()
+	return msgs[0], nil
 }
 
-func (p *Processor) startMessageFetcher() bool {
-	if !atomic.CompareAndSwapUint32(&p.messageFetcherStarted, 0, 1) {
-		return false
+func (p *Processor) startMessageFetcher() {
+	if startWorker(&p.messageFetcherState) {
+		p.workersWG.Add(1)
+		go p.messageFetcher()
 	}
-
-	p.workersWG.Add(1)
-	go p.messageFetcher()
-
-	return true
 }
 
 func (p *Processor) stopMessageFetcher() {
-	atomic.StoreUint32(&p.messageFetcherStop, 1)
+	stopWorker(&p.messageFetcherState)
+}
+
+func (p *Processor) resetMessageFetcher() {
+	if !resetWorker(&p.messageFetcherState) {
+		panic("unreached")
+	}
 }
 
 func (p *Processor) messageFetcher() {
-	defer atomic.StoreUint32(&p.messageFetcherStarted, 0)
 	defer p.workersWG.Done()
 
 	for {
-		if atomic.LoadUint32(&p.messageFetcherStop) == 1 {
+		if workerStopped(&p.messageFetcherState) {
 			break
 		}
 
@@ -350,10 +371,6 @@ func (p *Processor) messageFetcher() {
 
 		_, err := p.fetchMessages()
 		if err != nil {
-			if err == internal.ErrNotSupported {
-				break
-			}
-
 			internal.Logf(
 				"%s ReserveN failed: %s (sleeping for dur=%s)",
 				p.q, err, p.opt.WaitTimeout,
@@ -364,9 +381,14 @@ func (p *Processor) messageFetcher() {
 }
 
 func (p *Processor) fetchMessages() (int, error) {
-	msgs, err := p.q.ReserveN(p.opt.BufferSize)
+	size := p.reservationSize()
+	msgs, err := p.q.ReserveN(size)
 	if err != nil {
 		return 0, err
+	}
+
+	if d := size - len(msgs); d > 0 {
+		p.saveReservationSize(d)
 	}
 
 	timeout := make(chan struct{})
@@ -375,13 +397,12 @@ func (p *Processor) fetchMessages() (int, error) {
 	})
 	defer timer.Stop()
 
-	for i := range msgs {
-		p.wg.Add(1)
-		atomic.AddUint32(&p.inFlight, 1)
+	for _, msg := range msgs {
+		p.inc()
 		select {
-		case p.ch <- &msgs[i]:
+		case p.ch <- msg:
 		case <-timeout:
-			p.release(&msgs[i], nil)
+			p.release(msg, nil)
 		}
 	}
 
@@ -389,11 +410,49 @@ func (p *Processor) fetchMessages() (int, error) {
 	case <-timeout:
 		internal.Logf("%s is stuck - stopping message fetcher", p.q)
 		p.stopMessageFetcher()
+		p.resetMessageFetcher()
 		p.releaseBuffer()
 	default:
 	}
 
 	return len(msgs), nil
+}
+
+func (p *Processor) reservationSize() int {
+	if p.opt.RateLimiter == nil {
+		return p.opt.BufferSize
+	}
+
+	if p.rateLimitAllowance > 0 {
+		size := p.rateLimitAllowance
+		p.rateLimitAllowance = 0
+		return size
+	}
+
+	var size int
+	for {
+		delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
+		if allow {
+			size++
+			if size > p.opt.BufferSize {
+				break
+			}
+			continue
+		}
+		if size > 0 {
+			break
+		}
+		time.Sleep(delay)
+	}
+
+	return size
+}
+
+func (p *Processor) saveReservationSize(n int) {
+	if p.opt.RateLimiter == nil {
+		return
+	}
+	p.rateLimitAllowance = n
 }
 
 func (p *Processor) releaseBuffer() {
@@ -474,14 +533,6 @@ func (p *Processor) Purge() error {
 func (p *Processor) waitMessageOrStop(stop <-chan struct{}) (*Message, bool) {
 	p.startMessageFetcher()
 
-	if p.opt.RateLimiter != nil {
-		select {
-		case <-p.allowRate(stop):
-		case <-stop:
-			return p.dequeueMessage()
-		}
-	}
-
 	select {
 	case msg := <-p.ch:
 		return msg, true
@@ -497,27 +548,6 @@ func (p *Processor) dequeueMessage() (*Message, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func (p *Processor) allowRate(stop <-chan struct{}) <-chan struct{} {
-	allowCh := make(chan struct{})
-	go func() {
-		for {
-			delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
-			if allow {
-				close(allowCh)
-				return
-			}
-
-			time.Sleep(delay)
-			select {
-			case <-stop:
-				return
-			default:
-			}
-		}
-	}()
-	return allowCh
 }
 
 func (p *Processor) release(msg *Message, reason error) {
@@ -541,8 +571,7 @@ func (p *Processor) release(msg *Message, reason error) {
 		internal.Logf("%s Release failed: %s", p.q, err)
 	}
 
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	p.wg.Done()
+	p.dec()
 }
 
 func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
@@ -570,7 +599,6 @@ func (p *Processor) delete(msg *Message, reason error) {
 		}
 	}
 
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	atomic.AddUint32(&p.deleting, 1)
 	p.delBatch.Add(msg)
 }
@@ -581,7 +609,7 @@ func (p *Processor) deleteBatch(msgs []*Message) {
 	}
 	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
 	for i := 0; i < len(msgs); i++ {
-		p.wg.Done()
+		p.dec()
 	}
 }
 

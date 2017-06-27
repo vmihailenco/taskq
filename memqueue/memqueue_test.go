@@ -388,7 +388,7 @@ var _ = Describe("Queue", func() {
 		Expect(q.Close()).NotTo(HaveOccurred())
 	})
 
-	It("closes queues", func() {
+	It("can be closed", func() {
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
