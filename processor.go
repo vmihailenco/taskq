@@ -338,6 +338,9 @@ func (p *Processor) reserveOne() (*Message, error) {
 	if len(msgs) == 0 {
 		return nil, errors.New("msgqueue: queue is empty")
 	}
+	if len(msgs) != 1 {
+		return nil, fmt.Errorf("msgqueue: queue returned %d messages", len(msgs))
+	}
 
 	p.inc()
 	return msgs[0], nil

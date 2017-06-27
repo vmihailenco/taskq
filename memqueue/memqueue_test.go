@@ -369,7 +369,7 @@ var _ = Describe("stress testing failing queue", func() {
 	})
 })
 
-var _ = Describe("Queue", func() {
+var _ = Describe("empty queue", func() {
 	var q *memqueue.Queue
 	var processed uint32
 

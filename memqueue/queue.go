@@ -8,6 +8,14 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 )
 
+var timers = sync.Pool{
+	New: func() interface{} {
+		t := time.NewTimer(time.Hour)
+		t.Stop()
+		return t
+	},
+}
+
 type manager struct{}
 
 func (manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
@@ -165,12 +173,36 @@ func (q *Queue) isUniqueName(name string) bool {
 }
 
 func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
-	select {
-	case msg := <-q.msgs:
-		return []*msgqueue.Message{msg}, nil
-	case <-time.After(q.opt.WaitTimeout):
-		return nil, nil
+	msgs := make([]*msgqueue.Message, 0, n)
+loop:
+	for i := 0; i < n; i++ {
+		select {
+		case msg := <-q.msgs:
+			msgs = append(msgs, msg)
+			continue loop
+		default:
+		}
+
+		if len(msgs) > 0 {
+			return msgs, nil
+		}
+
+		timer := timers.Get().(*time.Timer)
+		timer.Reset(q.opt.WaitTimeout)
+
+		select {
+		case msg := <-q.msgs:
+			msgs = append(msgs, msg)
+
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timers.Put(timer)
+		case <-timer.C:
+			return msgs, nil
+		}
 	}
+	return msgs, nil
 }
 
 func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {
