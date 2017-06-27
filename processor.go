@@ -215,6 +215,12 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	p.stopMessageFetcher()
 	defer p.resetMessageFetcher()
 
+	p.workersWG.Add(1)
+	go func() {
+		p.releaseBuffer()
+		p.workersWG.Done()
+	}()
+
 	p.delBatch.SetLimit(1)
 	defer p.delBatch.SetLimit(p.opt.BufferSize)
 	p.delBatch.Wait()
