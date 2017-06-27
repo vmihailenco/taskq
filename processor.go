@@ -54,12 +54,15 @@ type Delayer interface {
 }
 
 type ProcessorStats struct {
+	Buffered    uint32
 	InFlight    uint32
 	Deleting    uint32
 	Processed   uint32
 	Retries     uint32
 	Fails       uint32
 	AvgDuration time.Duration
+	MinDuration time.Duration
+	MaxDuration time.Duration
 }
 
 // Processor reserves messages from the queue, processes them,
@@ -97,11 +100,17 @@ type Processor struct {
 	fails       uint32
 	retries     uint32
 	avgDuration uint32
+	minDuration uint32
+	maxDuration uint32
 }
 
 // New creates new Processor for the queue using provided processing options.
 func NewProcessor(q Queue, opt *Options) *Processor {
+	if opt.Name == "" {
+		opt.Name = q.Name()
+	}
 	opt.Init()
+
 	p := &Processor{
 		q:   q,
 		opt: opt,
@@ -136,6 +145,14 @@ func StartProcessor(q Queue, opt *Options) *Processor {
 	return p
 }
 
+func (p *Processor) Queue() Queue {
+	return p.q
+}
+
+func (p *Processor) Options() *Options {
+	return p.opt
+}
+
 func (p *Processor) String() string {
 	return fmt.Sprintf(
 		"Processor<%s workers=%d buffer=%d>",
@@ -146,12 +163,15 @@ func (p *Processor) String() string {
 // Stats returns processor stats.
 func (p *Processor) Stats() *ProcessorStats {
 	return &ProcessorStats{
+		Buffered:    uint32(len(p.ch)),
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
-		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Millisecond,
+		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Microsecond,
+		MinDuration: time.Duration(atomic.LoadUint32(&p.minDuration)) * time.Microsecond,
+		MaxDuration: time.Duration(atomic.LoadUint32(&p.maxDuration)) * time.Microsecond,
 	}
 }
 
@@ -609,6 +629,7 @@ func (p *Processor) delete(msg *Message, reason error) {
 	}
 
 	atomic.AddUint32(&p.deleting, 1)
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	p.delBatch.Add(msg)
 }
 
@@ -618,17 +639,33 @@ func (p *Processor) deleteBatch(msgs []*Message) {
 	}
 	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
 	for i := 0; i < len(msgs); i++ {
-		p.dec()
+		p.wg.Done()
 	}
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
-	const decay = float64(1) / 100
-	ms := float64(dur / time.Millisecond)
+	const decay = float32(1) / 100
+
+	us := uint32(dur / time.Microsecond)
+
 	for {
 		avg := atomic.LoadUint32(&p.avgDuration)
-		newAvg := uint32((1-decay)*float64(avg) + decay*ms)
+		newAvg := uint32((1-decay)*float32(avg) + decay*float32(us))
 		if atomic.CompareAndSwapUint32(&p.avgDuration, avg, newAvg) {
+			break
+		}
+	}
+
+	for {
+		min := atomic.LoadUint32(&p.minDuration)
+		if us >= min || atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
+			break
+		}
+	}
+
+	for {
+		max := atomic.LoadUint32(&p.maxDuration)
+		if us <= max || atomic.CompareAndSwapUint32(&p.maxDuration, max, us) {
 			break
 		}
 	}

@@ -23,20 +23,30 @@ func queueName(s string) string {
 }
 
 func printStats(p *msgqueue.Processor) {
+	q := p.Queue()
+	opt := p.Options()
+
 	var old *msgqueue.ProcessorStats
 	for _ = range time.Tick(3 * time.Second) {
 		st := p.Stats()
 		if st == nil {
 			break
 		}
-		if old != nil && *st == *old {
+
+		if old != nil && st.Processed == old.Processed &&
+			st.Fails == old.Fails &&
+			st.Retries == old.Retries {
 			continue
 		}
 		old = st
 
 		internal.Logf(
-			"%s: inFlight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
-			p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
+			"%s: buffered=%d/%d in_flight=%d/%d deleting=%d "+
+				"processed=%d fails=%d retries=%d "+
+				"avg_dur=%s min_dur=%s max_dur=%s",
+			q, st.Buffered, opt.BufferSize, st.InFlight, opt.WorkerNumber, st.Deleting,
+			st.Processed, st.Fails, st.Retries,
+			st.AvgDuration, st.MinDuration, st.MaxDuration,
 		)
 	}
 }
