@@ -1,6 +1,7 @@
 package memqueue
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -216,6 +217,9 @@ func (q *Queue) Delete(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
+	if len(msgs) == 0 {
+		return errors.New("msgqueue: no messages to delete")
+	}
 	for _, msg := range msgs {
 		if err := q.Delete(msg); err != nil {
 			return err

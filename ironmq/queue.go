@@ -1,6 +1,7 @@
 package ironmq
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -194,6 +195,10 @@ func (q *Queue) Delete(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
+	if len(msgs) == 0 {
+		return errors.New("msgqueue: no messages to delete")
+	}
+
 	mqMsgs := make([]mq.Message, len(msgs))
 	for i, msg := range msgs {
 		mqMsgs[i] = mq.Message{
@@ -201,6 +206,7 @@ func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
 			ReservationId: msg.ReservationId,
 		}
 	}
+
 	return retry(func() error {
 		return q.q.DeleteReservedMessages(mqMsgs)
 	})

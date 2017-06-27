@@ -1,6 +1,7 @@
 package azsqs
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -270,6 +271,10 @@ func (q *Queue) Delete(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
+	if len(msgs) == 0 {
+		return errors.New("msgqueue: no messages to delete")
+	}
+
 	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
 	for i, msg := range msgs {
 		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
