@@ -183,19 +183,9 @@ func (p *Processor) setFallbackHandler(handler interface{}) {
 	p.fallbackHandler = NewHandler(handler)
 }
 
-func (p *Processor) inc() {
-	p.wg.Add(1)
-	atomic.AddUint32(&p.inFlight, 1)
-}
-
-func (p *Processor) dec() {
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	p.wg.Done()
-}
-
 // Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *Message) error {
-	p.inc()
+	p.wg.Add(1)
 	return p.process(-1, msg)
 }
 
@@ -309,7 +299,7 @@ func (p *Processor) ProcessAll() error {
 
 	var noWork int
 	for {
-		isIdle := atomic.LoadUint32(&p.inFlight) == 0
+		isIdle := len(p.ch) == 0 && atomic.LoadUint32(&p.inFlight) == 0
 
 		n, err := p.fetchMessages()
 		if err != nil {
@@ -336,7 +326,7 @@ func (p *Processor) ProcessOne() error {
 		return err
 	}
 
-	firstErr := p.process(-1, msg)
+	firstErr := p.Process(msg)
 	if err := p.delBatch.Wait(); err != nil && firstErr == nil {
 		firstErr = err
 	}
@@ -362,7 +352,6 @@ func (p *Processor) reserveOne() (*Message, error) {
 		return nil, fmt.Errorf("msgqueue: queue returned %d messages", len(msgs))
 	}
 
-	p.inc()
 	return msgs[0], nil
 }
 
@@ -427,7 +416,7 @@ func (p *Processor) fetchMessages() (int, error) {
 	defer timer.Stop()
 
 	for _, msg := range msgs {
-		p.inc()
+		p.wg.Add(1)
 		select {
 		case p.ch <- msg:
 		case <-timeout:
@@ -519,6 +508,8 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 }
 
 func (p *Processor) process(workerId int, msg *Message) error {
+	atomic.AddUint32(&p.inFlight, 1)
+
 	if msg.Delay > 0 {
 		p.release(msg, nil)
 		return nil
@@ -600,7 +591,8 @@ func (p *Processor) release(msg *Message, reason error) {
 		internal.Logf("%s Release failed: %s", p.q, err)
 	}
 
-	p.dec()
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	p.wg.Done()
 }
 
 func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
@@ -628,8 +620,8 @@ func (p *Processor) delete(msg *Message, reason error) {
 		}
 	}
 
-	atomic.AddUint32(&p.deleting, 1)
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	atomic.AddUint32(&p.deleting, 1)
 	p.delBatch.Add(msg)
 }
 
@@ -644,17 +636,9 @@ func (p *Processor) deleteBatch(msgs []*Message) {
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
-	const decay = float32(1) / 100
+	const decay = float32(1) / 30
 
 	us := uint32(dur / time.Microsecond)
-
-	for {
-		avg := atomic.LoadUint32(&p.avgDuration)
-		newAvg := uint32((1-decay)*float32(avg) + decay*float32(us))
-		if atomic.CompareAndSwapUint32(&p.avgDuration, avg, newAvg) {
-			break
-		}
-	}
 
 	for {
 		min := atomic.LoadUint32(&p.minDuration)
@@ -666,6 +650,19 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 	for {
 		max := atomic.LoadUint32(&p.maxDuration)
 		if us <= max || atomic.CompareAndSwapUint32(&p.maxDuration, max, us) {
+			break
+		}
+	}
+
+	for {
+		avg := atomic.LoadUint32(&p.avgDuration)
+		var newAvg uint32
+		if avg > 0 {
+			newAvg = uint32((1-decay)*float32(avg) + decay*float32(us))
+		} else {
+			newAvg = us
+		}
+		if atomic.CompareAndSwapUint32(&p.avgDuration, avg, newAvg) {
 			break
 		}
 	}
