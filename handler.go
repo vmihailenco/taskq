@@ -40,7 +40,7 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	args, err := h.decodeArgs(msg)
+	args, err := decodeArgs(msg.Body, h.ft)
 	if err != nil {
 		return err
 	}
@@ -57,16 +57,4 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	}
 
 	return nil
-}
-
-func (h *reflectFunc) decodeArgs(msg *Message) ([]reflect.Value, error) {
-	if msg.Body != "" {
-		return decodeArgs(msg.Body, h.ft)
-	}
-
-	args := make([]reflect.Value, len(msg.Args))
-	for i, arg := range msg.Args {
-		args[i] = reflect.ValueOf(arg)
-	}
-	return args, nil
 }

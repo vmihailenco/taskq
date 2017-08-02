@@ -49,13 +49,18 @@ type Options struct {
 	FallbackHandler interface{}
 
 	// Number of worker goroutines processing messages.
+	// Default is 4 * number of CPUs.
 	WorkerNumber int
 	// Global limit of concurrently running workers. Overrides WorkerNumber.
 	WorkerLimit int
 
 	// Size of the buffer where reserved messages are stored.
+	// Default is the same as WorkerNumber.
 	BufferSize int
 
+	// Number of messages reserved in the queue in 1 request.
+	// Default is 10.
+	ReservationSize int
 	// Time after which the reserved message is returned to the queue.
 	ReservationTimeout time.Duration
 	// Time that a long polling receive call waits for a message to become
@@ -110,9 +115,6 @@ func (opt *Options) Init() {
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.WorkerNumber
 	}
-	if opt.BufferSize > 10 {
-		opt.BufferSize = 10
-	}
 
 	switch opt.PauseErrorsThreshold {
 	case -1:
@@ -125,6 +127,9 @@ func (opt *Options) Init() {
 		opt.RateLimit = rate.Inf
 	}
 
+	if opt.ReservationSize == 0 {
+		opt.ReservationSize = 10
+	}
 	if opt.ReservationTimeout == 0 {
 		opt.ReservationTimeout = 300 * time.Second
 	}

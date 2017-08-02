@@ -2,14 +2,16 @@ package msgqueue
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const batcherTimeout = 3 * time.Second
 
 type msgBatcher struct {
-	fn    func([]*Message)
 	limit int
+	fn    func([]*Message)
+	_sync uint32 // atomic
 
 	wg sync.WaitGroup
 
@@ -21,22 +23,34 @@ type msgBatcher struct {
 
 func newMsgBatcher(limit int, fn func([]*Message)) *msgBatcher {
 	b := msgBatcher{
-		fn: fn,
+		limit: limit,
+		fn:    fn,
 	}
-	b.SetLimit(limit)
 	go b.callOnTimeout()
 	return &b
 }
 
-func (b *msgBatcher) SetLimit(limit int) {
-	const maxLimit = 10
-	if limit > maxLimit {
-		limit = maxLimit
+func (b *msgBatcher) SetSync(v bool) {
+	var n uint32
+	if v {
+		n = 1
+	}
+	atomic.StoreUint32(&b._sync, n)
+
+	if !v {
+		return
 	}
 
 	b.mu.Lock()
-	b.limit = limit
+	if len(b.msgs) > 0 {
+		b.fn(b.msgs)
+		b.msgs = nil
+	}
 	b.mu.Unlock()
+}
+
+func (b *msgBatcher) isSync() bool {
+	return atomic.LoadUint32(&b._sync) == 1
 }
 
 func (b *msgBatcher) Wait() error {
@@ -71,7 +85,7 @@ func (b *msgBatcher) Add(msg *Message) {
 		b.firstMsgAt = time.Now()
 	}
 	b.msgs = append(b.msgs, msg)
-	if len(b.msgs) >= b.limit || b.timeoutReached() {
+	if b.isSync() || len(b.msgs) >= b.limit || b.timeoutReached() {
 		msgs = b.msgs
 		b.msgs = nil
 	}

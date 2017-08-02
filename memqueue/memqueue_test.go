@@ -68,9 +68,10 @@ var _ = Describe("message with invalid number of args", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Processor().ProcessOne()
-		Expect(err).To(MatchError("got 0 args, handler expects 1 args"))
+		Expect(err).To(MatchError("msgqueue: arg=0 decoding failed: EOF"))
 
-		_ = q.Processor().ProcessAll()
+		err = q.Processor().ProcessAll()
+		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -336,7 +337,7 @@ var _ = Describe("stress testing", func() {
 
 var _ = Describe("stress testing failing queue", func() {
 	var q *memqueue.Queue
-	const n = 10000
+	const n = 100000
 
 	handler := func() error {
 		return errors.New("fake error")
@@ -380,7 +381,6 @@ var _ = Describe("empty queue", func() {
 			Handler: func() {
 				atomic.AddUint32(&processed, 1)
 			},
-			RateLimit: rate.Every(time.Second),
 		})
 	})
 
