@@ -25,6 +25,9 @@ type reflectFunc struct {
 var _ Handler = (*reflectFunc)(nil)
 
 func NewHandler(fn interface{}) Handler {
+	if fn == nil {
+		return nil
+	}
 	if h, ok := fn.(Handler); ok {
 		return h
 	}

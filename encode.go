@@ -20,7 +20,7 @@ func encodeArgs(args []interface{}) (string, error) {
 }
 
 func decodeArgs(s string, fnType reflect.Type) ([]reflect.Value, error) {
-	if fnType.NumIn() == 0 {
+	if fnType.NumIn() == 0 && s == "" {
 		return nil, nil
 	}
 

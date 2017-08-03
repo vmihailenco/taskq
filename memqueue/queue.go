@@ -3,20 +3,11 @@ package memqueue
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/internal"
 )
-
-var timers = sync.Pool{
-	New: func() interface{} {
-		t := time.NewTimer(time.Hour)
-		t.Stop()
-		return t
-	},
-}
 
 type manager struct{}
 

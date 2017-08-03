@@ -70,8 +70,8 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 		BufferSize:      1000,
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
-		Handler:         msgqueue.HandlerFunc(msgutil.UnwrapMessageHandler(q.add)),
-		FallbackHandler: opt.Handler,
+		Handler:         msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.add)),
+		FallbackHandler: msgutil.UnwrapMessageHandler(opt.Handler),
 
 		Redis: opt.Redis,
 	})
@@ -79,11 +79,10 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
 		GroupName: opt.GroupName,
 
-		BufferSize:      1000,
-		RetryLimit:      3,
-		MinBackoff:      time.Second,
-		Handler:         q.delBatcherAdd,
-		FallbackHandler: opt.Handler,
+		BufferSize: 1000,
+		RetryLimit: 3,
+		MinBackoff: time.Second,
+		Handler:    msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.delBatcherAdd)),
 
 		Redis: opt.Redis,
 	})

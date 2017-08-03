@@ -74,8 +74,8 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 		BufferSize:      1000,
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
-		Handler:         q.addBatcherAdd,
-		FallbackHandler: opt.Handler,
+		Handler:         msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.addBatcherAdd)),
+		FallbackHandler: msgutil.UnwrapMessageHandler(opt.Handler),
 
 		Redis: opt.Redis,
 	})
@@ -88,15 +88,14 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
 		GroupName: opt.GroupName,
 
-		BufferSize:      1000,
-		RetryLimit:      3,
-		MinBackoff:      time.Second,
-		Handler:         q.delBatcherAdd,
-		FallbackHandler: opt.Handler,
+		BufferSize: 1000,
+		RetryLimit: 3,
+		MinBackoff: time.Second,
+		Handler:    msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.delBatcherAdd)),
 
 		Redis: opt.Redis,
 	})
-	q.addQueue.Processor().SetNoDelete(true)
+	q.delQueue.Processor().SetNoDelete(true)
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
 		Worker:   q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
@@ -225,6 +224,10 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 			} else {
 				reservedCount--
 			}
+		}
+
+		if *sqsMsg.Body == "_" {
+			*sqsMsg.Body = ""
 		}
 
 		msgs[i] = &msgqueue.Message{

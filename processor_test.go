@@ -177,6 +177,10 @@ func testRetry(t *testing.T, q msgqueue.Queue) {
 	if n := atomic.LoadInt64(&fallbackCount); n != 1 {
 		t.Fatalf("fallback handler is called %d times, wanted 1", n)
 	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testNamedMessage(t *testing.T, q msgqueue.Queue) {
@@ -185,7 +189,10 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	_ = q.Purge()
 
 	ch := make(chan time.Time, 10)
-	handler := func() error {
+	handler := func(hello string) error {
+		if hello != "world" {
+			panic("hello != world")
+		}
 		ch <- time.Now()
 		return nil
 	}
@@ -195,7 +202,7 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			msg := msgqueue.NewMessage()
+			msg := msgqueue.NewMessage("world")
 			msg.Name = "the-name"
 			err := q.Add(msg)
 			if err != nil && err != msgqueue.ErrDuplicate {
