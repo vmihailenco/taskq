@@ -67,9 +67,8 @@ type ProcessorStats struct {
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
-	q        Queue
-	opt      *Options
-	noDelete bool
+	q   Queue
+	opt *Options
 
 	handler         Handler
 	fallbackHandler Handler
@@ -151,11 +150,6 @@ func (p *Processor) String() string {
 		"Processor<%s workers=%d buffer=%d>",
 		p.q.Name(), p.opt.WorkerNumber, p.opt.BufferSize,
 	)
-}
-
-func (p *Processor) SetNoDelete(flag bool) *Processor {
-	p.noDelete = flag
-	return p
 }
 
 // Stats returns processor stats.
@@ -519,12 +513,17 @@ func (p *Processor) process(workerId int, msg *Message) error {
 
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
-	p.updateAvgDuration(time.Since(start))
+	if err != errBatched {
+		p.updateAvgDuration(time.Since(start))
+	}
 
 	if err == nil {
 		p.resetPause()
+	}
+
+	if err == nil || err == errBatched {
 		atomic.AddUint32(&p.processed, 1)
-		p.delete(msg, nil)
+		p.delete(msg, err)
 		return nil
 	}
 
@@ -607,7 +606,7 @@ func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
 }
 
 func (p *Processor) delete(msg *Message, reason error) {
-	if reason != nil {
+	if reason != nil && reason != errBatched {
 		internal.Logf("%s handler failed: %s", p.q, reason)
 
 		if p.fallbackHandler != nil {
@@ -617,7 +616,7 @@ func (p *Processor) delete(msg *Message, reason error) {
 		}
 	}
 
-	if !p.noDelete {
+	if reason != errBatched {
 		p.q.Delete(msg)
 	}
 

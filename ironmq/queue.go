@@ -87,7 +87,6 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 
 		Redis: opt.Redis,
 	})
-	q.delQueue.Processor().SetNoDelete(true)
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
 		Worker:   q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
@@ -114,6 +113,10 @@ func (q *Queue) Processor() *msgqueue.Processor {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
+}
+
+func (q *Queue) DeleteQueue() *memqueue.Queue {
+	return q.delQueue
 }
 
 func (q *Queue) createQueue() error {
@@ -239,8 +242,7 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
-	q.delBatcher.Add(msg)
-	return nil
+	return q.delBatcher.Add(msg)
 }
 
 func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {

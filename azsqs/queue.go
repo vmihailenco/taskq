@@ -79,7 +79,6 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 
 		Redis: opt.Redis,
 	})
-	q.addQueue.Processor().SetNoDelete(true)
 	q.addBatcher = msgqueue.NewBatcher(q.addQueue, &msgqueue.BatcherOptions{
 		Worker:   q.addBatch,
 		Splitter: q.splitAddBatch,
@@ -95,7 +94,6 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 
 		Redis: opt.Redis,
 	})
-	q.delQueue.Processor().SetNoDelete(true)
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
 		Worker:   q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
@@ -122,6 +120,14 @@ func (q *Queue) Processor() *msgqueue.Processor {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
+}
+
+func (q *Queue) AddQueue() *memqueue.Queue {
+	return q.addQueue
+}
+
+func (q *Queue) DeleteQueue() *memqueue.Queue {
+	return q.delQueue
 }
 
 // Add adds message to the queue.
@@ -292,8 +298,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 }
 
 func (q *Queue) addBatcherAdd(msg *msgqueue.Message) error {
-	q.addBatcher.Add(msg)
-	return nil
+	return q.addBatcher.Add(msg)
 }
 
 func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
@@ -384,8 +389,7 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 }
 
 func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
-	q.delBatcher.Add(msg)
-	return nil
+	return q.delBatcher.Add(msg)
 }
 
 func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {

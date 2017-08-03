@@ -1,10 +1,13 @@
 package msgqueue
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var errBatched = errors.New("message is batched")
 
 type BatcherOptions struct {
 	Worker   func([]*Message) error
@@ -69,7 +72,7 @@ func (b *Batcher) isSync() bool {
 	return atomic.LoadUint32(&b._sync) == 1
 }
 
-func (b *Batcher) Add(msg *Message) {
+func (b *Batcher) Add(msg *Message) error {
 	var msgs []*Message
 
 	b.mu.Lock()
@@ -91,7 +94,9 @@ func (b *Batcher) Add(msg *Message) {
 
 	if len(msgs) > 0 {
 		b.process(msgs)
+		return nil
 	}
+	return errBatched
 }
 
 func (b *Batcher) process(msgs []*Message) {
