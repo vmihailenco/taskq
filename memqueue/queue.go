@@ -122,7 +122,7 @@ func (q *Queue) Add(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
-	if q.noDelay && msg.Delay > 0 {
+	if (q.noDelay || q.sync) && msg.Delay > 0 {
 		msg.Delay = 0
 	}
 	msg.ReservedCount++
