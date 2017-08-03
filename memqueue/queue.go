@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 )
 
 var timers = sync.Pool{
@@ -42,22 +43,15 @@ type Queue struct {
 	noDelay bool
 
 	p *msgqueue.Processor
-
-	wg   sync.WaitGroup
-	msgs chan *msgqueue.Message
 }
 
 var _ msgqueue.Queue = (*Queue)(nil)
 
 func NewQueue(opt *msgqueue.Options) *Queue {
 	opt.Init()
-	bufferSize := opt.BufferSize
-	opt.BufferSize = 1
-	opt.WaitTimeout = 100 * time.Millisecond
 
 	q := Queue{
-		opt:  opt,
-		msgs: make(chan *msgqueue.Message, bufferSize),
+		opt: opt,
 	}
 	q.p = msgqueue.StartProcessor(&q, opt)
 
@@ -97,27 +91,7 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	defer unregisterQueue(q)
-
-	done := make(chan struct{}, 1)
-	timeoutCh := time.After(timeout)
-
-	go func() {
-		q.wg.Wait()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-timeoutCh:
-		return fmt.Errorf("messages were not consumed after %s", timeout)
-	case <-done:
-	}
-
 	return q.p.StopTimeout(timeout)
-}
-
-// Add adds message to the queue.
-func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.addMessage(msg)
 }
 
 // Call creates a message using the args and adds it to the queue.
@@ -134,32 +108,29 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	return q.Add(msg)
 }
 
-func (q *Queue) addMessage(msg *msgqueue.Message) error {
+// Add adds message to the queue.
+func (q *Queue) Add(msg *msgqueue.Message) error {
+	_, err := msg.GetBody()
+	if err != nil {
+		return err
+	}
+
 	if !q.isUniqueName(msg.Name) {
 		return msgqueue.ErrDuplicate
 	}
-	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
 
 func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
-	var delay time.Duration
-	delay, msg.Delay = msg.Delay, 0
+	if q.noDelay && msg.Delay > 0 {
+		msg.Delay = 0
+	}
 	msg.ReservedCount++
 
 	if q.sync {
 		return q.p.Process(msg)
 	}
-
-	if q.noDelay || delay == 0 {
-		q.msgs <- msg
-		return nil
-	}
-
-	time.AfterFunc(delay, func() {
-		q.msgs <- msg
-	})
-	return nil
+	return q.p.Add(msg)
 }
 
 func (q *Queue) isUniqueName(name string) bool {
@@ -174,45 +145,14 @@ func (q *Queue) isUniqueName(name string) bool {
 }
 
 func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
-	msgs := make([]*msgqueue.Message, 0, n)
-loop:
-	for i := 0; i < n; i++ {
-		select {
-		case msg := <-q.msgs:
-			msgs = append(msgs, msg)
-			continue loop
-		default:
-		}
-
-		if len(msgs) > 0 {
-			return msgs, nil
-		}
-
-		timer := timers.Get().(*time.Timer)
-		timer.Reset(q.opt.WaitTimeout)
-
-		select {
-		case msg := <-q.msgs:
-			msgs = append(msgs, msg)
-
-			if !timer.Stop() {
-				<-timer.C
-			}
-			timers.Put(timer)
-		case <-timer.C:
-			return msgs, nil
-		}
-	}
-	return msgs, nil
+	return nil, internal.ErrNotSupported
 }
 
-func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {
-	msg.Delay = dur
+func (q *Queue) Release(msg *msgqueue.Message) error {
 	return q.enqueueMessage(msg)
 }
 
 func (q *Queue) Delete(msg *msgqueue.Message) error {
-	q.wg.Done()
 	return nil
 }
 
@@ -229,13 +169,5 @@ func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
 }
 
 func (q *Queue) Purge() error {
-loop:
-	for {
-		select {
-		case <-q.msgs:
-		default:
-			break loop
-		}
-	}
 	return q.p.Purge()
 }

@@ -2,16 +2,28 @@ package msgqueue
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const batcherTimeout = 3 * time.Second
+type BatcherOptions struct {
+	Worker   func([]*Message) error
+	Splitter func([]*Message) ([]*Message, []*Message)
+	Timeout  time.Duration
+}
 
-type msgBatcher struct {
-	fn    func([]*Message)
-	limit int
+func (opt *BatcherOptions) init() {
+	if opt.Timeout == 0 {
+		opt.Timeout = 3 * time.Second
+	}
+}
 
-	wg sync.WaitGroup
+type Batcher struct {
+	q   Queue
+	opt *BatcherOptions
+
+	_sync uint32 // atomic
+	wg    sync.WaitGroup
 
 	mu         sync.Mutex
 	closed     bool
@@ -19,27 +31,37 @@ type msgBatcher struct {
 	firstMsgAt time.Time
 }
 
-func newMsgBatcher(limit int, fn func([]*Message)) *msgBatcher {
-	b := msgBatcher{
-		fn: fn,
+func NewBatcher(q Queue, opt *BatcherOptions) *Batcher {
+	opt.init()
+	b := Batcher{
+		q:   q,
+		opt: opt,
 	}
-	b.SetLimit(limit)
 	go b.callOnTimeout()
 	return &b
 }
 
-func (b *msgBatcher) SetLimit(limit int) {
-	const maxLimit = 10
-	if limit > maxLimit {
-		limit = maxLimit
+func (b *Batcher) SetSync(v bool) {
+	var n uint32
+	if v {
+		n = 1
+	}
+	atomic.StoreUint32(&b._sync, n)
+
+	if !v {
+		return
 	}
 
 	b.mu.Lock()
-	b.limit = limit
+	b.wait()
 	b.mu.Unlock()
 }
 
-func (b *msgBatcher) Wait() error {
+func (b *Batcher) isSync() bool {
+	return atomic.LoadUint32(&b._sync) == 1
+}
+
+func (b *Batcher) Wait() error {
 	b.mu.Lock()
 	b.wait()
 	b.mu.Unlock()
@@ -47,14 +69,14 @@ func (b *msgBatcher) Wait() error {
 	return nil
 }
 
-func (b *msgBatcher) wait() {
+func (b *Batcher) wait() {
 	if len(b.msgs) > 0 {
-		b.fn(b.msgs)
+		b.process(b.msgs)
 		b.msgs = nil
 	}
 }
 
-func (b *msgBatcher) Close() error {
+func (b *Batcher) Close() error {
 	b.mu.Lock()
 	b.closed = true
 	b.wait()
@@ -62,7 +84,7 @@ func (b *msgBatcher) Close() error {
 	return nil
 }
 
-func (b *msgBatcher) Add(msg *Message) {
+func (b *Batcher) Add(msg *Message) {
 	var msgs []*Message
 
 	b.mu.Lock()
@@ -71,26 +93,40 @@ func (b *msgBatcher) Add(msg *Message) {
 		b.firstMsgAt = time.Now()
 	}
 	b.msgs = append(b.msgs, msg)
-	if len(b.msgs) >= b.limit || b.timeoutReached() {
+
+	if b.isSync() || b.timeoutReached() {
 		msgs = b.msgs
 		b.msgs = nil
+	} else {
+		b.msgs, msgs = b.opt.Splitter(b.msgs)
 	}
 
 	b.mu.Unlock()
 
 	if len(msgs) > 0 {
-		b.fn(msgs)
+		b.process(msgs)
 	}
 }
 
-func (b *msgBatcher) callOnTimeout() {
+func (b *Batcher) process(msgs []*Message) {
+	_ = b.opt.Worker(msgs)
+	for _, msg := range msgs {
+		if msg.Err == nil {
+			b.q.Delete(msg)
+		} else {
+			b.q.Release(msg)
+		}
+	}
+}
+
+func (b *Batcher) callOnTimeout() {
 	for {
 		b.mu.Lock()
 		if b.timeoutReached() {
 			b.wg.Add(1)
 			go func(msgs []*Message) {
 				defer b.wg.Done()
-				b.fn(msgs)
+				b.process(msgs)
 			}(b.msgs)
 			b.msgs = nil
 		}
@@ -101,10 +137,10 @@ func (b *msgBatcher) callOnTimeout() {
 			break
 		}
 
-		time.Sleep(batcherTimeout)
+		time.Sleep(b.opt.Timeout)
 	}
 }
 
-func (b *msgBatcher) timeoutReached() bool {
-	return len(b.msgs) > 0 && time.Since(b.firstMsgAt) > batcherTimeout
+func (b *Batcher) timeoutReached() bool {
+	return len(b.msgs) > 0 && time.Since(b.firstMsgAt) > b.opt.Timeout
 }

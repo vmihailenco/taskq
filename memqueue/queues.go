@@ -23,15 +23,25 @@ func Queues() []*Queue {
 
 func registerQueue(queue *Queue) {
 	queuesMu.Lock()
+	defer queuesMu.Unlock()
+
+	if queue.Name() == "" {
+		return
+	}
+
 	if _, ok := queues[queue.Name()]; ok {
 		panic(fmt.Sprintf("%s is already registered", queue))
 	}
 	queues[queue.Name()] = queue
-	queuesMu.Unlock()
 }
 
 func unregisterQueue(queue *Queue) {
 	queuesMu.Lock()
+	defer queuesMu.Unlock()
+
+	if queue.Name() == "" {
+		return
+	}
+
 	delete(queues, queue.Name())
-	queuesMu.Unlock()
 }

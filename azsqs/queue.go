@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/go-msgqueue/msgqueue/internal/msgutil"
 	"github.com/go-msgqueue/msgqueue/memqueue"
 
@@ -43,7 +44,12 @@ type Queue struct {
 	sqs       *sqs.SQS
 	accountId string
 	opt       *msgqueue.Options
-	memqueue  *memqueue.Queue
+
+	addQueue   *memqueue.Queue
+	addBatcher *msgqueue.Batcher
+
+	delQueue   *memqueue.Queue
+	delBatcher *msgqueue.Batcher
 
 	mu        sync.RWMutex
 	_queueURL string
@@ -55,26 +61,46 @@ var _ msgqueue.Queue = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	opt.Init()
+
 	q := Queue{
 		sqs:       sqs,
 		accountId: accountId,
 		opt:       opt,
 	}
 
-	memopt := msgqueue.Options{
-		Name:      opt.Name,
+	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
 		GroupName: opt.GroupName,
 
-		RetryLimit: 3,
-		MinBackoff: time.Second,
-		Handler:    msgqueue.HandlerFunc(q.add),
+		BufferSize:      1000,
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
+		Handler:         q.addBatcherAdd,
+		FallbackHandler: opt.Handler,
 
 		Redis: opt.Redis,
-	}
-	if opt.Handler != nil {
-		memopt.FallbackHandler = msgutil.MessageUnwrapperHandler(opt.Handler)
-	}
-	q.memqueue = memqueue.NewQueue(&memopt)
+	})
+	q.addQueue.Processor().SetNoDelete(true)
+	q.addBatcher = msgqueue.NewBatcher(q.addQueue, &msgqueue.BatcherOptions{
+		Worker:   q.addBatch,
+		Splitter: q.splitAddBatch,
+	})
+
+	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		GroupName: opt.GroupName,
+
+		BufferSize:      1000,
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
+		Handler:         q.delBatcherAdd,
+		FallbackHandler: opt.Handler,
+
+		Redis: opt.Redis,
+	})
+	q.addQueue.Processor().SetNoDelete(true)
+	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
+		Worker:   q.deleteBatch,
+		Splitter: q.splitDeleteBatch,
+	})
 
 	registerQueue(&q)
 	return &q
@@ -97,6 +123,25 @@ func (q *Queue) Processor() *msgqueue.Processor {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
+}
+
+// Add adds message to the queue.
+func (q *Queue) Add(msg *msgqueue.Message) error {
+	return q.addQueue.Add(msgutil.WrapMessage(msg))
+}
+
+// Call creates a message using the args and adds it to the queue.
+func (q *Queue) Call(args ...interface{}) error {
+	msg := msgqueue.NewMessage(args...)
+	return q.Add(msg)
+}
+
+// CallOnce works like Call, but it adds message with same args
+// only once in a period.
+func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
+	msg := msgqueue.NewMessage(args...)
+	msg.SetDelayName(period, args...)
+	return q.Add(msg)
 }
 
 func (q *Queue) queueURL() string {
@@ -146,64 +191,6 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) add(msg *msgqueue.Message) error {
-	const maxDelay = 15 * time.Minute
-
-	msg = msg.Args[0].(*msgqueue.Message)
-
-	body, err := msg.MarshalArgs()
-	if err != nil {
-		return err
-	}
-	if body == "" {
-		body = "_" // SQS requires body.
-	}
-
-	in := &sqs.SendMessageInput{
-		QueueUrl:    aws.String(q.queueURL()),
-		MessageBody: aws.String(body),
-	}
-
-	if msg.Delay <= maxDelay {
-		in.DelaySeconds = aws.Int64(int64(msg.Delay / time.Second))
-	} else {
-		in.DelaySeconds = aws.Int64(int64(maxDelay / time.Second))
-		in.MessageAttributes = map[string]*sqs.MessageAttributeValue{
-			"delay": &sqs.MessageAttributeValue{
-				DataType:    aws.String("String"),
-				StringValue: aws.String((msg.Delay - maxDelay).String()),
-			},
-		}
-	}
-
-	out, err := q.sqs.SendMessage(in)
-	if err != nil {
-		return err
-	}
-
-	msg.Id = *out.MessageId
-	return nil
-}
-
-// Add adds message to the queue.
-func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.memqueue.Add(msgutil.WrapMessage(msg))
-}
-
-// Call creates a message using the args and adds it to the queue.
-func (q *Queue) Call(args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	return q.Add(msg)
-}
-
-// CallOnce works like Call, but it adds message with same args
-// only once in a period.
-func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	msg.SetDelayName(period, args...)
-	return q.Add(msg)
-}
-
 func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	if n > 10 {
 		n = 10
@@ -251,44 +238,18 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	return msgs, nil
 }
 
-func (q *Queue) Release(msg *msgqueue.Message, delay time.Duration) error {
+func (q *Queue) Release(msg *msgqueue.Message) error {
 	in := &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(q.queueURL()),
 		ReceiptHandle:     &msg.ReservationId,
-		VisibilityTimeout: aws.Int64(int64(delay / time.Second)),
+		VisibilityTimeout: aws.Int64(int64(msg.Delay / time.Second)),
 	}
 	_, err := q.sqs.ChangeMessageVisibility(in)
 	return err
 }
 
 func (q *Queue) Delete(msg *msgqueue.Message) error {
-	in := &sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(q.queueURL()),
-		ReceiptHandle: &msg.ReservationId,
-	}
-	_, err := q.sqs.DeleteMessage(in)
-	return err
-}
-
-func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
-	if len(msgs) == 0 {
-		return errors.New("msgqueue: no messages to delete")
-	}
-
-	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
-	for i, msg := range msgs {
-		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
-			Id:            aws.String(strconv.Itoa(i)),
-			ReceiptHandle: &msg.ReservationId,
-		}
-	}
-
-	in := &sqs.DeleteMessageBatchInput{
-		QueueUrl: aws.String(q.queueURL()),
-		Entries:  entries,
-	}
-	_, err := q.sqs.DeleteMessageBatch(in)
-	return err
+	return q.delQueue.Add(msgutil.WrapMessage(msg))
 }
 
 func (q *Queue) Purge() error {
@@ -307,7 +268,10 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
-	if err := q.memqueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+	if err := q.addQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if q.p != nil {
@@ -316,4 +280,149 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		}
 	}
 	return firstErr
+}
+
+func (q *Queue) addBatcherAdd(msg *msgqueue.Message) error {
+	q.addBatcher.Add(msg)
+	return nil
+}
+
+func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
+	const maxDelay = 15 * time.Minute
+
+	if len(msgs) == 0 {
+		return errors.New("azsqs: no messages to add")
+	}
+
+	in := &sqs.SendMessageBatchInput{
+		QueueUrl: aws.String(q.queueURL()),
+	}
+
+	for i, msg := range msgs {
+		msg.Id = strconv.Itoa(i)
+
+		body, err := msg.GetBody()
+		if err != nil {
+			internal.Logf("Message.GetBody failed: %s", err)
+			continue
+		}
+		if body == "" {
+			body = "_" // SQS requires body.
+		}
+
+		entry := &sqs.SendMessageBatchRequestEntry{
+			Id:          aws.String(msg.Id),
+			MessageBody: aws.String(body),
+		}
+		if msg.Delay <= maxDelay {
+			entry.DelaySeconds = aws.Int64(int64(msg.Delay / time.Second))
+		} else {
+			entry.DelaySeconds = aws.Int64(int64(maxDelay / time.Second))
+			entry.MessageAttributes = map[string]*sqs.MessageAttributeValue{
+				"delay": &sqs.MessageAttributeValue{
+					DataType:    aws.String("String"),
+					StringValue: aws.String((msg.Delay - maxDelay).String()),
+				},
+			}
+		}
+
+		in.Entries = append(in.Entries, entry)
+	}
+
+	out, err := q.sqs.SendMessageBatch(in)
+	if err == nil {
+		return nil
+	}
+
+	for _, entry := range out.Failed {
+		internal.Logf(
+			"sqs.SendMessageBatch failed with code=%s message=%q",
+			*entry.Code, *entry.Message,
+		)
+		if *entry.SenderFault {
+			msg := findMessageById(msgs, *entry.Id)
+			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
+		}
+	}
+	return err
+}
+
+func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
+	const messagesLimit = 100
+	const sizeLimit = 250 * 1024
+
+	if len(msgs) >= messagesLimit {
+		return msgs, nil
+	}
+
+	var size int
+	for i, msg := range msgs {
+		body, _ := msg.GetBody()
+		size += len(body)
+		if size >= sizeLimit {
+			i--
+			return msgs[:i], msgs[i:]
+		}
+	}
+
+	return nil, msgs
+}
+
+func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
+	q.delBatcher.Add(msg)
+	return nil
+}
+
+func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
+	if len(msgs) == 0 {
+		return errors.New("azsqs: no messages to delete")
+	}
+
+	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
+	for i, msg := range msgs {
+		msg.Id = strconv.Itoa(i)
+		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
+			Id:            aws.String(msg.Id),
+			ReceiptHandle: &msg.ReservationId,
+		}
+	}
+
+	in := &sqs.DeleteMessageBatchInput{
+		QueueUrl: aws.String(q.queueURL()),
+		Entries:  entries,
+	}
+	out, err := q.sqs.DeleteMessageBatch(in)
+	if err == nil {
+		return nil
+	}
+
+	for _, entry := range out.Failed {
+		internal.Logf(
+			"sqs.SendMessageBatch failed with code=%s message=%q",
+			*entry.Code, *entry.Message,
+		)
+		if *entry.SenderFault {
+			msg := findMessageById(msgs, *entry.Id)
+			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
+		}
+	}
+	return err
+}
+
+func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
+	const messagesLimit = 10
+
+	if len(msgs) >= messagesLimit {
+		return msgs, nil
+	}
+	return nil, msgs
+}
+
+func findMessageById(msgs []*msgqueue.Message, id string) *msgqueue.Message {
+	for _, msg := range msgs {
+		if msg.Id == id {
+			return msg
+		}
+	}
+	return nil
 }

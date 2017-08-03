@@ -8,8 +8,8 @@ func WrapMessage(msg *msgqueue.Message) *msgqueue.Message {
 	return msg0
 }
 
-func MessageUnwrapperHandler(fn interface{}) msgqueue.HandlerFunc {
-	h := msgqueue.NewHandler(fn)
+func UnwrapMessageHandler(fn func(*msgqueue.Message) error) msgqueue.HandlerFunc {
+	h := msgqueue.HandlerFunc(fn)
 	return msgqueue.HandlerFunc(func(msg *msgqueue.Message) error {
 		msg = msg.Args[0].(*msgqueue.Message)
 		return h.HandleMessage(msg)

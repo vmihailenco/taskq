@@ -39,9 +39,14 @@ func NewManager(cfg *iron_config.Settings) msgqueue.Manager {
 }
 
 type Queue struct {
-	q        mq.Queue
-	opt      *msgqueue.Options
-	memqueue *memqueue.Queue
+	q   mq.Queue
+	opt *msgqueue.Options
+
+	addQueue   *memqueue.Queue
+	addBatcher *msgqueue.Batcher
+
+	delQueue   *memqueue.Queue
+	delBatcher *msgqueue.Batcher
 
 	p *msgqueue.Processor
 }
@@ -59,20 +64,34 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 		opt: opt,
 	}
 
-	memopt := msgqueue.Options{
-		Name:      opt.Name,
+	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
 		GroupName: opt.GroupName,
 
-		RetryLimit: 3,
-		MinBackoff: time.Second,
-		Handler:    msgqueue.HandlerFunc(q.add),
+		BufferSize:      1000,
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
+		Handler:         msgqueue.HandlerFunc(msgutil.UnwrapMessageHandler(q.add)),
+		FallbackHandler: opt.Handler,
 
 		Redis: opt.Redis,
-	}
-	if opt.Handler != nil {
-		memopt.FallbackHandler = msgutil.MessageUnwrapperHandler(opt.Handler)
-	}
-	q.memqueue = memqueue.NewQueue(&memopt)
+	})
+
+	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		GroupName: opt.GroupName,
+
+		BufferSize:      1000,
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
+		Handler:         q.delBatcherAdd,
+		FallbackHandler: opt.Handler,
+
+		Redis: opt.Redis,
+	})
+	q.delQueue.Processor().SetNoDelete(true)
+	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
+		Worker:   q.deleteBatch,
+		Splitter: q.splitDeleteBatch,
+	})
 
 	registerQueue(&q)
 	return &q
@@ -102,29 +121,9 @@ func (q *Queue) createQueue() error {
 	return err
 }
 
-func (q *Queue) add(msg *msgqueue.Message) error {
-	msg = msg.Args[0].(*msgqueue.Message)
-
-	body, err := msg.MarshalArgs()
-	if err != nil {
-		return err
-	}
-
-	id, err := q.q.PushMessage(mq.Message{
-		Body:  body,
-		Delay: int64(msg.Delay / time.Second),
-	})
-	if err != nil {
-		return err
-	}
-
-	msg.Id = id
-	return nil
-}
-
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.memqueue.Add(msgutil.WrapMessage(msg))
+	return q.addQueue.Add(msgutil.WrapMessage(msg))
 }
 
 // Call creates a message using the args and adds it to the queue.
@@ -175,9 +174,9 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	return msgs, nil
 }
 
-func (q *Queue) Release(msg *msgqueue.Message, delay time.Duration) error {
+func (q *Queue) Release(msg *msgqueue.Message) error {
 	return retry(func() error {
-		return q.q.ReleaseMessage(msg.Id, msg.ReservationId, int64(delay/time.Second))
+		return q.q.ReleaseMessage(msg.Id, msg.ReservationId, int64(msg.Delay/time.Second))
 	})
 }
 
@@ -194,24 +193,6 @@ func (q *Queue) Delete(msg *msgqueue.Message) error {
 	return err
 }
 
-func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
-	if len(msgs) == 0 {
-		return errors.New("msgqueue: no messages to delete")
-	}
-
-	mqMsgs := make([]mq.Message, len(msgs))
-	for i, msg := range msgs {
-		mqMsgs[i] = mq.Message{
-			Id:            msg.Id,
-			ReservationId: msg.ReservationId,
-		}
-	}
-
-	return retry(func() error {
-		return q.q.DeleteReservedMessages(mqMsgs)
-	})
-}
-
 func (q *Queue) Purge() error {
 	return q.q.Clear()
 }
@@ -224,7 +205,7 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
-	if err := q.memqueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if q.p != nil {
@@ -233,6 +214,64 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		}
 	}
 	return firstErr
+}
+
+func (q *Queue) add(msg *msgqueue.Message) error {
+	body, err := msg.GetBody()
+	if err != nil {
+		return err
+	}
+
+	id, err := q.q.PushMessage(mq.Message{
+		Body:  body,
+		Delay: int64(msg.Delay / time.Second),
+	})
+	if err != nil {
+		return err
+	}
+
+	msg.Id = id
+	return nil
+}
+
+func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
+	q.delBatcher.Add(msg)
+	return nil
+}
+
+func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
+	if len(msgs) == 0 {
+		return errors.New("ironmq: no messages to delete")
+	}
+
+	mqMsgs := make([]mq.Message, len(msgs))
+	for i, msg := range msgs {
+		mqMsgs[i] = mq.Message{
+			Id:            msg.Id,
+			ReservationId: msg.ReservationId,
+		}
+	}
+
+	err := retry(func() error {
+		return q.q.DeleteReservedMessages(mqMsgs)
+	})
+	if err == nil {
+		return nil
+	}
+
+	for _, msg := range msgs {
+		msg.Err = err
+	}
+	return nil
+}
+
+func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
+	const messagesLimit = 10
+
+	if len(msgs) >= messagesLimit {
+		return msgs, nil
+	}
+	return nil, msgs
 }
 
 func retry(fn func() error) error {
