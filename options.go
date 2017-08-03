@@ -30,7 +30,11 @@ type redisStorage struct {
 var _ Storage = (*redisStorage)(nil)
 
 func (s redisStorage) Exists(key string) bool {
-	return !s.SetNX(key, "", 24*time.Hour).Val()
+	val, err := s.SetNX(key, "", 24*time.Hour).Result()
+	if err != nil {
+		return true
+	}
+	return !val
 }
 
 type RateLimiter interface {

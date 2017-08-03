@@ -41,10 +41,10 @@ func printStats(p *msgqueue.Processor) {
 		old = st
 
 		internal.Logf(
-			"%s: buffered=%d/%d in_flight=%d/%d deleting=%d "+
+			"%s: buffered=%d/%d in_flight=%d/%d "+
 				"processed=%d fails=%d retries=%d "+
 				"avg_dur=%s min_dur=%s max_dur=%s",
-			q, st.Buffered, opt.BufferSize, st.InFlight, opt.WorkerNumber, st.Deleting,
+			q, st.Buffered, opt.BufferSize, st.InFlight, opt.WorkerNumber,
 			st.Processed, st.Fails, st.Retries,
 			st.AvgDuration, st.MinDuration, st.MaxDuration,
 		)
@@ -245,7 +245,7 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 				}
 			}
 
-			time.Sleep(time.Second)
+			time.Sleep(2 * time.Second)
 		}
 	}()
 

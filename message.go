@@ -28,22 +28,21 @@ type Message struct {
 	Args []interface{}
 
 	// Text representation of the Args.
-	Body      string
-	stickyErr error
+	Body    string
+	bodyErr error
 
 	// SQS/IronMQ reservation id that is used to release/delete the message..
 	ReservationId string
 
 	// The number of times the message has been reserved or released.
 	ReservedCount int
+
+	Err error
 }
 
 func NewMessage(args ...interface{}) *Message {
-	body, err := encodeArgs(args)
 	return &Message{
-		Args:      args,
-		Body:      body,
-		stickyErr: err,
+		Args: args,
 	}
 }
 
@@ -60,10 +59,14 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 }
 
 func (m *Message) GetBody() (string, error) {
-	if m.stickyErr != nil {
-		return "", m.stickyErr
+	if m.bodyErr != nil {
+		return "", m.bodyErr
 	}
-	return m.Body, nil
+	if m.Body != "" {
+		return m.Body, nil
+	}
+	m.Body, m.bodyErr = encodeArgs(m.Args)
+	return m.Body, m.bodyErr
 }
 
 func timeSlot(resolution time.Duration) int64 {

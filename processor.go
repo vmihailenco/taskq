@@ -56,7 +56,6 @@ type Delayer interface {
 type ProcessorStats struct {
 	Buffered    uint32
 	InFlight    uint32
-	Deleting    uint32
 	Processed   uint32
 	Retries     uint32
 	Fails       uint32
@@ -68,8 +67,9 @@ type ProcessorStats struct {
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
-	q   Queue
-	opt *Options
+	q        Queue
+	opt      *Options
+	noDelete bool
 
 	handler         Handler
 	fallbackHandler Handler
@@ -85,8 +85,6 @@ type Processor struct {
 
 	messageFetcherState int32
 	rateLimitAllowance  int
-
-	delBatch *msgBatcher
 
 	errCount uint32
 	delaySec uint32
@@ -130,8 +128,6 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		p.fallbackHandler = NewHandler(opt.FallbackHandler)
 	}
 
-	p.delBatch = newMsgBatcher(p.opt.ReservationSize, p.deleteBatch)
-
 	return p
 }
 
@@ -157,12 +153,16 @@ func (p *Processor) String() string {
 	)
 }
 
+func (p *Processor) SetNoDelete(flag bool) *Processor {
+	p.noDelete = flag
+	return p
+}
+
 // Stats returns processor stats.
 func (p *Processor) Stats() *ProcessorStats {
 	return &ProcessorStats{
 		Buffered:    uint32(len(p.ch)),
 		InFlight:    atomic.LoadUint32(&p.inFlight),
-		Deleting:    atomic.LoadUint32(&p.deleting),
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
@@ -238,10 +238,6 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 		p.workersWG.Done()
 	}()
 
-	p.delBatch.SetSync(true)
-	defer p.delBatch.SetSync(false)
-	p.delBatch.Wait()
-
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
 
@@ -267,17 +263,6 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	select {
 	case <-timeoutCh:
 		return fmt.Errorf("workers were not stopped after %s", timeout)
-	case <-done:
-	}
-
-	go func() {
-		p.delBatch.Wait()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-timeoutCh:
-		return fmt.Errorf("messages were not deleted after %s", timeout)
 	case <-done:
 	}
 
@@ -338,11 +323,8 @@ func (p *Processor) ProcessOne() error {
 		return err
 	}
 
-	firstErr := p.process(-1, msg)
-	if err := p.delBatch.Wait(); err != nil && firstErr == nil {
-		firstErr = err
-	}
-	return firstErr
+	// TODO: wait
+	return p.process(-1, msg)
 }
 
 func (p *Processor) reserveOne() (*Message, error) {
@@ -533,6 +515,7 @@ func (p *Processor) process(workerId int, msg *Message) error {
 		p.release(msg, nil)
 		return nil
 	}
+	msg.Delay = exponentialBackoff(p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
 
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
@@ -590,10 +573,10 @@ func (p *Processor) dequeueMessage() (*Message, bool) {
 }
 
 func (p *Processor) release(msg *Message, reason error) {
-	delay := p.releaseBackoff(msg, reason)
+	msg.Delay = p.releaseBackoff(msg, reason)
 
 	if reason != nil {
-		new := uint32(delay / time.Second)
+		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
 			old := atomic.LoadUint32(&p.delaySec)
 			if new > old {
@@ -604,9 +587,9 @@ func (p *Processor) release(msg *Message, reason error) {
 			}
 		}
 
-		internal.Logf("%s handler failed (retry in dur=%s): %s", p.q, delay, reason)
+		internal.Logf("%s handler failed (retry in dur=%s): %s", p.q, msg.Delay, reason)
 	}
-	if err := p.q.Release(msg, delay); err != nil {
+	if err := p.q.Release(msg); err != nil {
 		internal.Logf("%s Release failed: %s", p.q, err)
 	}
 
@@ -620,12 +603,7 @@ func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
 			return delayer.Delay()
 		}
 	}
-
-	if msg.Delay > 0 {
-		return msg.Delay
-	}
-
-	return exponentialBackoff(p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
+	return msg.Delay
 }
 
 func (p *Processor) delete(msg *Message, reason error) {
@@ -640,18 +618,10 @@ func (p *Processor) delete(msg *Message, reason error) {
 	}
 
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	atomic.AddUint32(&p.deleting, 1)
-	p.delBatch.Add(msg)
-}
-
-func (p *Processor) deleteBatch(msgs []*Message) {
-	if err := p.q.DeleteBatch(msgs); err != nil {
-		internal.Logf("%s DeleteBatch failed: %s", p.q, err)
+	if !p.noDelete {
+		p.q.Delete(msg)
 	}
-	atomic.AddUint32(&p.deleting, ^uint32(len(msgs)-1))
-	for i := 0; i < len(msgs); i++ {
-		p.wg.Done()
-	}
+	p.wg.Done()
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
@@ -717,6 +687,13 @@ func (p *Processor) unlockWorker(id int) {
 	if err := lock.Unlock(); err != nil {
 		internal.Logf("redlock.Unlock failed: %s", err)
 	}
+}
+
+func (p *Processor) splitDeleteBatch(msgs []*Message) ([]*Message, []*Message) {
+	if len(msgs) >= p.opt.ReservationSize {
+		return msgs, nil
+	}
+	return nil, msgs
 }
 
 func exponentialBackoff(min, max time.Duration, retry int) time.Duration {

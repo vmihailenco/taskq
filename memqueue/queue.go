@@ -94,11 +94,6 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	return q.p.StopTimeout(timeout)
 }
 
-// Add adds message to the queue.
-func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.addMessage(msg)
-}
-
 // Call creates a message using the args and adds it to the queue.
 func (q *Queue) Call(args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
@@ -113,7 +108,13 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	return q.Add(msg)
 }
 
-func (q *Queue) addMessage(msg *msgqueue.Message) error {
+// Add adds message to the queue.
+func (q *Queue) Add(msg *msgqueue.Message) error {
+	_, err := msg.GetBody()
+	if err != nil {
+		return err
+	}
+
 	if !q.isUniqueName(msg.Name) {
 		return msgqueue.ErrDuplicate
 	}
@@ -147,8 +148,7 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 
-func (q *Queue) Release(msg *msgqueue.Message, dur time.Duration) error {
-	msg.Delay = dur
+func (q *Queue) Release(msg *msgqueue.Message) error {
 	return q.enqueueMessage(msg)
 }
 
