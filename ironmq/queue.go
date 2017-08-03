@@ -11,6 +11,7 @@ import (
 	"github.com/iron-io/iron_go3/mq"
 
 	"github.com/go-msgqueue/msgqueue"
+	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/go-msgqueue/msgqueue/internal/msgutil"
 	"github.com/go-msgqueue/msgqueue/memqueue"
 )
@@ -255,9 +256,15 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 		}
 	}
 
-	return retry(func() error {
+	err := retry(func() error {
 		return q.q.DeleteReservedMessages(mqMsgs)
 	})
+	if err != nil {
+		internal.Logf("mq.DeleteReservedMessages failed: %s", err)
+		return err
+	}
+
+	return nil
 }
 
 func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {

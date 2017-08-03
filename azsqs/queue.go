@@ -340,6 +340,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 	out, err := q.sqs.SendMessageBatch(in)
 	if err != nil {
+		internal.Logf("sqs.SendMessageBatch failed: %s", err)
 		return err
 	}
 
@@ -407,6 +408,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	}
 	out, err := q.sqs.DeleteMessageBatch(in)
 	if err != nil {
+		internal.Logf("sqs.DeleteMessageBatch failed: %s", err)
 		return err
 	}
 
