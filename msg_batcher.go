@@ -95,7 +95,14 @@ func (b *Batcher) Add(msg *Message) {
 }
 
 func (b *Batcher) process(msgs []*Message) {
-	_ = b.opt.Worker(msgs)
+	err := b.opt.Worker(msgs)
+	if err != nil {
+		for _, msg := range msgs {
+			b.q.Release(msg)
+		}
+		return
+	}
+
 	for _, msg := range msgs {
 		if msg.Err == nil {
 			b.q.Delete(msg)

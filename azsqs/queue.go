@@ -339,8 +339,8 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	}
 
 	out, err := q.sqs.SendMessageBatch(in)
-	if err == nil {
-		return nil
+	if err != nil {
+		return err
 	}
 
 	for _, entry := range out.Failed {
@@ -353,7 +353,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
 		}
 	}
-	return err
+	return nil
 }
 
 func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
@@ -406,8 +406,8 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 		Entries:  entries,
 	}
 	out, err := q.sqs.DeleteMessageBatch(in)
-	if err == nil {
-		return nil
+	if err != nil {
+		return err
 	}
 
 	for _, entry := range out.Failed {
@@ -420,7 +420,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
 		}
 	}
-	return err
+	return nil
 }
 
 func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {

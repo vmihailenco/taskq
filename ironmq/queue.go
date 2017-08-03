@@ -255,17 +255,9 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 		}
 	}
 
-	err := retry(func() error {
+	return retry(func() error {
 		return q.q.DeleteReservedMessages(mqMsgs)
 	})
-	if err == nil {
-		return nil
-	}
-
-	for _, msg := range msgs {
-		msg.Err = err
-	}
-	return nil
 }
 
 func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
