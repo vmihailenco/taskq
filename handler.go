@@ -40,7 +40,12 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	args, err := decodeArgs(msg.Body, h.ft)
+	body, err := msg.GetBody()
+	if err != nil {
+		return err
+	}
+
+	args, err := decodeArgs(body, h.ft)
 	if err != nil {
 		return err
 	}

@@ -363,7 +363,11 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 
 	var size int
 	for i, msg := range msgs {
-		body, _ := msg.GetBody()
+		body, err := msg.GetBody()
+		if err != nil {
+			internal.Logf("Message.GetBody failed: %s", err)
+		}
+
 		size += len(body)
 		if size >= sizeLimit {
 			i--
