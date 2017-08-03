@@ -23,44 +23,51 @@ func awsSQS() *sqs.SQS {
 
 func TestSQSProcessor(t *testing.T) {
 	testProcessor(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name: queueName("sqs-processor"),
+		Name:        queueName("sqs-processor"),
+		WaitTimeout: waitTimeout,
 	}))
 }
 
 func TestSQSDelay(t *testing.T) {
 	testDelay(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name: queueName("sqs-delay"),
+		Name:        queueName("sqs-delay"),
+		WaitTimeout: waitTimeout,
 	}))
 }
 
 func TestSQSRetry(t *testing.T) {
 	testRetry(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name: queueName("sqs-retry"),
+		Name:        queueName("sqs-retry"),
+		WaitTimeout: waitTimeout,
 	}))
 }
 
 func TestSQSNamedMessage(t *testing.T) {
 	testNamedMessage(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:  queueName("sqs-named-message"),
-		Redis: redisRing(),
+		Name:        queueName("sqs-named-message"),
+		WaitTimeout: waitTimeout,
+		Redis:       redisRing(),
 	}))
 }
 
 func TestSQSCallOnce(t *testing.T) {
 	testCallOnce(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:  queueName("sqs-call-once"),
-		Redis: redisRing(),
+		Name:        queueName("sqs-call-once"),
+		WaitTimeout: waitTimeout,
+		Redis:       redisRing(),
 	}))
 }
 
 func TestSQSRateLimit(t *testing.T) {
 	testRateLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name: queueName("sqs-rate-limit"),
+		Name:        queueName("sqs-rate-limit"),
+		WaitTimeout: waitTimeout,
 	}))
 }
 
 func TestSQSDelayer(t *testing.T) {
 	testDelayer(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name: queueName("sqs-delayer"),
+		Name:        queueName("sqs-delayer"),
+		WaitTimeout: waitTimeout,
 	}))
 }

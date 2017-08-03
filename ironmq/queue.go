@@ -205,14 +205,18 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
-	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
-		firstErr = err
-	}
+
 	if q.p != nil {
 		if err := q.p.StopTimeout(timeout); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
+
+	q.delBatcher.SetSync(true)
+	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
 	return firstErr
 }
 

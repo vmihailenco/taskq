@@ -16,6 +16,8 @@ import (
 	"github.com/go-msgqueue/msgqueue/internal"
 )
 
+const waitTimeout = time.Second
+
 func queueName(s string) string {
 	version := strings.Split(runtime.Version(), " ")[0]
 	version = strings.Replace(version, ".", "", -1)

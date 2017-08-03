@@ -268,17 +268,23 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
-	if err := q.addQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
-		firstErr = err
-	}
-	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
-		firstErr = err
-	}
+
 	if q.p != nil {
 		if err := q.p.StopTimeout(timeout); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
+
+	q.addBatcher.SetSync(true)
+	if err := q.addQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
+	q.delBatcher.SetSync(true)
+	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
 	return firstErr
 }
 
@@ -361,7 +367,8 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 		size += len(body)
 		if size >= sizeLimit {
 			i--
-			return msgs[:i], msgs[i:]
+			var rest []*msgqueue.Message
+			return msgs[:i], append(rest, msgs[i:]...)
 		}
 	}
 

@@ -229,6 +229,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 	defer resetWorker(&p.workersState)
 
+	// TODO: wait until message fetcher is stopped
 	p.stopMessageFetcher()
 	defer p.resetMessageFetcher()
 
@@ -505,7 +506,6 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 
 		p.process(id, msg)
 	}
-
 }
 
 func (p *Processor) process(workerId int, msg *Message) error {
@@ -617,10 +617,11 @@ func (p *Processor) delete(msg *Message, reason error) {
 		}
 	}
 
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	if !p.noDelete {
 		p.q.Delete(msg)
 	}
+
+	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	p.wg.Done()
 }
 
