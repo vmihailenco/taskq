@@ -69,6 +69,7 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	}
 
 	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      opt.Name + "-add",
 		GroupName: opt.GroupName,
 
 		BufferSize:      1000,
@@ -85,6 +86,7 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	})
 
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      opt.Name + "-delete",
 		GroupName: opt.GroupName,
 
 		BufferSize: 1000,

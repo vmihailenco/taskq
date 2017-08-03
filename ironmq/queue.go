@@ -66,6 +66,7 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 	}
 
 	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      opt.Name + "-add",
 		GroupName: opt.GroupName,
 
 		BufferSize:      1000,
@@ -78,6 +79,7 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 	})
 
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      opt.Name + "-delete",
 		GroupName: opt.GroupName,
 
 		BufferSize: 1000,
@@ -113,6 +115,10 @@ func (q *Queue) Processor() *msgqueue.Processor {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
+}
+
+func (q *Queue) AddQueue() *memqueue.Queue {
+	return q.addQueue
 }
 
 func (q *Queue) DeleteQueue() *memqueue.Queue {
