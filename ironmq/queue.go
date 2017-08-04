@@ -65,37 +65,47 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 		opt: opt,
 	}
 
-	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      opt.Name + "-add",
-		GroupName: opt.GroupName,
+	q.initAddQueue()
+	q.initDelQueue()
 
-		BufferSize:      1000,
-		RetryLimit:      3,
-		MinBackoff:      time.Second,
-		Handler:         msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.add)),
-		FallbackHandler: msgutil.UnwrapMessageHandler(opt.Handler),
+	registerQueue(&q)
+	return &q
+}
 
-		Redis: opt.Redis,
-	})
-
-	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      opt.Name + "-delete",
-		GroupName: opt.GroupName,
+func (q *Queue) initAddQueue() {
+	opt := &msgqueue.Options{
+		Name:      q.opt.Name + "-add",
+		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
 		RetryLimit: 3,
 		MinBackoff: time.Second,
-		Handler:    msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.delBatcherAdd)),
+		Handler:    msgqueue.HandlerFunc(q.add),
 
-		Redis: opt.Redis,
+		Redis: q.opt.Redis,
+	}
+	if q.opt.Handler != nil {
+		opt.FallbackHandler = msgutil.UnwrapMessageHandler(q.opt.Handler)
+	}
+	q.addQueue = memqueue.NewQueue(opt)
+}
+
+func (q *Queue) initDelQueue() {
+	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      q.opt.Name + "-delete",
+		GroupName: q.opt.GroupName,
+
+		BufferSize: 1000,
+		RetryLimit: 3,
+		MinBackoff: time.Second,
+		Handler:    msgqueue.HandlerFunc(q.delBatcherAdd),
+
+		Redis: q.opt.Redis,
 	})
-	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
+	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
 		Worker:   q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
 	})
-
-	registerQueue(&q)
-	return &q
 }
 
 func (q *Queue) Name() string {
@@ -230,6 +240,11 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 }
 
 func (q *Queue) add(msg *msgqueue.Message) error {
+	msg, ok := msg.Args[0].(*msgqueue.Message)
+	if !ok {
+		return fmt.Errorf("ironmq: got %v, wanted *msgqueue.Message", msg.Args)
+	}
+
 	body, err := msg.GetBody()
 	if err != nil {
 		return err
@@ -258,6 +273,11 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 	mqMsgs := make([]mq.Message, len(msgs))
 	for i, msg := range msgs {
+		msg, ok := msg.Args[0].(*msgqueue.Message)
+		if !ok {
+			return fmt.Errorf("ironmq: got %v, wanted *msgqueue.Message", msg.Args)
+		}
+
 		mqMsgs[i] = mq.Message{
 			Id:            msg.Id,
 			ReservationId: msg.ReservationId,

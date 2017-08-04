@@ -11,9 +11,6 @@ func WrapMessage(msg *msgqueue.Message) *msgqueue.Message {
 }
 
 func UnwrapMessageHandler(fn interface{}) msgqueue.HandlerFunc {
-	if fn == nil {
-		return nil
-	}
 	h := msgqueue.NewHandler(fn)
 	return msgqueue.HandlerFunc(func(msg *msgqueue.Message) error {
 		msg = msg.Args[0].(*msgqueue.Message)

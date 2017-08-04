@@ -65,13 +65,11 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func testProcessor(t *testing.T, q msgqueue.Queue) {
+func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-
 	ch := make(chan time.Time)
-	handler := func(hello, world string) error {
+	opt.Handler = func(hello, world string) error {
 		if hello != "hello" {
 			t.Fatalf("got %s, wanted hello", hello)
 		}
@@ -82,15 +80,18 @@ func testProcessor(t *testing.T, q msgqueue.Queue) {
 		return nil
 	}
 
+	opt.WaitTimeout = waitTimeout
+	q := man.NewQueue(opt)
+	_ = q.Purge()
+
 	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler: handler,
-	})
+	p := q.Processor()
+	p.Start()
 
 	select {
 	case <-ch:
@@ -99,6 +100,54 @@ func testProcessor(t *testing.T, q msgqueue.Queue) {
 	}
 
 	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
+	t.Parallel()
+
+	opt.Handler = func() error {
+		return errors.New("fake error")
+	}
+
+	ch := make(chan time.Time)
+	opt.FallbackHandler = func(hello, world string) error {
+		if hello != "hello" {
+			t.Fatalf("got %s, wanted hello", hello)
+		}
+		if world != "world" {
+			t.Fatalf("got %s, wanted world", world)
+		}
+		ch <- time.Now()
+		return nil
+	}
+
+	opt.RetryLimit = 1
+	opt.WaitTimeout = waitTimeout
+	q := man.NewQueue(opt)
+	_ = q.Purge()
+
+	msg := msgqueue.NewMessage("hello", "world")
+	err := q.Add(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := q.Processor()
+	p.Start()
+
+	select {
+	case <-ch:
+	case <-time.After(60 * time.Second):
+		t.Fatalf("message was not processed")
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

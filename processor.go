@@ -520,7 +520,12 @@ func (p *Processor) process(workerId int, msg *Message) error {
 	if err == nil {
 		p.resetPause()
 	}
+	p.put(msg, err)
 
+	return err
+}
+
+func (p *Processor) put(msg *Message, err error) error {
 	if err == nil || err == errBatched {
 		atomic.AddUint32(&p.processed, 1)
 		p.delete(msg, err)
@@ -536,7 +541,13 @@ func (p *Processor) process(workerId int, msg *Message) error {
 		p.delete(msg, err)
 	}
 
-	return err
+	return nil
+}
+
+func (p *Processor) Put(msg *Message) error {
+	p.wg.Add(1)
+	p.put(msg, msg.Err)
+	return nil
 }
 
 // Purge discards messages from the internal queue.
@@ -571,10 +582,10 @@ func (p *Processor) dequeueMessage() (*Message, bool) {
 	}
 }
 
-func (p *Processor) release(msg *Message, reason error) {
-	msg.Delay = p.releaseBackoff(msg, reason)
+func (p *Processor) release(msg *Message, err error) {
+	msg.Delay = p.releaseBackoff(msg, err)
 
-	if reason != nil {
+	if err != nil {
 		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
 			old := atomic.LoadUint32(&p.delaySec)
@@ -586,7 +597,10 @@ func (p *Processor) release(msg *Message, reason error) {
 			}
 		}
 
-		internal.Logf("%s handler failed (retry in dur=%s): %s", p.q, msg.Delay, reason)
+		internal.Logf(
+			"%s handler failed (retry in dur=%s): %s",
+			p.q, msg.Delay, err,
+		)
 	}
 	if err := p.q.Release(msg); err != nil {
 		internal.Logf("%s Release failed: %s", p.q, err)
@@ -596,18 +610,18 @@ func (p *Processor) release(msg *Message, reason error) {
 	p.wg.Done()
 }
 
-func (p *Processor) releaseBackoff(msg *Message, reason error) time.Duration {
-	if reason != nil {
-		if delayer, ok := reason.(Delayer); ok {
+func (p *Processor) releaseBackoff(msg *Message, err error) time.Duration {
+	if err != nil {
+		if delayer, ok := err.(Delayer); ok {
 			return delayer.Delay()
 		}
 	}
 	return msg.Delay
 }
 
-func (p *Processor) delete(msg *Message, reason error) {
-	if reason != nil && reason != errBatched {
-		internal.Logf("%s handler failed: %s", p.q, reason)
+func (p *Processor) delete(msg *Message, err error) {
+	if err != nil && err != errBatched {
+		internal.Logf("%s handler failed: %s", p.q, err)
 
 		if p.fallbackHandler != nil {
 			if err := p.fallbackHandler.HandleMessage(msg); err != nil {
@@ -616,7 +630,7 @@ func (p *Processor) delete(msg *Message, reason error) {
 		}
 	}
 
-	if reason != errBatched {
+	if err != errBatched {
 		p.q.Delete(msg)
 	}
 

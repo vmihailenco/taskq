@@ -68,41 +68,51 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 		opt:       opt,
 	}
 
-	q.addQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      opt.Name + "-add",
-		GroupName: opt.GroupName,
+	q.initAddQueue()
+	q.initDelQueue()
 
-		BufferSize:      1000,
-		RetryLimit:      3,
-		MinBackoff:      time.Second,
-		Handler:         msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.addBatcherAdd)),
-		FallbackHandler: msgutil.UnwrapMessageHandler(opt.Handler),
+	registerQueue(&q)
+	return &q
+}
 
-		Redis: opt.Redis,
-	})
-	q.addBatcher = msgqueue.NewBatcher(q.addQueue, &msgqueue.BatcherOptions{
-		Worker:   q.addBatch,
-		Splitter: q.splitAddBatch,
-	})
-
-	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      opt.Name + "-delete",
-		GroupName: opt.GroupName,
+func (q *Queue) initAddQueue() {
+	opt := &msgqueue.Options{
+		Name:      q.opt.Name + "-add",
+		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
 		RetryLimit: 3,
 		MinBackoff: time.Second,
-		Handler:    msgutil.UnwrapMessageHandler(msgqueue.HandlerFunc(q.delBatcherAdd)),
+		Handler:    msgqueue.HandlerFunc(q.addBatcherAdd),
 
-		Redis: opt.Redis,
+		Redis: q.opt.Redis,
+	}
+	if q.opt.Handler != nil {
+		opt.FallbackHandler = msgutil.UnwrapMessageHandler(q.opt.Handler)
+	}
+	q.addQueue = memqueue.NewQueue(opt)
+	q.addBatcher = msgqueue.NewBatcher(q.addQueue.Processor(), &msgqueue.BatcherOptions{
+		Worker:   q.addBatch,
+		Splitter: q.splitAddBatch,
 	})
-	q.delBatcher = msgqueue.NewBatcher(q.delQueue, &msgqueue.BatcherOptions{
+}
+
+func (q *Queue) initDelQueue() {
+	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+		Name:      q.opt.Name + "-delete",
+		GroupName: q.opt.GroupName,
+
+		BufferSize: 1000,
+		RetryLimit: 3,
+		MinBackoff: time.Second,
+		Handler:    msgqueue.HandlerFunc(q.delBatcherAdd),
+
+		Redis: q.opt.Redis,
+	})
+	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
 		Worker:   q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
 	})
-
-	registerQueue(&q)
-	return &q
 }
 
 func (q *Queue) Name() string {
@@ -315,6 +325,11 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	}
 
 	for i, msg := range msgs {
+		msg, ok := msg.Args[0].(*msgqueue.Message)
+		if !ok {
+			return fmt.Errorf("azsqs: got %v, wanted *msgqueue.Message", msg.Args)
+		}
+
 		msg.Id = strconv.Itoa(i)
 
 		body, err := msg.GetBody()
@@ -366,7 +381,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
 	const messagesLimit = 10
-	const sizeLimit = 250 * 1024
+	const sizeLimit = 250 * 1000
 
 	if len(msgs) >= messagesLimit {
 		return msgs, nil
@@ -401,6 +416,11 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
 	for i, msg := range msgs {
+		msg, ok := msg.Args[0].(*msgqueue.Message)
+		if !ok {
+			return fmt.Errorf("azsqs: got %v, wanted *msgqueue.Message", msg.Args)
+		}
+
 		msg.Id = strconv.Itoa(i)
 		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
 			Id:            aws.String(msg.Id),
@@ -420,7 +440,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 	for _, entry := range out.Failed {
 		internal.Logf(
-			"sqs.SendMessageBatch failed with code=%s message=%q",
+			"sqs.DeleteMessageBatch failed with code=%s message=%q",
 			*entry.Code, *entry.Message,
 		)
 		if *entry.SenderFault {

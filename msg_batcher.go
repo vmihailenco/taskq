@@ -12,17 +12,22 @@ var errBatched = errors.New("message is batched")
 type BatcherOptions struct {
 	Worker   func([]*Message) error
 	Splitter func([]*Message) ([]*Message, []*Message)
-	Timeout  time.Duration
+
+	RetryLimit int
+	Timeout    time.Duration
 }
 
-func (opt *BatcherOptions) init() {
+func (opt *BatcherOptions) init(p *Processor) {
+	if opt.RetryLimit == 0 {
+		opt.RetryLimit = p.Options().RetryLimit
+	}
 	if opt.Timeout == 0 {
 		opt.Timeout = 3 * time.Second
 	}
 }
 
 type Batcher struct {
-	q   Queue
+	p   *Processor
 	opt *BatcherOptions
 
 	timer *time.Timer
@@ -34,10 +39,10 @@ type Batcher struct {
 	msgs []*Message
 }
 
-func NewBatcher(q Queue, opt *BatcherOptions) *Batcher {
-	opt.init()
+func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
+	opt.init(p)
 	b := Batcher{
-		q:   q,
+		p:   p,
 		opt: opt,
 	}
 	b.timer = time.AfterFunc(time.Minute, b.onTimeout)
@@ -81,8 +86,8 @@ func (b *Batcher) Add(msg *Message) error {
 		b.stopTimer()
 		b.timer.Reset(b.opt.Timeout)
 	}
-	b.msgs = append(b.msgs, msg)
 
+	b.msgs = append(b.msgs, msg)
 	if b.isSync() {
 		msgs = b.msgs
 		b.msgs = nil
@@ -96,24 +101,17 @@ func (b *Batcher) Add(msg *Message) error {
 		b.process(msgs)
 		return nil
 	}
+
 	return errBatched
 }
 
 func (b *Batcher) process(msgs []*Message) {
 	err := b.opt.Worker(msgs)
-	if err != nil {
-		for _, msg := range msgs {
-			b.q.Release(msg)
-		}
-		return
-	}
-
 	for _, msg := range msgs {
-		if msg.Err == nil {
-			b.q.Delete(msg)
-		} else {
-			b.q.Release(msg)
+		if msg.Err == nil && err != nil {
+			msg.Err = err
 		}
+		b.p.Put(msg)
 	}
 }
 

@@ -21,11 +21,20 @@ func awsSQS() *sqs.SQS {
 	return sqs.New(session.New())
 }
 
+func azsqsManager() msgqueue.Manager {
+	return azsqs.NewManager(awsSQS(), accountId)
+}
+
 func TestSQSProcessor(t *testing.T) {
-	testProcessor(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-processor"),
-		WaitTimeout: waitTimeout,
-	}))
+	testProcessor(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-processor"),
+	})
+}
+
+func TestSQSFallback(t *testing.T) {
+	testFallback(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-fallback"),
+	})
 }
 
 func TestSQSDelay(t *testing.T) {

@@ -47,7 +47,10 @@ func NewMessage(args ...interface{}) *Message {
 }
 
 func (m *Message) String() string {
-	return fmt.Sprintf("Message<Id=%q Name=%q>", m.Id, m.Name)
+	return fmt.Sprintf(
+		"Message<Id=%q Name=%q ReservedCount=%d>",
+		m.Id, m.Name, m.ReservedCount,
+	)
 }
 
 // SetDelayName sets delay and generates message name from the args.

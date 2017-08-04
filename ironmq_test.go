@@ -6,14 +6,25 @@ import (
 	"github.com/go-msgqueue/msgqueue"
 	"github.com/go-msgqueue/msgqueue/ironmq"
 
+	iron_config "github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 )
 
+func ironmqManager() msgqueue.Manager {
+	settings := iron_config.Config("iron_mq")
+	return ironmq.NewManager(&settings)
+}
+
 func TestIronmqProcessor(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-processor")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testProcessor(t, ironmqManager(), &msgqueue.Options{
+		Name: "ironmq-processor",
 	})
-	testProcessor(t, q)
+}
+
+func TestIronmqFallback(t *testing.T) {
+	testFallback(t, ironmqManager(), &msgqueue.Options{
+		Name: "ironmq-fallback",
+	})
 }
 
 func TestIronmqDelay(t *testing.T) {
