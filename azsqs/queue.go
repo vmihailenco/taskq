@@ -381,7 +381,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
 	const messagesLimit = 10
-	const sizeLimit = 250 * 1000
+	const sizeLimit = 200 * 1024
 
 	if len(msgs) >= messagesLimit {
 		return msgs, nil
@@ -396,7 +396,6 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 
 		size += len(body)
 		if size >= sizeLimit {
-			i--
 			var rest []*msgqueue.Message
 			return msgs[:i], append(rest, msgs[i:]...)
 		}
