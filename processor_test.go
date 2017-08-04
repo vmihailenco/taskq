@@ -102,6 +102,10 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
@@ -182,6 +186,10 @@ func testDelay(t *testing.T, q msgqueue.Queue) {
 	}
 
 	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -280,6 +288,10 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testCallOnce(t *testing.T, q msgqueue.Queue) {
@@ -330,6 +342,10 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testRateLimit(t *testing.T, q msgqueue.Queue) {
@@ -375,6 +391,10 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testDelayer(t *testing.T, q msgqueue.Queue) {
@@ -403,6 +423,10 @@ func testDelayer(t *testing.T, q msgqueue.Queue) {
 	testTimings(t, handlerCh, timings)
 
 	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

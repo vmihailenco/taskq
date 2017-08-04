@@ -99,7 +99,6 @@ func (b *Batcher) Add(msg *Message) error {
 
 	if len(msgs) > 0 {
 		b.process(msgs)
-		return nil
 	}
 
 	return errBatched

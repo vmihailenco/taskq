@@ -513,8 +513,9 @@ func (p *Processor) process(workerId int, msg *Message) error {
 
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
-	if err != errBatched {
-		p.updateAvgDuration(time.Since(start))
+	p.updateAvgDuration(time.Since(start))
+	if err == errBatched {
+		return nil
 	}
 
 	if err == nil {
@@ -525,11 +526,11 @@ func (p *Processor) process(workerId int, msg *Message) error {
 	return err
 }
 
-func (p *Processor) put(msg *Message, err error) error {
-	if err == nil || err == errBatched {
+func (p *Processor) put(msg *Message, err error) {
+	if err == nil {
 		atomic.AddUint32(&p.processed, 1)
 		p.delete(msg, err)
-		return nil
+		return
 	}
 
 	atomic.AddUint32(&p.errCount, 1)
@@ -540,12 +541,9 @@ func (p *Processor) put(msg *Message, err error) error {
 		atomic.AddUint32(&p.fails, 1)
 		p.delete(msg, err)
 	}
-
-	return nil
 }
 
 func (p *Processor) Put(msg *Message) error {
-	p.wg.Add(1)
 	p.put(msg, msg.Err)
 	return nil
 }
@@ -602,10 +600,10 @@ func (p *Processor) release(msg *Message, err error) {
 			p.q, msg.Delay, err,
 		)
 	}
+
 	if err := p.q.Release(msg); err != nil {
 		internal.Logf("%s Release failed: %s", p.q, err)
 	}
-
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	p.wg.Done()
 }
@@ -620,7 +618,7 @@ func (p *Processor) releaseBackoff(msg *Message, err error) time.Duration {
 }
 
 func (p *Processor) delete(msg *Message, err error) {
-	if err != nil && err != errBatched {
+	if err != nil {
 		internal.Logf("%s handler failed: %s", p.q, err)
 
 		if p.fallbackHandler != nil {
@@ -630,10 +628,7 @@ func (p *Processor) delete(msg *Message, err error) {
 		}
 	}
 
-	if err != errBatched {
-		p.q.Delete(msg)
-	}
-
+	p.q.Delete(msg)
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 	p.wg.Done()
 }
@@ -642,6 +637,9 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 	const decay = float32(1) / 30
 
 	us := uint32(dur / time.Microsecond)
+	if us == 0 {
+		return
+	}
 
 	for {
 		min := atomic.LoadUint32(&p.minDuration)
