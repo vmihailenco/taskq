@@ -13,6 +13,7 @@ import (
 	"github.com/go-msgqueue/msgqueue/internal"
 )
 
+const timePrecision = 100 * time.Microsecond
 const stopTimeout = 30 * time.Second
 
 const (
@@ -160,9 +161,9 @@ func (p *Processor) Stats() *ProcessorStats {
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
 		Fails:       atomic.LoadUint32(&p.fails),
-		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * time.Microsecond,
-		MinDuration: time.Duration(atomic.LoadUint32(&p.minDuration)) * time.Microsecond,
-		MaxDuration: time.Duration(atomic.LoadUint32(&p.maxDuration)) * time.Microsecond,
+		AvgDuration: time.Duration(atomic.LoadUint32(&p.avgDuration)) * timePrecision,
+		MinDuration: time.Duration(atomic.LoadUint32(&p.minDuration)) * timePrecision,
+		MaxDuration: time.Duration(atomic.LoadUint32(&p.maxDuration)) * timePrecision,
 	}
 }
 
@@ -636,7 +637,7 @@ func (p *Processor) delete(msg *Message, err error) {
 func (p *Processor) updateAvgDuration(dur time.Duration) {
 	const decay = float32(1) / 30
 
-	us := uint32(dur / time.Microsecond)
+	us := uint32(dur / timePrecision)
 	if us == 0 {
 		return
 	}
