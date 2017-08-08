@@ -7,6 +7,7 @@ import (
 
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
+// Handler is an interface for processing messages.
 type Handler interface {
 	HandleMessage(msg *Message) error
 }

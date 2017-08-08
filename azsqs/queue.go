@@ -94,7 +94,7 @@ func (q *Queue) initAddQueue() {
 	}
 	q.addQueue = memqueue.NewQueue(opt)
 	q.addBatcher = msgqueue.NewBatcher(q.addQueue.Processor(), &msgqueue.BatcherOptions{
-		Worker:   q.addBatch,
+		Handler:  q.addBatch,
 		Splitter: q.splitAddBatch,
 	})
 }
@@ -112,7 +112,7 @@ func (q *Queue) initDelQueue() {
 		Redis: q.opt.Redis,
 	})
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
-		Worker:   q.deleteBatch,
+		Handler:  q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
 	})
 }

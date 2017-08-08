@@ -10,7 +10,7 @@ import (
 var errBatched = errors.New("message is batched")
 
 type BatcherOptions struct {
-	Worker   func([]*Message) error
+	Handler  func([]*Message) error
 	Splitter func([]*Message) ([]*Message, []*Message)
 
 	RetryLimit int
@@ -106,7 +106,7 @@ func (b *Batcher) Add(msg *Message) error {
 }
 
 func (b *Batcher) process(msgs []*Message) {
-	err := b.opt.Worker(msgs)
+	err := b.opt.Handler(msgs)
 	for _, msg := range msgs {
 		if msg.Err == nil && err != nil {
 			msg.Err = err

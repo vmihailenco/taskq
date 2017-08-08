@@ -105,7 +105,7 @@ func (q *Queue) initDelQueue() {
 		Redis: q.opt.Redis,
 	})
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
-		Worker:   q.deleteBatch,
+		Handler:  q.deleteBatch,
 		Splitter: q.splitDeleteBatch,
 	})
 }
