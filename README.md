@@ -1,4 +1,4 @@
-# Golang task/job queue with SQS & IronMQ backends [![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg?branch=v1)](https://travis-ci.org/go-msgqueue/msgqueue)
+# Golang task/job queue with in-memory, SQS, IronMQ backends [![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg?branch=v1)](https://travis-ci.org/go-msgqueue/msgqueue)
 
 ## Installation
 
@@ -23,13 +23,14 @@ go get -u github.com/go-msgqueue/msgqueue
 
 go-msgqueue is a thin wrapper for SQS and IronMQ clients that uses Redis to implement rate limiting and call once semantic.
 
-go-msgqueue consists of following packages:
+go-msgqueue consists of following components:
  - memqueue - in memory queue that can be used for local unit testing.
- - azsqs - Amazon SQS client.
- - ironmq - IronMQ client.
- - processor - queue processor that works with memqueue, azsqs, and ironmq.
+ - azsqs - Amazon SQS backend.
+ - ironmq - IronMQ backend.
+ - Manager - provides common interface for creating new queues.
+ - Processor - queue processor that works with memqueue, azsqs, and ironmq.
 
-rate limiting is implemented in the processor package using [redis_rate](https://github.com/go-redis/redis_rate). Call once is implemented in the clients by checking if key that consists of message name exists in Redis database.
+rate limiting is implemented in the processor package using [redis_rate](https://github.com/go-redis/redis_rate). Call once is implemented in clients by checking if message name exists in Redis database.
 
 ## API overview
 
@@ -65,14 +66,14 @@ msg := msgqueue.NewMessage("World")
 msg.Delay = time.Hour
 q.Add(msg)
 
-// Say "Hello World" only once.
+// Say "Hello World" once.
 for i := 0; i < 100; i++ {
     msg := msgqueue.NewMessage("hello")
     msg.Name = "hello-world"
     q.Add(msg)
 }
 
-// Say "Hello World" only once with 1 hour delay.
+// Say "Hello World" once with 1 hour delay.
 for i := 0; i < 100; i++ {
     msg := msgqueue.NewMessage("hello")
     msg.Name = "hello-world"
@@ -80,7 +81,7 @@ for i := 0; i < 100; i++ {
     q.Add(msg)
 }
 
-// Same using CallOnce.
+// Say "Hello World" once in an hour.
 for i := 0; i < 100; i++ {
     q.CallOnce(time.Hour, "hello")
 }
@@ -88,12 +89,12 @@ for i := 0; i < 100; i++ {
 // Say "Hello World" for Europe region once in an hour.
 for i := 0; i < 100; i++ {
     msg := msgqueue.NewMessage("hello")
-    msg.SetDelayName(delay, "europe") // set delay & autogenerate message name
+    msg.SetDelayName(delay, "europe") // set delay and autogenerate message name
     q.Add(msg)
 }
 ```
 
-## SQS & IronMQ & in-memory queues
+## SQS, IronMQ, and in-memory queues
 
 SQS, IronMQ, and memqueue share the same API and can be used interchangeably.
 
@@ -106,6 +107,7 @@ import "github.com/go-msgqueue/msgqueue"
 import "github.com/go-msgqueue/msgqueue/azsqs"
 import "github.com/aws/aws-sdk-go/service/sqs"
 
+// Create queue.
 awsAccountId := "123456789"
 q := azsqs.NewQueue(awsSQS(), awsAccountId, &msgqueue.Options{
     Name: "sqs-queue-name",
@@ -114,6 +116,10 @@ q := azsqs.NewQueue(awsSQS(), awsAccountId, &msgqueue.Options{
         return nil
     },
 })
+
+// Same using Manager.
+man := azsqs.NewManager(awsSQS(), accountId)
+q := man.NewQueue(&msgqueue.Options{...})
 
 // Add message.
 q.Call("World")
@@ -135,12 +141,18 @@ import "github.com/go-msgqueue/msgqueue"
 import "github.com/go-msgqueue/msgqueue/ironmq"
 import "github.com/iron-io/iron_go3/mq"
 
+// Create queue.
 q := ironmq.NewQueue(mq.New("ironmq-queue-name"), &msgqueue.Options{
     Handler: func(name string) error {
         fmt.Println("Hello", name)
         return nil
     },
 })
+
+// Same using manager.
+cfg := iron_config.Config("iron_mq")
+man := ironmq.NewManager(&cfg)
+q := man.NewQueue(&msgqueue.Options{...})
 
 // Add message.
 q.Call("World")
@@ -160,12 +172,17 @@ memqueue is in-memory queue backend implementation primarily useful for local de
 ```go
 import "github.com/go-msgqueue/msgqueue"
 
+// Create queue.
 q := memqueue.NewQueue(&msgqueue.Options{
     Handler: func(name string) error {
         fmt.Println("Hello", name)
         return nil
     },
 })
+
+// Same using Manager.
+man := memqueue.NewManager()
+q := man.NewQueue(&msgqueue.Options{...})
 
 // Stop processor if you don't need it.
 p := q.Processor()

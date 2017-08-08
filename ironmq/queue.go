@@ -20,6 +20,8 @@ type manager struct {
 	cfg *iron_config.Settings
 }
 
+var _ msgqueue.Manager = (*manager)(nil)
+
 func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
 	q := mq.ConfigNew(opt.Name, m.cfg)
 	return NewQueue(q, opt)

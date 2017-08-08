@@ -11,6 +11,8 @@ import (
 
 type manager struct{}
 
+var _ msgqueue.Manager = (*manager)(nil)
+
 func (manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
 	return NewQueue(opt)
 }

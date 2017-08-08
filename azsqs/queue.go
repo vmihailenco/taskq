@@ -21,6 +21,8 @@ type manager struct {
 	accountId string
 }
 
+var _ msgqueue.Manager = (*manager)(nil)
+
 func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
 	return NewQueue(m.sqs, m.accountId, opt)
 }

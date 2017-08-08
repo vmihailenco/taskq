@@ -26,6 +26,7 @@ func (opt *BatcherOptions) init(p *Processor) {
 	}
 }
 
+// Batcher collects messages for later batch processing.
 type Batcher struct {
 	p   *Processor
 	opt *BatcherOptions
