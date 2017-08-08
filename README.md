@@ -8,7 +8,7 @@ go get -u github.com/go-msgqueue/msgqueue
 
 ## Features
 
- - SQS, IronMQ, and in-memory clients.
+ - SQS, IronMQ, and in-memory backends.
  - Queue processor can be run on separate server.
  - Rate limiting.
  - Global limit of workers.
@@ -16,7 +16,7 @@ go get -u github.com/go-msgqueue/msgqueue
  - Automatic retries with exponential backoffs.
  - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
- - Processed messages are deleted in batches.
+ - Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
  - Statistics.
 
 ## Design overview
@@ -29,7 +29,7 @@ go-msgqueue consists of following packages:
  - ironmq - IronMQ client.
  - processor - queue processor that works with memqueue, azsqs, and ironmq.
 
-rate limiting is implemented in the processor package using [go-redis rate](https://github.com/go-redis/rate). Call once is implemented in the clients by checking if key that consists of message name exists in Redis database.
+rate limiting is implemented in the processor package using [redis_rate](https://github.com/go-redis/redis_rate). Call once is implemented in the clients by checking if key that consists of message name exists in Redis database.
 
 ## API overview
 
@@ -85,7 +85,7 @@ for i := 0; i < 100; i++ {
     q.CallOnce(time.Hour, "hello")
 }
 
-// Say "Hello World" for Europe region only once with 1 hour delay.
+// Say "Hello World" for Europe region once in an hour.
 for i := 0; i < 100; i++ {
     msg := msgqueue.NewMessage("hello")
     msg.SetDelayName(delay, "europe") // set delay & autogenerate message name
@@ -207,31 +207,41 @@ q := memqueue.NewQueue(&msgqueue.Options{
 You can log local queue stats using following code:
 
 ```go
-func printProcessorStats(p *msgqueue.Processor) {
+func LogQueueStats(q msgqueue.Queue) {
+    p := q.Processor()
+    opt := p.Options()
+
     var old *msgqueue.ProcessorStats
     for _ = range time.Tick(3 * time.Second) {
         st := p.Stats()
         if st == nil {
             break
         }
-        if old != nil && *st == *old {
+
+        if old != nil && st.Processed == old.Processed &&
+            st.Fails == old.Fails &&
+            st.Retries == old.Retries {
             continue
         }
         old = st
 
-        log.Printf(
-            "%s: in_flight=%d deleting=%d processed=%d fails=%d retries=%d avg_dur=%s\n",
-            p, st.InFlight, st.Deleting, st.Processed, st.Fails, st.Retries, st.AvgDuration,
+        glog.Infof(
+            "%s: buffered=%d/%d in_flight=%d/%d "+
+                "processed=%d fails=%d retries=%d "+
+                "avg_dur=%s min_dur=%s max_dur=%s",
+            q, st.Buffered, opt.BufferSize, st.InFlight, opt.WorkerNumber,
+            st.Processed, st.Fails, st.Retries,
+            st.AvgDuration, st.MinDuration, st.MaxDuration,
         )
     }
 }
 
-go printProcessorStats(myqueue.Processor())
+go LogQueueStats(myqueue)
 ```
 
 which will log something like this
 
 ```
-Processor<myqueue workers=16 buffer=10>: in_flight=5 deleting=3 processed=28239 fails=0 retries=0 avg_dur=10ms
-Processor<myqueue workers=16 buffer=10>: in_flight=10 deleting=7 processed=30993 fails=0 retries=0 avg_dur=12ms
+Memqueue<Name=v1-production-notices-add>: buffered=0/1000 in_flight=3/16 processed=16183872 fails=0 retries=0 avg_dur=44.8ms min_dur=100µs max_dur=5.102s
+Memqueue<Name=v1-production-notices-add>: buffered=0/1000 in_flight=8/16 processed=16184022 fails=0 retries=0 avg_dur=42ms min_dur=100µs max_dur=5.102s
 ```
