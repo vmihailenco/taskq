@@ -3,7 +3,6 @@ package msgqueue
 import (
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -33,11 +32,9 @@ type Batcher struct {
 
 	timer *time.Timer
 
-	_sync uint32 // atomic
-	wg    sync.WaitGroup
-
 	mu   sync.Mutex
 	msgs []*Message
+	sync bool
 }
 
 func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
@@ -52,18 +49,11 @@ func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
 }
 
 func (b *Batcher) SetSync(v bool) {
-	var n uint32
-	if v {
-		n = 1
-	}
-	atomic.StoreUint32(&b._sync, n)
-
-	if !v {
-		return
-	}
-
 	b.mu.Lock()
-	b.wait()
+	b.sync = v
+	if v {
+		b.wait()
+	}
 	b.mu.Unlock()
 }
 
@@ -72,10 +62,6 @@ func (b *Batcher) wait() {
 		b.process(b.msgs)
 		b.msgs = nil
 	}
-}
-
-func (b *Batcher) isSync() bool {
-	return atomic.LoadUint32(&b._sync) == 1
 }
 
 func (b *Batcher) Add(msg *Message) error {
@@ -89,7 +75,7 @@ func (b *Batcher) Add(msg *Message) error {
 	}
 
 	b.msgs = append(b.msgs, msg)
-	if b.isSync() {
+	if b.sync {
 		msgs = b.msgs
 		b.msgs = nil
 	} else {
@@ -103,6 +89,15 @@ func (b *Batcher) Add(msg *Message) error {
 	}
 
 	return errBatched
+}
+
+func (b *Batcher) stopTimer() {
+	if !b.timer.Stop() {
+		select {
+		case <-b.timer.C:
+		default:
+		}
+	}
 }
 
 func (b *Batcher) process(msgs []*Message) {
@@ -127,13 +122,4 @@ func (b *Batcher) Close() error {
 	b.wait()
 	b.mu.Unlock()
 	return nil
-}
-
-func (b *Batcher) stopTimer() {
-	if !b.timer.Stop() {
-		select {
-		case <-b.timer.C:
-		default:
-		}
-	}
 }
