@@ -327,9 +327,9 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	}
 
 	for i, msg := range msgs {
-		msg, ok := msg.Args[0].(*msgqueue.Message)
-		if !ok {
-			return fmt.Errorf("azsqs: got %v, wanted *msgqueue.Message", msg.Args)
+		msg, err := msgutil.UnwrapMessage(msg)
+		if err != nil {
+			return err
 		}
 
 		msg.Id = strconv.Itoa(i)
@@ -383,13 +383,20 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
 	const messagesLimit = 10
-	const sizeLimit = 250 * 1000
+	const sizeLimit = 250 * 1024
 
 	var size int
 	for i, msg := range msgs {
+		msg, err := msgutil.UnwrapMessage(msg)
+		if err != nil {
+			internal.Logf(err.Error())
+			continue
+		}
+
 		body, err := msg.GetBody()
 		if err != nil {
 			internal.Logf("Message.GetBody failed: %s", err)
+			continue
 		}
 
 		size += len(body)
@@ -417,9 +424,9 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 	entries := make([]*sqs.DeleteMessageBatchRequestEntry, len(msgs))
 	for i, msg := range msgs {
-		msg, ok := msg.Args[0].(*msgqueue.Message)
-		if !ok {
-			return fmt.Errorf("azsqs: got %v, wanted *msgqueue.Message", msg.Args)
+		msg, err := msgutil.UnwrapMessage(msg)
+		if err != nil {
+			return err
 		}
 
 		msg.Id = strconv.Itoa(i)

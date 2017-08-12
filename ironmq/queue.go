@@ -242,9 +242,9 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 }
 
 func (q *Queue) add(msg *msgqueue.Message) error {
-	msg, ok := msg.Args[0].(*msgqueue.Message)
-	if !ok {
-		return fmt.Errorf("ironmq: got %v, wanted *msgqueue.Message", msg.Args)
+	msg, err := msgutil.UnwrapMessage(msg)
+	if err != nil {
+		return err
 	}
 
 	body, err := msg.GetBody()
@@ -275,9 +275,9 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 	mqMsgs := make([]mq.Message, len(msgs))
 	for i, msg := range msgs {
-		msg, ok := msg.Args[0].(*msgqueue.Message)
-		if !ok {
-			return fmt.Errorf("ironmq: got %v, wanted *msgqueue.Message", msg.Args)
+		msg, err := msgutil.UnwrapMessage(msg)
+		if err != nil {
+			return err
 		}
 
 		mqMsgs[i] = mq.Message{
