@@ -146,7 +146,7 @@ func (q *Queue) DeleteQueue() *memqueue.Queue {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	_, err := msg.EncodeBody()
+	_, err := msg.EncodeArgs()
 	if err != nil {
 		return err
 	}
@@ -340,9 +340,9 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 		msg.Id = strconv.Itoa(i)
 
-		body, err := msg.EncodeBody()
+		body, err := msg.EncodeArgs()
 		if err != nil {
-			internal.Logf("EncodeBody failed: %s", err)
+			internal.Logf("EncodeArgs failed: %s", err)
 			continue
 		}
 		if body == "" {
@@ -399,9 +399,9 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 			continue
 		}
 
-		body, err := msg.EncodeBody()
+		body, err := msg.EncodeArgs()
 		if err != nil {
-			internal.Logf("EncodeBody failed: %s", err)
+			internal.Logf("EncodeArgs failed: %s", err)
 			continue
 		}
 

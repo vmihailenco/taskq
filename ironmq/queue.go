@@ -144,7 +144,7 @@ func (q *Queue) createQueue() error {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	_, err := msg.EncodeBody()
+	_, err := msg.EncodeArgs()
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 		return err
 	}
 
-	body, err := msg.EncodeBody()
+	body, err := msg.EncodeArgs()
 	if err != nil {
 		return err
 	}

@@ -82,10 +82,11 @@ var _ = Describe("message with invalid number of args", func() {
 	})
 })
 
-var _ = Describe("handler that expects Message", func() {
+var _ = Describe("HandlerFunc", func() {
 	ch := make(chan bool, 10)
 	handler := func(msg *msgqueue.Message) error {
 		Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
+		Expect(msg.Body).To(BeEmpty())
 		ch <- true
 		return nil
 	}
