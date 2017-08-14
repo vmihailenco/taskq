@@ -77,14 +77,15 @@ type Processor struct {
 	wg sync.WaitGroup
 	ch chan *Message
 
-	workersWG   sync.WaitGroup
-	workerLocks []*lock.Lock
-
+	workersWG    sync.WaitGroup
 	workersState int32
 	workersStop  chan struct{}
+	workerLocks  []*lock.Lock
 
+	messageFetcherWG    sync.WaitGroup
 	messageFetcherState int32
-	rateLimitAllowance  int
+
+	rateLimitAllowance int
 
 	errCount uint32
 	delaySec uint32
@@ -224,18 +225,23 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 	defer resetWorker(&p.workersState)
 
-	// TODO: wait until message fetcher is stopped
 	p.stopMessageFetcher()
 	defer p.resetMessageFetcher()
 
-	p.workersWG.Add(1)
-	go func() {
-		p.releaseBuffer()
-		p.workersWG.Done()
-	}()
-
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
+
+	go func() {
+		p.messageFetcherWG.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+		p.releaseBuffer()
+	case <-timeoutCh:
+		return fmt.Errorf("message fetcher is not stopped after %s", timeout)
+	}
 
 	go func() {
 		p.wg.Wait()
@@ -243,9 +249,9 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}()
 
 	select {
-	case <-timeoutCh:
-		return fmt.Errorf("messages were not processed after %s", timeout)
 	case <-done:
+	case <-timeoutCh:
+		return fmt.Errorf("messages are not processed after %s", timeout)
 	}
 
 	close(p.workersStop)
@@ -257,9 +263,9 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}()
 
 	select {
-	case <-timeoutCh:
-		return fmt.Errorf("workers were not stopped after %s", timeout)
 	case <-done:
+	case <-timeoutCh:
+		return fmt.Errorf("workers are not stopped after %s", timeout)
 	}
 
 	return nil
@@ -348,7 +354,7 @@ func (p *Processor) reserveOne() (*Message, error) {
 
 func (p *Processor) startMessageFetcher() {
 	if startWorker(&p.messageFetcherState) {
-		p.workersWG.Add(1)
+		p.messageFetcherWG.Add(1)
 		go p.messageFetcher()
 	}
 }
@@ -364,7 +370,7 @@ func (p *Processor) resetMessageFetcher() {
 }
 
 func (p *Processor) messageFetcher() {
-	defer p.workersWG.Done()
+	defer p.messageFetcherWG.Done()
 	for {
 		if workerStopped(&p.messageFetcherState) {
 			break

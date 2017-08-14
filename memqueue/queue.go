@@ -3,6 +3,7 @@ package memqueue
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-msgqueue/msgqueue"
@@ -35,7 +36,8 @@ type Queue struct {
 	sync    bool
 	noDelay bool
 
-	p *msgqueue.Processor
+	wg sync.WaitGroup
+	p  *msgqueue.Processor
 }
 
 var _ msgqueue.Queue = (*Queue)(nil)
@@ -84,6 +86,21 @@ func (q *Queue) Close() error {
 // Close closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	defer unregisterQueue(q)
+
+	done := make(chan struct{}, 1)
+	timeoutCh := time.After(timeout)
+
+	go func() {
+		q.wg.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+	case <-timeoutCh:
+		return fmt.Errorf("message are not processed after %s", timeout)
+	}
+
 	return q.p.StopTimeout(timeout)
 }
 
@@ -106,6 +123,7 @@ func (q *Queue) Add(msg *msgqueue.Message) error {
 	if !q.isUniqueName(msg.Name) {
 		return msgqueue.ErrDuplicate
 	}
+	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
 
@@ -141,6 +159,7 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 }
 
 func (q *Queue) Delete(msg *msgqueue.Message) error {
+	q.wg.Done()
 	return nil
 }
 
