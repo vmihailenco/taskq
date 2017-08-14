@@ -61,7 +61,7 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	m.Delay += time.Duration(rand.Intn(5)+1) * time.Second
 }
 
-func (m *Message) GetBody() (string, error) {
+func (m *Message) EncodeBody() (string, error) {
 	if m.bodyErr != nil {
 		return "", m.bodyErr
 	}

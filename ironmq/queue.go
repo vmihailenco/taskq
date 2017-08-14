@@ -144,7 +144,13 @@ func (q *Queue) createQueue() error {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	return q.addQueue.Add(msgutil.WrapMessage(msg))
+	_, err := msg.EncodeBody()
+	if err != nil {
+		return err
+	}
+
+	msg = msgutil.WrapMessage(msg)
+	return q.addQueue.Add(msg)
 }
 
 // Call creates a message using the args and adds it to the queue.
@@ -247,7 +253,7 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 		return err
 	}
 
-	body, err := msg.GetBody()
+	body, err := msg.EncodeBody()
 	if err != nil {
 		return err
 	}

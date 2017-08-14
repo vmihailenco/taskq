@@ -41,7 +41,7 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	body, err := msg.GetBody()
+	body, err := msg.EncodeBody()
 	if err != nil {
 		return err
 	}

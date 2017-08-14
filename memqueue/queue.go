@@ -103,11 +103,6 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	_, err := msg.GetBody()
-	if err != nil {
-		return err
-	}
-
 	if !q.isUniqueName(msg.Name) {
 		return msgqueue.ErrDuplicate
 	}
