@@ -514,8 +514,11 @@ func (p *Processor) process(workerId int, msg *Message) error {
 
 	start := time.Now()
 	err := p.handler.HandleMessage(msg)
-	p.updateAvgDuration(time.Since(start))
 	if err == errBatched {
+		return nil
+	}
+	p.updateAvgDuration(time.Since(start))
+	if err == errBatchProcessed {
 		return nil
 	}
 

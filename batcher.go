@@ -7,6 +7,7 @@ import (
 )
 
 var errBatched = errors.New("message is batched")
+var errBatchProcessed = errors.New("message is processed in a batch")
 
 type BatcherOptions struct {
 	Handler  func([]*Message) error
@@ -86,6 +87,7 @@ func (b *Batcher) Add(msg *Message) error {
 
 	if len(msgs) > 0 {
 		b.process(msgs)
+		return errBatchProcessed
 	}
 
 	return errBatched
