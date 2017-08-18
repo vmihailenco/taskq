@@ -711,13 +711,6 @@ func (p *Processor) unlockWorker(id int) {
 	}
 }
 
-func (p *Processor) splitDeleteBatch(msgs []*Message) ([]*Message, []*Message) {
-	if len(msgs) >= p.opt.ReservationSize {
-		return msgs, nil
-	}
-	return nil, msgs
-}
-
 func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 	dur := min << uint(retry-1)
 	if dur >= min && dur < max {
