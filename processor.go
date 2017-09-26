@@ -16,40 +16,6 @@ import (
 const timePrecision = 100 * time.Microsecond
 const stopTimeout = 30 * time.Second
 
-const (
-	stateReady   = 0
-	stateStarted = 1
-	stateStopped = -1
-)
-
-func startWorker(state *int32) bool {
-	return atomic.CompareAndSwapInt32(state, stateReady, stateStarted)
-}
-
-func stopWorker(state *int32) bool {
-	for {
-		if atomic.CompareAndSwapInt32(state, stateStarted, stateStopped) {
-			return true
-		}
-
-		if atomic.LoadInt32(state) == stateStopped {
-			return false
-		}
-
-		if atomic.CompareAndSwapInt32(state, stateReady, stateStopped) {
-			return false
-		}
-	}
-}
-
-func resetWorker(state *int32) bool {
-	return atomic.CompareAndSwapInt32(state, stateStopped, stateReady)
-}
-
-func workerStopped(state *int32) bool {
-	return atomic.LoadInt32(state) != stateStarted
-}
-
 type Delayer interface {
 	Delay() time.Duration
 }
@@ -74,18 +40,14 @@ type Processor struct {
 	handler         Handler
 	fallbackHandler Handler
 
-	wg sync.WaitGroup
-	ch chan *Message
-
+	ch           chan *Message
 	workersWG    sync.WaitGroup
-	workersState int32
+	workersState jobState
 	workersStop  chan struct{}
 	workerLocks  []*lock.Lock
 
-	messageFetcherWG    sync.WaitGroup
-	messageFetcherState int32
-
-	rateLimitAllowance int
+	messageFetcherState jobState
+	rateLimitAllowance  int
 
 	errCount uint32
 	delaySec uint32
@@ -169,7 +131,6 @@ func (p *Processor) Stats() *ProcessorStats {
 }
 
 func (p *Processor) Add(msg *Message) error {
-	p.wg.Add(1)
 	if msg.Delay > 0 {
 		time.AfterFunc(msg.Delay, func() {
 			msg.Delay = 0
@@ -188,7 +149,6 @@ func (p *Processor) add(msg *Message) {
 
 // Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *Message) error {
-	p.wg.Add(1)
 	return p.process(-1, msg)
 }
 
@@ -199,7 +159,7 @@ func (p *Processor) Start() error {
 }
 
 func (p *Processor) startWorkers() bool {
-	if !startWorker(&p.workersState) {
+	if !p.workersState.Start() {
 		return false
 	}
 
@@ -220,39 +180,16 @@ func (p *Processor) Stop() error {
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
 func (p *Processor) StopTimeout(timeout time.Duration) error {
-	if !stopWorker(&p.workersState) {
+	if !p.workersState.Stop() {
 		return nil
 	}
-	defer resetWorker(&p.workersState)
+	defer p.workersState.Reset()
 
-	p.stopMessageFetcher()
-	defer p.resetMessageFetcher()
+	p.messageFetcherState.Stop()
+	defer p.messageFetcherState.Reset()
 
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
-
-	go func() {
-		p.messageFetcherWG.Wait()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-done:
-		p.releaseBuffer()
-	case <-timeoutCh:
-		return fmt.Errorf("message fetcher is not stopped after %s", timeout)
-	}
-
-	go func() {
-		p.wg.Wait()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-done:
-	case <-timeoutCh:
-		return fmt.Errorf("messages are not processed after %s", timeout)
-	}
 
 	close(p.workersStop)
 	p.workersStop = nil
@@ -348,31 +285,20 @@ func (p *Processor) reserveOne() (*Message, error) {
 		return nil, fmt.Errorf("msgqueue: queue returned %d messages", len(msgs))
 	}
 
-	p.wg.Add(1)
 	return msgs[0], nil
 }
 
 func (p *Processor) startMessageFetcher() {
-	if startWorker(&p.messageFetcherState) {
-		p.messageFetcherWG.Add(1)
+	if p.messageFetcherState.Start() {
+		p.workersWG.Add(1)
 		go p.messageFetcher()
 	}
 }
 
-func (p *Processor) stopMessageFetcher() {
-	stopWorker(&p.messageFetcherState)
-}
-
-func (p *Processor) resetMessageFetcher() {
-	if !resetWorker(&p.messageFetcherState) {
-		panic("unreached")
-	}
-}
-
 func (p *Processor) messageFetcher() {
-	defer p.messageFetcherWG.Done()
+	defer p.workersWG.Done()
 	for {
-		if workerStopped(&p.messageFetcherState) {
+		if p.messageFetcherState.Stopped() {
 			break
 		}
 
@@ -415,7 +341,6 @@ func (p *Processor) fetchMessages() (int, error) {
 	defer timer.Stop()
 
 	for _, msg := range msgs {
-		p.wg.Add(1)
 		select {
 		case p.ch <- msg:
 		case <-timeout:
@@ -426,8 +351,8 @@ func (p *Processor) fetchMessages() (int, error) {
 	select {
 	case <-timeout:
 		internal.Logf("%s is stuck - stopping message fetcher", p.q)
-		p.stopMessageFetcher()
-		p.resetMessageFetcher()
+		p.messageFetcherState.Stop()
+		p.messageFetcherState.Reset()
 		p.releaseBuffer()
 	default:
 	}
@@ -505,7 +430,12 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 			return
 		}
 
-		p.process(id, msg)
+		select {
+		case <-stop:
+			p.release(msg, nil)
+		default:
+			p.process(id, msg)
+		}
 	}
 }
 
@@ -615,7 +545,6 @@ func (p *Processor) release(msg *Message, err error) {
 		internal.Logf("%s Release failed: %s", p.q, err)
 	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	p.wg.Done()
 }
 
 func (p *Processor) releaseBackoff(msg *Message, err error) time.Duration {
@@ -640,7 +569,6 @@ func (p *Processor) delete(msg *Message, err error) {
 
 	p.q.Delete(msg)
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
-	p.wg.Done()
 }
 
 func (p *Processor) updateAvgDuration(dur time.Duration) {
