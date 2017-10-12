@@ -16,7 +16,7 @@ type Redis interface {
 	SMembers(key string) *redis.StringSliceCmd
 	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
-	Publish(channel, message string) *redis.IntCmd
+	Publish(channel string, message interface{}) *redis.IntCmd
 }
 
 type Storage interface {
