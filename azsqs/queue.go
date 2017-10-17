@@ -377,11 +377,13 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	for _, entry := range out.Failed {
 		internal.Logf(
 			"sqs.SendMessageBatch failed with code=%s message=%q",
-			*entry.Code, *entry.Message,
+			tos(entry.Code), tos(entry.Message),
 		)
-		if *entry.SenderFault {
-			msg := findMessageById(msgs, *entry.Id)
-			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
+		if entry.SenderFault != nil && *entry.SenderFault {
+			msg := findMessageById(msgs, tos(entry.Id))
+			if msg != nil {
+				msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			}
 		}
 	}
 	return nil
@@ -455,11 +457,13 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	for _, entry := range out.Failed {
 		internal.Logf(
 			"sqs.DeleteMessageBatch failed with code=%s message=%q",
-			*entry.Code, *entry.Message,
+			tos(entry.Code), tos(entry.Message),
 		)
-		if *entry.SenderFault {
-			msg := findMessageById(msgs, *entry.Id)
-			msg.Err = fmt.Errorf("%s: %s", *entry.Code, *entry.Message)
+		if entry.SenderFault != nil && *entry.SenderFault {
+			msg := findMessageById(msgs, tos(entry.Id))
+			if msg != nil {
+				msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			}
 		}
 	}
 	return nil
@@ -481,4 +485,11 @@ func findMessageById(msgs []*msgqueue.Message, id string) *msgqueue.Message {
 		}
 	}
 	return nil
+}
+
+func tos(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
 }
