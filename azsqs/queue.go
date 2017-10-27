@@ -317,6 +317,10 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	return firstErr
 }
 
+func (q *Queue) Len(msg *msgqueue.Message) uint32 {
+	return q.Processor().Stats().InFlight
+}
+
 func (q *Queue) addBatcherAdd(msg *msgqueue.Message) error {
 	return q.addBatcher.Add(msg)
 }
