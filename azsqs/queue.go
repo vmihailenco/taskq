@@ -77,6 +77,20 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	return &q
 }
 
+func (q *Queue) Len() (int, error) {
+	params := &sqs.GetQueueAttributesInput{
+		QueueUrl:       aws.String(q.queueURL()),
+		AttributeNames: []*string{aws.String("ApproximateNumberOfMessages")},
+	}
+	resp, err := q.sqs.GetQueueAttributes(params)
+	if err != nil {
+		return 0, err
+	}
+
+	prop := resp.Attributes["ApproximateNumberOfMessages"]
+	return strconv.Atoi(*prop)
+}
+
 func (q *Queue) initAddQueue() {
 	opt := &msgqueue.Options{
 		Name:      q.opt.Name + "-add",
