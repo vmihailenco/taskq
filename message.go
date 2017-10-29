@@ -57,8 +57,10 @@ func (m *Message) String() string {
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	m.Name = argsName(append(args, timeSlot(delay)))
 	m.Delay = delay
-	// Some random delay to better distribute the load.
-	m.Delay += time.Duration(rand.Intn(5)+1) * time.Second
+	if m.Delay > 3*time.Second {
+		// Some random delay to better distribute the load.
+		m.Delay += time.Duration(rand.Intn(5)+1) * time.Second
+	}
 }
 
 func (m *Message) EncodeArgs() (string, error) {
