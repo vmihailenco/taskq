@@ -57,6 +57,14 @@ func TestIronmqCallOnce(t *testing.T) {
 	testCallOnce(t, q)
 }
 
+func TestIronmqLen(t *testing.T) {
+	q := ironmq.NewQueue(mq.New(queueName("ironmq-len")), &msgqueue.Options{
+		WaitTimeout: waitTimeout,
+		Redis:       redisRing(),
+	})
+	testLen(t, q)
+}
+
 func TestIronmqRateLimit(t *testing.T) {
 	q := ironmq.NewQueue(mq.New(queueName("ironmq-rate-limit")), &msgqueue.Options{
 		WaitTimeout: waitTimeout,
