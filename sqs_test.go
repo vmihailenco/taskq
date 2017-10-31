@@ -67,6 +67,12 @@ func TestSQSCallOnce(t *testing.T) {
 	}))
 }
 
+func TestSQSLen(t *testing.T) {
+	testLen(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name: queueName("queue-len"),
+	}))
+}
+
 func TestSQSRateLimit(t *testing.T) {
 	testRateLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
 		Name:        queueName("sqs-rate-limit"),

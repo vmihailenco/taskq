@@ -348,6 +348,33 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
+func testLen(t *testing.T, q msgqueue.Queue) {
+	t.Parallel()
+
+	err := q.Purge()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	queueLen := 10
+	for i := 0; i < queueLen; i++ {
+		err := q.Call()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	time.Sleep(time.Second)
+
+	i, err := q.Len()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i != queueLen {
+		t.Fatalf("got %d messages in queue wanted 10", i)
+	}
+}
+
 func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 

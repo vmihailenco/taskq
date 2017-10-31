@@ -127,6 +127,10 @@ func (q *Queue) Add(msg *msgqueue.Message) error {
 	return q.enqueueMessage(msg)
 }
 
+func (q *Queue) Len() (int, error) {
+	return q.Processor().Len(), nil
+}
+
 func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
 	if (q.noDelay || q.sync) && msg.Delay > 0 {
 		msg.Delay = 0

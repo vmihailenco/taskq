@@ -142,6 +142,10 @@ func (p *Processor) Add(msg *Message) error {
 	return nil
 }
 
+func (p *Processor) Len() int {
+	return len(p.ch)
+}
+
 func (p *Processor) add(msg *Message) {
 	_ = p.reservationSize(1)
 	p.ch <- msg

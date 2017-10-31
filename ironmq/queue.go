@@ -110,6 +110,15 @@ func (q *Queue) initDelQueue() {
 	})
 }
 
+func (q *Queue) Len() (int, error) {
+	queueInfo, err := q.q.Info()
+	if err != nil {
+		return 0, err
+	}
+
+	return queueInfo.Size, nil
+}
+
 func (q *Queue) Name() string {
 	return q.q.Name
 }
