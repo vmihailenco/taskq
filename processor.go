@@ -40,7 +40,9 @@ type Processor struct {
 	handler         Handler
 	fallbackHandler Handler
 
-	ch           chan *Message
+	buffer chan *Message
+
+	workerNumber int32 // atomic
 	workersWG    sync.WaitGroup
 	workersState jobState
 	workersStop  chan struct{}
@@ -73,7 +75,9 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		q:   q,
 		opt: opt,
 
-		ch: make(chan *Message, opt.BufferSize-1),
+		buffer: make(chan *Message, opt.BufferSize-1),
+
+		workerNumber: int32(opt.WorkerNumber),
 	}
 
 	if opt.WorkerLimit > 0 {
@@ -119,7 +123,7 @@ func (p *Processor) String() string {
 // Stats returns processor stats.
 func (p *Processor) Stats() *ProcessorStats {
 	return &ProcessorStats{
-		Buffered:    uint32(len(p.ch)),
+		Buffered:    uint32(len(p.buffer)),
 		InFlight:    atomic.LoadUint32(&p.inFlight),
 		Processed:   atomic.LoadUint32(&p.processed),
 		Retries:     atomic.LoadUint32(&p.retries),
@@ -148,12 +152,12 @@ func (p *Processor) Len() int {
 
 func (p *Processor) add(msg *Message) {
 	_ = p.reservationSize(1)
-	p.ch <- msg
+	p.buffer <- msg
 }
 
 // Process is low-level API to process message bypassing the internal queue.
 func (p *Processor) Process(msg *Message) error {
-	return p.process(-1, msg)
+	return p.process(msg)
 }
 
 // Start starts processing messages in the queue.
@@ -168,7 +172,7 @@ func (p *Processor) startWorkers() bool {
 	}
 
 	p.workersStop = make(chan struct{})
-	for i := 0; i < p.opt.WorkerNumber; i++ {
+	for i := int32(0); i < p.workerNumber; i++ {
 		p.workersWG.Add(1)
 		go p.worker(i, p.workersStop)
 	}
@@ -234,7 +238,7 @@ func (p *Processor) ProcessAll() error {
 
 	var noWork int
 	for {
-		isIdle := len(p.ch) == 0 && atomic.LoadUint32(&p.inFlight) == 0
+		isIdle := len(p.buffer) == 0 && atomic.LoadUint32(&p.inFlight) == 0
 
 		n, err := p.fetchMessages()
 		if err != nil && err != internal.ErrNotSupported {
@@ -267,12 +271,12 @@ func (p *Processor) ProcessOne() error {
 	}
 
 	// TODO: wait
-	return p.process(-1, msg)
+	return p.process(msg)
 }
 
 func (p *Processor) reserveOne() (*Message, error) {
 	select {
-	case msg := <-p.ch:
+	case msg := <-p.buffer:
 		return msg, nil
 	default:
 	}
@@ -346,7 +350,7 @@ func (p *Processor) fetchMessages() (int, error) {
 
 	for _, msg := range msgs {
 		select {
-		case p.ch <- msg:
+		case p.buffer <- msg:
 		case <-timeout:
 			p.release(msg, nil)
 		}
@@ -415,7 +419,7 @@ func (p *Processor) releaseBuffer() {
 	}
 }
 
-func (p *Processor) worker(id int, stop <-chan struct{}) {
+func (p *Processor) worker(id int32, stop <-chan struct{}) {
 	defer p.workersWG.Done()
 
 	if p.opt.WorkerLimit > 0 {
@@ -423,6 +427,10 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 	}
 
 	for {
+		if id > atomic.LoadInt32(&p.workerNumber) {
+			return
+		}
+
 		if p.opt.WorkerLimit > 0 {
 			if !p.lockWorker(id, stop) {
 				return
@@ -438,12 +446,12 @@ func (p *Processor) worker(id int, stop <-chan struct{}) {
 		case <-stop:
 			p.release(msg, nil)
 		default:
-			p.process(id, msg)
+			p.process(msg)
 		}
 	}
 }
 
-func (p *Processor) process(workerId int, msg *Message) error {
+func (p *Processor) process(msg *Message) error {
 	atomic.AddUint32(&p.inFlight, 1)
 
 	if msg.Delay > 0 {
@@ -496,7 +504,7 @@ func (p *Processor) Put(msg *Message) error {
 func (p *Processor) Purge() error {
 	for {
 		select {
-		case msg := <-p.ch:
+		case msg := <-p.buffer:
 			p.delete(msg, nil)
 		default:
 			return nil
@@ -508,7 +516,7 @@ func (p *Processor) waitMessageOrStop(stop <-chan struct{}) (*Message, bool) {
 	p.startMessageFetcher()
 
 	select {
-	case msg := <-p.ch:
+	case msg := <-p.buffer:
 		return msg, true
 	case <-stop:
 		return p.dequeueMessage()
@@ -517,7 +525,7 @@ func (p *Processor) waitMessageOrStop(stop <-chan struct{}) (*Message, bool) {
 
 func (p *Processor) dequeueMessage() (*Message, bool) {
 	select {
-	case msg := <-p.ch:
+	case msg := <-p.buffer:
 		return msg, true
 	default:
 		return nil, false
@@ -616,7 +624,7 @@ func (p *Processor) resetPause() {
 	atomic.StoreUint32(&p.errCount, 0)
 }
 
-func (p *Processor) lockWorker(id int, stop <-chan struct{}) bool {
+func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
@@ -636,7 +644,7 @@ func (p *Processor) lockWorker(id int, stop <-chan struct{}) bool {
 	}
 }
 
-func (p *Processor) unlockWorker(id int) {
+func (p *Processor) unlockWorker(id int32) {
 	lock := p.workerLocks[id]
 	if err := lock.Unlock(); err != nil {
 		internal.Logf("redlock.Unlock failed: %s", err)
