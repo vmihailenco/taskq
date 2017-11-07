@@ -10,6 +10,7 @@ go get -u github.com/go-msgqueue/msgqueue
 
  - SQS, IronMQ, and in-memory backends.
  - Queue processor can be run on separate server.
+ - Automatically scaling number of goroutines used to fetch and process messages.
  - Rate limiting.
  - Global limit of workers.
  - Call once.
