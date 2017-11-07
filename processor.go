@@ -53,7 +53,7 @@ type Processor struct {
 
 	jobsWG sync.WaitGroup
 
-	rateLimited        uint32
+	rateLimitAllowed   uint32
 	rateLimitAllowance int
 
 	errCount uint32
@@ -231,7 +231,7 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	queueing := n > 256
 
 	if len(p.buffer) == 0 && queueing {
-		if atomic.LoadUint32(&p.rateLimited) == 0 {
+		if atomic.LoadUint32(&p.rateLimitAllowed) >= 3 {
 			p.addFetcher(stop)
 		}
 		return
@@ -440,13 +440,14 @@ func (p *Processor) reservationSize(max int) int {
 	for {
 		delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 		if allow {
+			atomic.AddUint32(&p.rateLimitAllowed, 1)
 			size++
 			if size >= max {
 				return size
 			}
 			continue
 		} else {
-			atomic.StoreUint32(&p.rateLimited, 1)
+			atomic.StoreUint32(&p.rateLimitAllowed, 0)
 		}
 
 		if size > 0 {
