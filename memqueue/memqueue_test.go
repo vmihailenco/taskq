@@ -302,8 +302,7 @@ var _ = Describe("CallOnce", func() {
 	})
 
 	It("processes message once with delay", func() {
-		delay += time.Second
-		Expect(ch).To(Receive(BeTemporally(">", now.Add(delay), delay/10)))
+		Expect(ch).To(Receive(BeTemporally(">", now.Add(delay), time.Second)))
 		Consistently(ch).ShouldNot(Receive())
 	})
 })

@@ -26,7 +26,6 @@ func queueName(s string) string {
 
 func printStats(p *msgqueue.Processor) {
 	q := p.Queue()
-	opt := p.Options()
 
 	var old *msgqueue.ProcessorStats
 	for _ = range time.Tick(3 * time.Second) {
@@ -43,10 +42,12 @@ func printStats(p *msgqueue.Processor) {
 		old = st
 
 		internal.Logf(
-			"%s: buffered=%d/%d in_flight=%d/%d "+
+			"%s: fetchers=%d buffered=%d/%d "+
+				"in_flight=%d/%d "+
 				"processed=%d fails=%d retries=%d "+
 				"avg_dur=%s min_dur=%s max_dur=%s",
-			q, st.Buffered, opt.BufferSize, st.InFlight, opt.WorkerNumber,
+			q, st.FetcherNumber, st.Buffered, st.BufferSize,
+			st.InFlight, st.WorkerNumber,
 			st.Processed, st.Fails, st.Retries,
 			st.AvgDuration, st.MinDuration, st.MaxDuration,
 		)
@@ -91,7 +92,9 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	}
 
 	p := q.Processor()
-	p.Start()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case <-ch:
@@ -350,11 +353,7 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 
 func testLen(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
-
-	err := q.Purge()
-	if err != nil {
-		t.Fatal(err)
-	}
+	q.Purge()
 
 	queueLen := 10
 	for i := 0; i < queueLen; i++ {
@@ -402,10 +401,9 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	wg.Wait()
 
 	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:      handler,
-		WorkerNumber: 2,
-		RateLimit:    rate.Every(time.Second),
-		Redis:        ring,
+		Handler:   handler,
+		RateLimit: rate.Every(time.Second),
+		Redis:     ring,
 	})
 	go printStats(p)
 

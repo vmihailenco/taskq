@@ -52,14 +52,17 @@ type Options struct {
 	// Function called to process failed message.
 	FallbackHandler interface{}
 
-	// Number of worker goroutines processing messages.
+	// Maximum number of goroutines processing messages.
+	// Default is 32 * number of CPUs.
+	MaxWorkers int
+	// Maximum number of goroutines fetching messages.
 	// Default is 4 * number of CPUs.
-	WorkerNumber int
-	// Global limit of concurrently running workers. Overrides WorkerNumber.
+	MaxFetchers int
+	// Global limit of concurrently running workers. Overrides MaxWorkers.
 	WorkerLimit int
 
 	// Size of the buffer where reserved messages are stored.
-	// Default is the same as WorkerNumber.
+	// Default is 10 messages.
 	BufferSize int
 
 	// Number of messages reserved in the queue in 1 request.
@@ -110,14 +113,17 @@ func (opt *Options) Init() {
 	}
 
 	if opt.WorkerLimit > 0 {
-		opt.WorkerNumber = opt.WorkerLimit
+		opt.MaxWorkers = opt.WorkerLimit
 	}
-	if opt.WorkerNumber == 0 {
-		opt.WorkerNumber = 4 * runtime.NumCPU()
+	if opt.MaxWorkers == 0 {
+		opt.MaxWorkers = 32 * runtime.NumCPU()
+	}
+	if opt.MaxFetchers == 0 {
+		opt.MaxFetchers = 4 * runtime.NumCPU()
 	}
 
 	if opt.BufferSize == 0 {
-		opt.BufferSize = opt.WorkerNumber
+		opt.BufferSize = 10
 	}
 
 	switch opt.PauseErrorsThreshold {
