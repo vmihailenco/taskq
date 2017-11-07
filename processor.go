@@ -13,7 +13,7 @@ import (
 	"github.com/go-msgqueue/msgqueue/internal"
 )
 
-const timePrecision = 100 * time.Microsecond
+const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
 
 type Delayer interface {
@@ -257,6 +257,9 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	}
 	close(p.stopCh)
 	p.stopCh = nil
+
+	atomic.StoreUint32(&p.fetcherNumber, 0)
+	atomic.StoreUint32(&p.workerNumber, 0)
 
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
@@ -651,7 +654,8 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 
 	for {
 		min := atomic.LoadUint32(&p.minDuration)
-		if (min != 0 && us >= min) || atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
+		if (min != 0 && us >= min) ||
+			atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
 			break
 		}
 	}

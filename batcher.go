@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var errBatched = errors.New("message is batched")
+var errBatched = errors.New("message is batched for later processing")
 var errBatchProcessed = errors.New("message is processed in a batch")
 
 type BatcherOptions struct {
@@ -105,7 +105,7 @@ func (b *Batcher) stopTimer() {
 func (b *Batcher) process(msgs []*Message) {
 	err := b.opt.Handler(msgs)
 	for _, msg := range msgs {
-		if msg.Err == nil && err != nil {
+		if err != nil && msg.Err == nil {
 			msg.Err = err
 		}
 		b.p.Put(msg)
