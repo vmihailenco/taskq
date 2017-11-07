@@ -55,18 +55,19 @@ type Options struct {
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
 	MaxWorkers int
+	// Global limit of concurrently running workers across all servers.
+	// Overrides MaxWorkers.
+	WorkerLimit int
 	// Maximum number of goroutines fetching messages.
 	// Default is 4 * number of CPUs.
 	MaxFetchers int
-	// Global limit of concurrently running workers. Overrides MaxWorkers.
-	WorkerLimit int
 
 	// Size of the buffer where reserved messages are stored.
 	// Default is 10 messages.
 	BufferSize int
 
-	// Number of messages reserved in the queue in 1 request.
-	// Default is 10.
+	// Number of messages reserved by a fetcher in the queue in one request.
+	// Default is 10 messages.
 	ReservationSize int
 	// Time after which the reserved message is returned to the queue.
 	ReservationTimeout time.Duration

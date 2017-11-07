@@ -54,7 +54,7 @@ type Processor struct {
 	jobsWG sync.WaitGroup
 
 	rateLimitAllowed   uint32
-	rateLimitAllowance int
+	rateLimitAllowance uint32
 
 	errCount uint32
 	delaySec uint32
@@ -172,11 +172,11 @@ func (p *Processor) Start() error {
 }
 
 func (p *Processor) addWorker(stop <-chan struct{}) {
-	if atomic.LoadUint32(&p.workerNumber) >= uint32(p.opt.MaxWorkers) {
+	id := atomic.AddUint32(&p.workerNumber, 1) - 1
+	if id >= uint32(p.opt.MaxWorkers) {
+		atomic.AddUint32(&p.workerNumber, ^uint32(0))
 		return
 	}
-
-	id := atomic.AddUint32(&p.workerNumber, 1) - 1
 	if p.opt.WorkerLimit > 0 {
 		key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), id)
 		workerLock := lock.NewLock(p.opt.Redis, key, &lock.LockOptions{
@@ -193,11 +193,11 @@ func (p *Processor) startWorker(id uint32, stop <-chan struct{}) {
 }
 
 func (p *Processor) addFetcher(stop <-chan struct{}) {
-	if atomic.LoadUint32(&p.fetcherNumber) >= uint32(p.opt.MaxFetchers) {
+	id := atomic.AddUint32(&p.fetcherNumber, 1) - 1
+	if id >= uint32(p.opt.MaxFetchers) {
+		atomic.AddUint32(&p.fetcherNumber, ^uint32(0))
 		return
 	}
-
-	id := atomic.AddUint32(&p.fetcherNumber, 1) - 1
 	p.startFetcher(id, stop)
 }
 
@@ -425,24 +425,24 @@ func (p *Processor) reservationSize(max int) int {
 		return max
 	}
 
-	if p.rateLimitAllowance > 0 {
-		if max < p.rateLimitAllowance {
-			p.rateLimitAllowance -= max
+	allowance := atomic.LoadUint32(&p.rateLimitAllowance)
+	if allowance > 0 {
+		if allowance >= uint32(max) {
+			atomic.AddUint32(&p.rateLimitAllowance, ^uint32(max-1))
 			return max
 		}
 
-		size := p.rateLimitAllowance
-		p.rateLimitAllowance = 0
-		return size
+		atomic.AddUint32(&p.rateLimitAllowance, ^uint32(allowance-1))
+		return int(allowance)
 	}
 
 	var size int
 	for {
 		delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
 		if allow {
-			atomic.AddUint32(&p.rateLimitAllowed, 1)
 			size++
-			if size >= max {
+			if size == max {
+				atomic.AddUint32(&p.rateLimitAllowed, 1)
 				return size
 			}
 			continue
@@ -461,7 +461,7 @@ func (p *Processor) saveReservationSize(n int) {
 	if p.opt.RateLimiter == nil {
 		return
 	}
-	p.rateLimitAllowance = n
+	atomic.AddUint32(&p.rateLimitAllowance, uint32(n))
 }
 
 func (p *Processor) releaseBuffer() {

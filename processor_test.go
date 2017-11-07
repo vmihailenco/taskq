@@ -17,6 +17,7 @@ import (
 )
 
 const waitTimeout = time.Second
+const testTimeout = 10 * time.Second
 
 func queueName(s string) string {
 	version := strings.Split(runtime.Version(), " ")[0]
@@ -98,7 +99,7 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 
 	select {
 	case <-ch:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testTimeout):
 		t.Fatalf("message was not processed")
 	}
 
@@ -146,7 +147,7 @@ func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 
 	select {
 	case <-ch:
-	case <-time.After(60 * time.Second):
+	case <-time.After(testTimeout):
 		t.Fatalf("message was not processed")
 	}
 
@@ -278,7 +279,7 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 
 	select {
 	case <-ch:
-	case <-time.After(5 * time.Second):
+	case <-time.After(testTimeout):
 		t.Fatalf("message was not processed")
 	}
 
@@ -331,7 +332,7 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	for i := 0; i < 3; i++ {
 		select {
 		case <-ch:
-		case <-time.After(10 * time.Second):
+		case <-time.After(testTimeout):
 			t.Fatalf("message was not processed")
 		}
 	}
@@ -353,7 +354,8 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 
 func testLen(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
-	q.Purge()
+
+	_ = q.Purge()
 
 	queueLen := 10
 	for i := 0; i < queueLen; i++ {
