@@ -227,18 +227,17 @@ func (p *Processor) autotune(stop <-chan struct{}) {
 }
 
 func (p *Processor) _autotune(stop <-chan struct{}) {
-	n, err := p.q.Len()
-	if err != nil {
+	n, _ := p.q.Len()
+	queueing := n > 256
+
+	if len(p.buffer) == 0 && queueing {
+		if atomic.LoadUint32(&p.rateLimited) == 0 {
+			p.addFetcher(stop)
+		}
 		return
 	}
 
-	if n < 256 {
-		return
-	}
-
-	if len(p.buffer) == 0 && atomic.LoadUint32(&p.rateLimited) == 0 {
-		p.addFetcher(stop)
-	} else {
+	if cap(p.buffer)-len(p.buffer) < cap(p.buffer)/2 || queueing {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
