@@ -227,7 +227,10 @@ func (p *Processor) autotune(stop <-chan struct{}) {
 }
 
 func (p *Processor) _autotune(stop <-chan struct{}) {
-	n, _ := p.q.Len()
+	n, err := p.q.Len()
+	if err != nil {
+		internal.Logf("%s Len failed: %s", p.q, err)
+	}
 	queueing := n > 256
 
 	if len(p.buffer) == 0 && queueing {
