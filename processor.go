@@ -213,14 +213,14 @@ func (p *Processor) removeFetcher() {
 func (p *Processor) autotune(stop <-chan struct{}) {
 	defer p.jobsWG.Done()
 
-	timer := time.NewTimer(5 * time.Second)
-	defer timer.Stop()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-stop:
 			return
-		case <-timer.C:
+		case <-ticker.C:
 			p._autotune(stop)
 		}
 	}
@@ -231,16 +231,18 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	if err != nil {
 		internal.Logf("%s Len failed: %s", p.q, err)
 	}
-	queueing := n > 256
 
-	if len(p.buffer) == 0 && queueing {
+	queueing := n > 256
+	buffered := len(p.buffer)
+
+	if queueing && buffered == 0 {
 		if atomic.LoadUint32(&p.rateLimitAllowed) >= 3 {
 			p.addFetcher(stop)
 		}
 		return
 	}
 
-	if cap(p.buffer)-len(p.buffer) < cap(p.buffer)/2 || queueing {
+	if queueing || cap(p.buffer)-buffered < cap(p.buffer)/2 {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
