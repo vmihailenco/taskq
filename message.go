@@ -75,11 +75,10 @@ func (m *Message) EncodeArgs() (string, error) {
 }
 
 func timeSlot(resolution time.Duration) int64 {
-	resolutionInSeconds := int64(resolution / time.Second)
-	if resolutionInSeconds <= 0 {
+	if resolution <= 0 {
 		return 0
 	}
-	return time.Now().Unix() / resolutionInSeconds
+	return time.Now().UnixNano() / int64(resolution)
 }
 
 func argsName(args []interface{}) string {
