@@ -17,7 +17,7 @@ import (
 )
 
 const waitTimeout = time.Second
-const testTimeout = 10 * time.Second
+const testTimeout = 30 * time.Second
 
 func queueName(s string) string {
 	version := strings.Split(runtime.Version(), " ")[0]
@@ -313,13 +313,13 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				err := q.CallOnce(time.Second)
+				err := q.CallOnce(100 * time.Millisecond)
 				if err != nil && err != msgqueue.ErrDuplicate {
 					t.Fatal(err)
 				}
 			}
 
-			time.Sleep(2 * time.Second)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}()
 

@@ -47,9 +47,9 @@ type Processor struct {
 
 	stopCh chan struct{}
 
-	workerNumber  uint32 // atomic
+	workerNumber  int32 // atomic
 	workerLocks   []*lock.Lock
-	fetcherNumber uint32 // atomic
+	fetcherNumber int32 // atomic
 
 	jobsWG sync.WaitGroup
 
@@ -113,8 +113,8 @@ func (p *Processor) String() string {
 // Stats returns processor stats.
 func (p *Processor) Stats() *ProcessorStats {
 	return &ProcessorStats{
-		WorkerNumber:  atomic.LoadUint32(&p.workerNumber),
-		FetcherNumber: atomic.LoadUint32(&p.fetcherNumber),
+		WorkerNumber:  uint32(atomic.LoadInt32(&p.workerNumber)),
+		FetcherNumber: uint32(atomic.LoadInt32(&p.fetcherNumber)),
 		BufferSize:    uint32(cap(p.buffer)),
 		Buffered:      uint32(len(p.buffer)),
 		InFlight:      atomic.LoadUint32(&p.inFlight),
@@ -172,9 +172,9 @@ func (p *Processor) Start() error {
 }
 
 func (p *Processor) addWorker(stop <-chan struct{}) {
-	id := atomic.AddUint32(&p.workerNumber, 1) - 1
-	if id >= uint32(p.opt.MaxWorkers) {
-		atomic.AddUint32(&p.workerNumber, ^uint32(0))
+	id := atomic.AddInt32(&p.workerNumber, 1) - 1
+	if id >= int32(p.opt.MaxWorkers) {
+		atomic.AddInt32(&p.workerNumber, -1)
 		return
 	}
 	if p.opt.WorkerLimit > 0 {
@@ -187,31 +187,31 @@ func (p *Processor) addWorker(stop <-chan struct{}) {
 	p.startWorker(id, stop)
 }
 
-func (p *Processor) startWorker(id uint32, stop <-chan struct{}) {
+func (p *Processor) startWorker(id int32, stop <-chan struct{}) {
 	p.jobsWG.Add(1)
 	go p.worker(id, stop)
 }
 
 func (p *Processor) removeWorker() {
-	atomic.AddUint32(&p.workerNumber, ^uint32(0))
+	atomic.AddInt32(&p.workerNumber, -1)
 }
 
 func (p *Processor) addFetcher(stop <-chan struct{}) {
-	id := atomic.AddUint32(&p.fetcherNumber, 1) - 1
-	if id >= uint32(p.opt.MaxFetchers) {
-		atomic.AddUint32(&p.fetcherNumber, ^uint32(0))
+	id := atomic.AddInt32(&p.fetcherNumber, 1) - 1
+	if id >= int32(p.opt.MaxFetchers) {
+		atomic.AddInt32(&p.fetcherNumber, -1)
 		return
 	}
 	p.startFetcher(id, stop)
 }
 
-func (p *Processor) startFetcher(id uint32, stop <-chan struct{}) {
+func (p *Processor) startFetcher(id int32, stop <-chan struct{}) {
 	p.jobsWG.Add(1)
 	go p.fetcher(id, stop)
 }
 
 func (p *Processor) removeFetcher() {
-	atomic.AddUint32(&p.fetcherNumber, ^uint32(0))
+	atomic.AddInt32(&p.fetcherNumber, -1)
 }
 
 func (p *Processor) autotune(stop <-chan struct{}) {
@@ -267,8 +267,8 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	close(p.stopCh)
 	p.stopCh = nil
 
-	atomic.StoreUint32(&p.fetcherNumber, 0)
-	atomic.StoreUint32(&p.workerNumber, 0)
+	atomic.StoreInt32(&p.fetcherNumber, 0)
+	atomic.StoreInt32(&p.workerNumber, 0)
 
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
@@ -362,14 +362,14 @@ func (p *Processor) reserveOne() (*Message, error) {
 	return msgs[0], nil
 }
 
-func (p *Processor) fetcher(id uint32, stop <-chan struct{}) {
+func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 	defer p.jobsWG.Done()
 	for {
 		if closed(stop) {
 			break
 		}
 
-		if id >= atomic.LoadUint32(&p.fetcherNumber) {
+		if id >= atomic.LoadInt32(&p.fetcherNumber) {
 			break
 		}
 
@@ -395,17 +395,19 @@ func (p *Processor) fetcher(id uint32, stop <-chan struct{}) {
 	}
 }
 
-func (p *Processor) fetchMessages(id uint32) (int, error) {
+func (p *Processor) fetchMessages(id int32) (int, error) {
 	size := p.reservationSize(p.opt.ReservationSize)
 	msgs, err := p.q.ReserveN(size)
 	if err != nil {
 		return 0, err
 	}
 
+	var removeFetcher bool
+
 	if d := size - len(msgs); d > 0 {
 		p.saveReservationSize(d)
 		if id > 0 {
-			p.removeFetcher()
+			removeFetcher = true
 		}
 	}
 
@@ -425,9 +427,13 @@ func (p *Processor) fetchMessages(id uint32) (int, error) {
 
 	select {
 	case <-timeout:
-		p.removeFetcher()
+		removeFetcher = true
 		p.releaseBuffer()
 	default:
+	}
+
+	if removeFetcher {
+		p.removeFetcher()
 	}
 
 	return len(msgs), nil
@@ -487,7 +493,7 @@ func (p *Processor) releaseBuffer() {
 	}
 }
 
-func (p *Processor) worker(id uint32, stop <-chan struct{}) {
+func (p *Processor) worker(id int32, stop <-chan struct{}) {
 	const idleTimeout = 3 * time.Second
 
 	defer p.jobsWG.Done()
@@ -504,7 +510,7 @@ func (p *Processor) worker(id uint32, stop <-chan struct{}) {
 	}
 
 	for {
-		if id >= atomic.LoadUint32(&p.workerNumber) {
+		if id >= atomic.LoadInt32(&p.workerNumber) {
 			break
 		}
 
@@ -518,7 +524,7 @@ func (p *Processor) worker(id uint32, stop <-chan struct{}) {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			timer.Reset(5 * time.Second)
+			timer.Reset(idleTimeout)
 		}
 
 		msg, ok := p.waitMessage(timeout, stop)
@@ -547,7 +553,7 @@ func (p *Processor) waitMessage(
 		return msg, true
 	}
 
-	if atomic.LoadUint32(&p.fetcherNumber) == 0 {
+	if atomic.LoadInt32(&p.fetcherNumber) == 0 {
 		p.addFetcher(stop)
 	}
 
@@ -726,7 +732,7 @@ func (p *Processor) resetPause() {
 	atomic.StoreUint32(&p.errCount, 0)
 }
 
-func (p *Processor) lockWorker(id uint32, stop <-chan struct{}) bool {
+func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
@@ -746,7 +752,7 @@ func (p *Processor) lockWorker(id uint32, stop <-chan struct{}) bool {
 	}
 }
 
-func (p *Processor) unlockWorker(id uint32) {
+func (p *Processor) unlockWorker(id int32) {
 	lock := p.workerLocks[id]
 	if err := lock.Unlock(); err != nil {
 		internal.Logf("redlock.Unlock failed: %s", err)
