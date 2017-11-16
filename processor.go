@@ -48,7 +48,7 @@ type Processor struct {
 	stopCh chan struct{}
 
 	workerNumber  int32 // atomic
-	workerLocks   []*lock.Lock
+	workerLocks   []*lock.Locker
 	fetcherNumber int32 // atomic
 
 	jobsWG sync.WaitGroup
@@ -179,7 +179,7 @@ func (p *Processor) addWorker(stop <-chan struct{}) {
 	}
 	if p.opt.WorkerLimit > 0 {
 		key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), id)
-		workerLock := lock.NewLock(p.opt.Redis, key, &lock.LockOptions{
+		workerLock := lock.New(p.opt.Redis, key, &lock.Options{
 			LockTimeout: p.opt.ReservationTimeout,
 		})
 		p.workerLocks = append(p.workerLocks, workerLock)

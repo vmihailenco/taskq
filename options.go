@@ -16,6 +16,9 @@ type Redis interface {
 	SMembers(key string) *redis.StringSliceCmd
 	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
+	EvalSha(sha1 string, keys []string, args ...interface{}) *redis.Cmd
+	ScriptExists(scripts ...string) *redis.BoolSliceCmd
+	ScriptLoad(script string) *redis.StringCmd
 	Publish(channel string, message interface{}) *redis.IntCmd
 }
 
