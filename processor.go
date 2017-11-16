@@ -163,7 +163,6 @@ func (p *Processor) Start() error {
 	p.stopCh = stop
 
 	p.addWorker(stop)
-	p.addFetcher(stop)
 
 	p.jobsWG.Add(1)
 	go p.autotune(stop)
@@ -178,7 +177,7 @@ func (p *Processor) addWorker(stop <-chan struct{}) {
 		return
 	}
 	if p.opt.WorkerLimit > 0 {
-		key := fmt.Sprintf("%s:worker-lock:%d", p.q.Name(), id)
+		key := fmt.Sprintf("%s:worker:%d:lock", p.q.Name(), id)
 		workerLock := lock.New(p.opt.Redis, key, &lock.Options{
 			LockTimeout: p.opt.ReservationTimeout,
 		})
@@ -495,19 +494,17 @@ func (p *Processor) releaseBuffer() {
 }
 
 func (p *Processor) worker(id int32, stop <-chan struct{}) {
-	const idleTimeout = 3 * time.Second
-
 	defer p.jobsWG.Done()
-
-	if p.opt.WorkerLimit > 0 {
-		defer p.unlockWorker(id)
-	}
 
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if id > 0 {
-		timer = time.NewTimer(idleTimeout)
+		timer = time.NewTimer(0)
 		defer timer.Stop()
+	}
+
+	if p.opt.WorkerLimit > 0 {
+		defer p.unlockWorker(id)
 	}
 
 	for {
@@ -525,7 +522,7 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			timer.Reset(idleTimeout)
+			timer.Reset(3 * time.Second)
 		}
 
 		msg, ok := p.waitMessage(timeout, stop)
@@ -734,6 +731,9 @@ func (p *Processor) resetPause() {
 }
 
 func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
 	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
@@ -744,11 +744,13 @@ func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 			return true
 		}
 
-		sleep := time.Duration(rand.Intn(1000)) * time.Millisecond
+		timeout := time.Duration(rand.Intn(1000)) * time.Millisecond
+		timer.Reset(timeout)
+
 		select {
 		case <-stop:
 			return false
-		case <-time.After(sleep):
+		case <-time.After(time.Second):
 		}
 	}
 }

@@ -100,26 +100,3 @@ func Example_once() {
 
 	// Output: hello world
 }
-
-func Example_maxWorkers() {
-	start := time.Now()
-	q := memqueue.NewQueue(&msgqueue.Options{
-		Handler: func() {
-			fmt.Println(timeSince(start))
-			time.Sleep(time.Second)
-		},
-		Redis:       redisRing(),
-		WorkerLimit: 1,
-	})
-
-	for i := 0; i < 3; i++ {
-		q.Call()
-	}
-
-	// Wait for all messages to be processed.
-	_ = q.Close()
-
-	// Output: 0s
-	// 1s
-	// 2s
-}

@@ -86,3 +86,10 @@ func TestSQSDelayer(t *testing.T) {
 		WaitTimeout: waitTimeout,
 	}))
 }
+
+func TestSQSWorkerLimit(t *testing.T) {
+	testWorkerLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+		Name:        queueName("sqs-worker-limit"),
+		WaitTimeout: waitTimeout,
+	}))
+}

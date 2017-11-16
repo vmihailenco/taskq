@@ -305,9 +305,8 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	ring := redisRing()
 
 	ch := make(chan time.Time, 10)
-	handler := func() error {
+	handler := func() {
 		ch <- time.Now()
-		return nil
 	}
 
 	go func() {
@@ -454,6 +453,48 @@ func testDelayer(t *testing.T, q msgqueue.Queue) {
 	}
 
 	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testWorkerLimit(t *testing.T, q msgqueue.Queue) {
+	t.Parallel()
+
+	_ = q.Purge()
+	ring := redisRing()
+
+	for i := 0; i < 3; i++ {
+		err := q.Call()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ch := make(chan time.Time, 10)
+	handler := func() {
+		ch <- time.Now()
+		time.Sleep(time.Second)
+	}
+
+	p1 := msgqueue.StartProcessor(q, &msgqueue.Options{
+		Handler:     handler,
+		WorkerLimit: 1,
+		Redis:       ring,
+	})
+
+	p2 := msgqueue.StartProcessor(q, &msgqueue.Options{
+		Handler:     handler,
+		WorkerLimit: 1,
+		Redis:       ring,
+	})
+
+	timings := []time.Duration{0, time.Second, 2 * time.Second}
+	testTimings(t, ch, timings)
+
+	if err := p1.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p2.Stop(); err != nil {
 		t.Fatal(err)
 	}
 }

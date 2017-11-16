@@ -400,6 +400,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			}
 		}
 	}
+
 	return nil
 }
 
