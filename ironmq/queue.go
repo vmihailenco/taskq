@@ -305,7 +305,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 		return q.q.DeleteReservedMessages(mqMsgs)
 	})
 	if err != nil {
-		internal.Logf("mq.DeleteReservedMessages failed: %s", err)
+		internal.Logf("ironmq: DeleteReservedMessages failed: %s", err)
 		return err
 	}
 

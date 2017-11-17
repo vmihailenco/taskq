@@ -356,7 +356,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 		body, err := msg.EncodeArgs()
 		if err != nil {
-			internal.Logf("EncodeArgs failed: %s", err)
+			internal.Logf("azsqs: EncodeArgs failed: %s", err)
 			continue
 		}
 		if body == "" {
@@ -384,20 +384,24 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 	out, err := q.sqs.SendMessageBatch(in)
 	if err != nil {
-		internal.Logf("sqs.SendMessageBatch failed: %s", err)
+		internal.Logf("azsqs: SendMessageBatch failed: %s", err)
 		return err
 	}
 
 	for _, entry := range out.Failed {
-		internal.Logf(
-			"sqs.SendMessageBatch failed with code=%s message=%q",
-			tos(entry.Code), tos(entry.Message),
-		)
 		if entry.SenderFault != nil && *entry.SenderFault {
-			msg := findMessageById(msgs, tos(entry.Id))
-			if msg != nil {
-				msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
-			}
+			internal.Logf(
+				"azsqs: SendMessageBatch failed with code=%s message=%q",
+				tos(entry.Code), tos(entry.Message),
+			)
+			continue
+		}
+
+		msg := findMessageById(msgs, tos(entry.Id))
+		if msg != nil {
+			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+		} else {
+			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
 	}
 
@@ -412,13 +416,13 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 	for i, msg := range msgs {
 		msg, err := msgutil.UnwrapMessage(msg)
 		if err != nil {
-			internal.Logf(err.Error())
+			internal.Logf("azsqs: UnwrapMessage failed: %s", err)
 			continue
 		}
 
 		body, err := msg.EncodeArgs()
 		if err != nil {
-			internal.Logf("EncodeArgs failed: %s", err)
+			internal.Logf("azsqs: EncodeArgs failed: %s", err)
 			continue
 		}
 
@@ -465,20 +469,24 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	}
 	out, err := q.sqs.DeleteMessageBatch(in)
 	if err != nil {
-		internal.Logf("sqs.DeleteMessageBatch failed: %s", err)
+		internal.Logf("azsqs: DeleteMessageBatch failed: %s", err)
 		return err
 	}
 
 	for _, entry := range out.Failed {
-		internal.Logf(
-			"sqs.DeleteMessageBatch failed with code=%s message=%q",
-			tos(entry.Code), tos(entry.Message),
-		)
 		if entry.SenderFault != nil && *entry.SenderFault {
-			msg := findMessageById(msgs, tos(entry.Id))
-			if msg != nil {
-				msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
-			}
+			internal.Logf(
+				"azsqs: DeleteMessageBatch failed with code=%s message=%q",
+				tos(entry.Code), tos(entry.Message),
+			)
+			continue
+		}
+
+		msg := findMessageById(msgs, tos(entry.Id))
+		if msg != nil {
+			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+		} else {
+			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
 	}
 	return nil
