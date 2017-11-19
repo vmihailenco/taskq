@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -287,7 +288,16 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 		ReceiptHandle:     &msg.ReservationId,
 		VisibilityTimeout: aws.Int64(int64(msg.Delay / time.Second)),
 	}
-	_, err := q.sqs.ChangeMessageVisibility(in)
+	var err error
+	for i := 0; i < 3; i++ {
+		_, err = q.sqs.ChangeMessageVisibility(in)
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "Please try again") {
+			break
+		}
+	}
 	return err
 }
 
@@ -352,8 +362,6 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			return err
 		}
 
-		msg.Id = strconv.Itoa(i)
-
 		body, err := msg.EncodeArgs()
 		if err != nil {
 			internal.Logf("azsqs: EncodeArgs failed: %s", err)
@@ -364,7 +372,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 		}
 
 		entry := &sqs.SendMessageBatchRequestEntry{
-			Id:          aws.String(msg.Id),
+			Id:          aws.String(strconv.Itoa(i)),
 			MessageBody: aws.String(body),
 		}
 		if msg.Delay <= maxDelay {
@@ -456,9 +464,8 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 			return err
 		}
 
-		msg.Id = strconv.Itoa(i)
 		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
-			Id:            aws.String(msg.Id),
+			Id:            aws.String(strconv.Itoa(i)),
 			ReceiptHandle: &msg.ReservationId,
 		}
 	}
@@ -502,10 +509,12 @@ func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message,
 }
 
 func findMessageById(msgs []*msgqueue.Message, id string) *msgqueue.Message {
-	for _, msg := range msgs {
-		if msg.Id == id {
-			return msg
-		}
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return nil
+	}
+	if i < len(msgs) {
+		return msgs[i]
 	}
 	return nil
 }
