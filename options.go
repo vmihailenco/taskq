@@ -65,10 +65,6 @@ type Options struct {
 	// Default is 4 * number of CPUs.
 	MaxFetchers int
 
-	// Size of the buffer where reserved messages are stored.
-	// Default is 10 messages.
-	BufferSize int
-
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
 	ReservationSize int
@@ -78,6 +74,9 @@ type Options struct {
 	// available before returning an empty response.
 	// Default is 10 seconds.
 	WaitTimeout time.Duration
+	// Size of the buffer where reserved messages are stored.
+	// Default is the same as ReservationSize.
+	BufferSize int
 
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
@@ -126,10 +125,6 @@ func (opt *Options) Init() {
 		opt.MaxFetchers = 4 * runtime.NumCPU()
 	}
 
-	if opt.BufferSize == 0 {
-		opt.BufferSize = 10
-	}
-
 	switch opt.PauseErrorsThreshold {
 	case -1:
 		opt.PauseErrorsThreshold = 0
@@ -146,6 +141,9 @@ func (opt *Options) Init() {
 	}
 	if opt.ReservationTimeout == 0 {
 		opt.ReservationTimeout = 300 * time.Second
+	}
+	if opt.BufferSize == 0 {
+		opt.BufferSize = opt.ReservationSize
 	}
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = 10 * time.Second

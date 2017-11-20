@@ -53,8 +53,11 @@ type Processor struct {
 
 	jobsWG sync.WaitGroup
 
-	rateLimitAllowed   uint32
-	rateLimitAllowance uint32
+	queueing           uint32 // atomic
+	bufferEmpty        uint32 // atomic
+	fetcherIdle        uint32 // atomic
+	rateLimitAllowed   uint32 // atomic
+	rateLimitAllowance uint32 // atomic
 
 	errCount uint32
 	delaySec uint32
@@ -170,12 +173,13 @@ func (p *Processor) Start() error {
 	return nil
 }
 
-func (p *Processor) addWorker(stop <-chan struct{}) {
+func (p *Processor) addWorker(stop <-chan struct{}) int32 {
 	id := atomic.AddInt32(&p.workerNumber, 1) - 1
 	if id >= int32(p.opt.MaxWorkers) {
 		atomic.AddInt32(&p.workerNumber, -1)
-		return
+		return -1
 	}
+
 	if p.opt.WorkerLimit > 0 {
 		key := fmt.Sprintf("%s:worker:%d:lock", p.q.Name(), id)
 		workerLock := lock.New(p.opt.Redis, key, &lock.Options{
@@ -184,6 +188,8 @@ func (p *Processor) addWorker(stop <-chan struct{}) {
 		p.workerLocks = append(p.workerLocks, workerLock)
 	}
 	p.startWorker(id, stop)
+
+	return id
 }
 
 func (p *Processor) startWorker(id int32, stop <-chan struct{}) {
@@ -195,13 +201,15 @@ func (p *Processor) removeWorker() {
 	atomic.AddInt32(&p.workerNumber, -1)
 }
 
-func (p *Processor) addFetcher(stop <-chan struct{}) {
+func (p *Processor) addFetcher(stop <-chan struct{}) int32 {
 	id := atomic.AddInt32(&p.fetcherNumber, 1) - 1
 	if id >= int32(p.opt.MaxFetchers) {
 		atomic.AddInt32(&p.fetcherNumber, -1)
-		return
+		return -1
 	}
+
 	p.startFetcher(id, stop)
+	return id
 }
 
 func (p *Processor) startFetcher(id int32, stop <-chan struct{}) {
@@ -235,19 +243,33 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 		internal.Logf("%s Len failed: %s", p.q, err)
 	}
 
-	queueing := n > 256
+	var queueing bool
+	if n >= 256 {
+		queueing = atomic.AddUint32(&p.queueing, 1) >= 3
+	} else {
+		atomic.StoreUint32(&p.queueing, 0)
+	}
+
 	buffered := len(p.buffer)
 	notRateLimited := p.opt.RateLimiter == nil ||
 		atomic.LoadUint32(&p.rateLimitAllowed) >= 3
 
-	if queueing && buffered == 0 {
-		if notRateLimited {
+	if buffered == 0 {
+		bufferEmptyCount := atomic.AddUint32(&p.bufferEmpty, 1)
+		if queueing && notRateLimited && bufferEmptyCount >= 2 {
+			atomic.StoreUint32(&p.bufferEmpty, 0)
 			p.addFetcher(stop)
+			return
 		}
-		return
+	} else {
+		atomic.StoreUint32(&p.bufferEmpty, 0)
 	}
 
-	if (queueing && notRateLimited) || buffered >= cap(p.buffer)/2 {
+	if !queueing && atomic.LoadUint32(&p.fetcherIdle) >= 3 {
+		p.removeFetcher()
+	}
+
+	if (queueing && notRateLimited) || buffered > cap(p.buffer)/2 {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
@@ -272,7 +294,8 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	atomic.StoreInt32(&p.workerNumber, 0)
 
 	done := make(chan struct{}, 1)
-	timeoutCh := time.After(timeout)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
 	go func() {
 		p.jobsWG.Wait()
@@ -281,7 +304,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 
 	select {
 	case <-done:
-	case <-timeoutCh:
+	case <-timer.C:
 		return fmt.Errorf("workers are not stopped after %s", timeout)
 	}
 
@@ -403,12 +426,15 @@ func (p *Processor) fetchMessages(id int32) (int, error) {
 		return 0, err
 	}
 
-	var removeFetcher bool
-
 	if d := size - len(msgs); d > 0 {
 		p.saveReservationSize(d)
-		if id > 0 {
-			removeFetcher = true
+	}
+
+	if id > 0 {
+		if len(msgs) < size {
+			atomic.AddUint32(&p.fetcherIdle, 1)
+		} else {
+			atomic.StoreUint32(&p.fetcherIdle, 0)
 		}
 	}
 
@@ -428,13 +454,9 @@ func (p *Processor) fetchMessages(id int32) (int, error) {
 
 	select {
 	case <-timeout:
-		removeFetcher = true
+		p.removeFetcher()
 		p.releaseBuffer()
 	default:
-	}
-
-	if removeFetcher {
-		p.removeFetcher()
 	}
 
 	return len(msgs), nil
@@ -553,7 +575,10 @@ func (p *Processor) waitMessage(
 	}
 
 	if atomic.LoadInt32(&p.fetcherNumber) == 0 {
-		p.addFetcher(stop)
+		fetcherId := p.addFetcher(stop)
+		if fetcherId > 0 {
+			p.removeFetcher()
+		}
 	}
 
 	select {
