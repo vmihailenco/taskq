@@ -259,12 +259,12 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	p.queueLen = queueLen
 
 	buffered := len(p.buffer)
-	notRateLimited := p.opt.RateLimiter == nil ||
-		atomic.LoadUint32(&p.rateLimitAllowed) >= 3
+	rateLimited := p.opt.RateLimiter != nil &&
+		atomic.LoadUint32(&p.rateLimitAllowed) < 3
 
 	if buffered == 0 {
 		p.bufferEmpty++
-		if queueing && notRateLimited && p.bufferEmpty >= 2 {
+		if queueing && !rateLimited && p.bufferEmpty >= 2 && p.hasFetcher() {
 			p.addFetcher(stop)
 			p.queueing = 0
 			p.bufferEmpty = 0
@@ -279,7 +279,7 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 		atomic.StoreUint32(&p.fetcherIdle, 0)
 	}
 
-	if (queueing && notRateLimited) || buffered > cap(p.buffer)/2 {
+	if (queueing && !rateLimited) || buffered > cap(p.buffer)/2 {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
@@ -291,6 +291,10 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 		p.removeWorker()
 		atomic.StoreUint32(&p.workerIdle, 0)
 	}
+}
+
+func (p *Processor) hasFetcher() bool {
+	return atomic.LoadInt32(&p.fetcherNumber) > 0
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
@@ -598,9 +602,9 @@ func (p *Processor) waitMessage(
 		return msg, false
 	}
 
-	if atomic.LoadInt32(&p.fetcherNumber) == 0 {
+	if !p.hasFetcher() {
 		fetcherId := p.addFetcher(stop)
-		if fetcherId > 0 {
+		if fetcherId != 0 {
 			p.removeFetcher()
 		}
 	}
