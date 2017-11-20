@@ -83,6 +83,7 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	}
 
 	opt.WaitTimeout = waitTimeout
+
 	q := man.NewQueue(opt)
 	_ = q.Purge()
 
@@ -131,8 +132,10 @@ func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 		return nil
 	}
 
+	opt.WaitTimeout = waitTimeout
 	opt.RetryLimit = 1
 	opt.WaitTimeout = waitTimeout
+
 	q := man.NewQueue(opt)
 	_ = q.Purge()
 
@@ -160,15 +163,18 @@ func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	}
 }
 
-func testDelay(t *testing.T, q msgqueue.Queue) {
+func testDelay(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-
 	handlerCh := make(chan time.Time, 10)
-	handler := func() {
+	opt.Handler = func() {
 		handlerCh <- time.Now()
 	}
+
+	opt.WaitTimeout = waitTimeout
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	start := time.Now()
 
@@ -179,9 +185,8 @@ func testDelay(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler: handler,
-	})
+	p := q.Processor()
+	p.Start()
 
 	var tm time.Time
 	select {
@@ -204,22 +209,27 @@ func testDelay(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testRetry(t *testing.T, q msgqueue.Queue) {
+func testRetry(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-
 	handlerCh := make(chan time.Time, 10)
-	handler := func(hello, world string) error {
+	opt.Handler = func(hello, world string) error {
 		handlerCh <- time.Now()
 		return errors.New("fake error")
 	}
 
 	var fallbackCount int64
-	fallbackHandler := func() error {
+	opt.FallbackHandler = func() error {
 		atomic.AddInt64(&fallbackCount, 1)
 		return nil
 	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.RetryLimit = 3
+	opt.MinBackoff = time.Second
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
@@ -227,12 +237,8 @@ func testRetry(t *testing.T, q msgqueue.Queue) {
 		t.Fatal(err)
 	}
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:         handler,
-		FallbackHandler: fallbackHandler,
-		RetryLimit:      3,
-		MinBackoff:      time.Second,
-	})
+	p := q.Processor()
+	p.Start()
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -250,19 +256,23 @@ func testRetry(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testNamedMessage(t *testing.T, q msgqueue.Queue) {
+func testNamedMessage(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-
 	ch := make(chan time.Time, 10)
-	handler := func(hello string) error {
+	opt.Handler = func(hello string) error {
 		if hello != "world" {
 			panic("hello != world")
 		}
 		ch <- time.Now()
 		return nil
 	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.Redis = redisRing()
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -279,9 +289,8 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	}
 	wg.Wait()
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler: handler,
-	})
+	p := q.Processor()
+	p.Start()
 
 	select {
 	case <-ch:
@@ -304,35 +313,34 @@ func testNamedMessage(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testCallOnce(t *testing.T, q msgqueue.Queue) {
+func testCallOnce(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-	ring := redisRing()
-
 	ch := make(chan time.Time, 10)
-	handler := func() {
+	opt.Handler = func() {
 		ch <- time.Now()
 	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.Redis = redisRing()
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				err := q.CallOnce(100 * time.Millisecond)
+				err := q.CallOnce(500 * time.Millisecond)
 				if err != nil && err != msgqueue.ErrDuplicate {
 					t.Fatal(err)
 				}
 			}
-
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 	}()
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler: handler,
-		Redis:   ring,
-	})
-	go printStats(p)
+	p := q.Processor()
+	p.Start()
 
 	for i := 0; i < 3; i++ {
 		select {
@@ -357,13 +365,14 @@ func testCallOnce(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testLen(t *testing.T, q msgqueue.Queue) {
+func testLen(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
+	q := man.NewQueue(opt)
 	_ = q.Purge()
 
-	queueLen := 10
-	for i := 0; i < queueLen; i++ {
+	nmessages := 10
+	for i := 0; i < nmessages; i++ {
 		err := q.Call()
 		if err != nil {
 			t.Fatal(err)
@@ -376,22 +385,25 @@ func testLen(t *testing.T, q msgqueue.Queue) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i != queueLen {
-		t.Fatalf("got %d messages in queue wanted 10", i)
+	if i != nmessages {
+		t.Fatalf("got %d messages, wanted %d", i, nmessages)
 	}
 }
 
-func testRateLimit(t *testing.T, q msgqueue.Queue) {
+func testRateLimit(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-	ring := redisRing()
-
 	var count int64
-	handler := func() error {
+	opt.Handler = func() {
 		atomic.AddInt64(&count, 1)
-		return nil
 	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.RateLimit = rate.Every(time.Second)
+	opt.Redis = redisRing()
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -407,12 +419,8 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	}
 	wg.Wait()
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:   handler,
-		RateLimit: rate.Every(time.Second),
-		Redis:     ring,
-	})
-	go printStats(p)
+	p := q.Processor()
+	p.Start()
 
 	time.Sleep(5 * time.Second)
 
@@ -429,27 +437,29 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testErrorDelay(t *testing.T, q msgqueue.Queue) {
+func testErrorDelay(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
-	_ = q.Purge()
-
 	handlerCh := make(chan time.Time, 10)
-	handler := func() error {
+	opt.Handler = func() error {
 		handlerCh <- time.Now()
 		return RateLimitError("fake error")
 	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.MinBackoff = time.Second
+	opt.RetryLimit = 3
+
+	q := man.NewQueue(opt)
+	_ = q.Purge()
 
 	err := q.Call()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:    handler,
-		MinBackoff: time.Second,
-		RetryLimit: 3,
-	})
+	p := q.Processor()
+	p.Start()
 
 	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -463,11 +473,21 @@ func testErrorDelay(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testWorkerLimit(t *testing.T, q msgqueue.Queue) {
+func testWorkerLimit(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
+	ch := make(chan time.Time, 10)
+	opt.Handler = func() {
+		ch <- time.Now()
+		time.Sleep(time.Second)
+	}
+
+	opt.WaitTimeout = waitTimeout
+	opt.Redis = redisRing()
+	opt.WorkerLimit = 1
+
+	q := man.NewQueue(opt)
 	_ = q.Purge()
-	ring := redisRing()
 
 	for i := 0; i < 3; i++ {
 		err := q.Call()
@@ -476,23 +496,8 @@ func testWorkerLimit(t *testing.T, q msgqueue.Queue) {
 		}
 	}
 
-	ch := make(chan time.Time, 10)
-	handler := func() {
-		ch <- time.Now()
-		time.Sleep(time.Second)
-	}
-
-	p1 := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:     handler,
-		WorkerLimit: 1,
-		Redis:       ring,
-	})
-
-	p2 := msgqueue.StartProcessor(q, &msgqueue.Options{
-		Handler:     handler,
-		WorkerLimit: 1,
-		Redis:       ring,
-	})
+	p1 := msgqueue.StartProcessor(q, opt)
+	p2 := msgqueue.StartProcessor(q, opt)
 
 	timings := []time.Duration{0, time.Second, 2 * time.Second}
 	testTimings(t, ch, timings)
@@ -512,7 +517,12 @@ func durEqual(d1, d2 time.Duration) bool {
 func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 	start := time.Now()
 	for i, timing := range timings {
-		tm := <-ch
+		var tm time.Time
+		select {
+		case tm = <-ch:
+		case <-time.After(testTimeout):
+			t.Fatalf("message is not processed after %s", 2*timing)
+		}
 		since := tm.Sub(start)
 		if !durEqual(since, timing) {
 			t.Fatalf("#%d: timing is %s, wanted %s", i+1, since, timing)

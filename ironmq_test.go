@@ -7,7 +7,6 @@ import (
 	"github.com/go-msgqueue/msgqueue/ironmq"
 
 	iron_config "github.com/iron-io/iron_go3/config"
-	"github.com/iron-io/iron_go3/mq"
 )
 
 func ironmqManager() msgqueue.Manager {
@@ -17,71 +16,60 @@ func ironmqManager() msgqueue.Manager {
 
 func TestIronmqProcessor(t *testing.T) {
 	testProcessor(t, ironmqManager(), &msgqueue.Options{
-		Name: "ironmq-processor",
+		Name: queueName("ironmq-processor"),
 	})
 }
 
 func TestIronmqFallback(t *testing.T) {
 	testFallback(t, ironmqManager(), &msgqueue.Options{
-		Name: "ironmq-fallback",
+		Name: queueName("ironmq-fallback"),
 	})
 }
 
 func TestIronmqDelay(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-delay")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testDelay(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-delay"),
 	})
-	testDelay(t, q)
 }
 
 func TestIronmqRetry(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-retry")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testRetry(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-retry"),
 	})
-	testRetry(t, q)
 }
 
 func TestIronmqNamedMessage(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-named-message")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
-		Redis:       redisRing(),
+	testNamedMessage(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-named-message"),
 	})
-	testNamedMessage(t, q)
 }
 
 func TestIronmqCallOnce(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-call-once")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
-		Redis:       redisRing(),
+	testCallOnce(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-call-once"),
 	})
-	testCallOnce(t, q)
 }
 
 func TestIronmqLen(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-len")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
-		Redis:       redisRing(),
+	testLen(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-len"),
 	})
-	testLen(t, q)
 }
 
 func TestIronmqRateLimit(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-rate-limit")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testRateLimit(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-rate-limit"),
 	})
-	testRateLimit(t, q)
 }
 
 func TestIronmqErrorDelay(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("ironmq-delayer")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testErrorDelay(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("ironmq-delayer"),
 	})
-	testErrorDelay(t, q)
 }
 
 func TestIronmqWorkerLimit(t *testing.T) {
-	q := ironmq.NewQueue(mq.New(queueName("worker-limit")), &msgqueue.Options{
-		WaitTimeout: waitTimeout,
+	testWorkerLimit(t, ironmqManager(), &msgqueue.Options{
+		Name: queueName("worker-limit"),
 	})
-	testWorkerLimit(t, q)
 }

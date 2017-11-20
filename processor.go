@@ -53,8 +53,9 @@ type Processor struct {
 
 	jobsWG sync.WaitGroup
 
-	queueing           uint32 // atomic
-	bufferEmpty        uint32 // atomic
+	queueLen           int
+	queueing           int
+	bufferEmpty        int
 	fetcherIdle        uint32 // atomic
 	workerIdle         uint32 // atomic
 	rateLimitAllowed   uint32 // atomic
@@ -243,32 +244,34 @@ func (p *Processor) autotune(stop <-chan struct{}) {
 }
 
 func (p *Processor) _autotune(stop <-chan struct{}) {
-	n, err := p.q.Len()
+	queueLen, err := p.q.Len()
 	if err != nil {
 		internal.Logf("%s Len failed: %s", p.q, err)
 	}
 
 	var queueing bool
-	if n >= 256 {
-		queueing = atomic.AddUint32(&p.queueing, 1) >= 3
+	if queueLen > 256 && queueLen > p.queueLen {
+		p.queueing++
+		queueing = p.queueing >= 3
 	} else {
-		atomic.StoreUint32(&p.queueing, 0)
+		p.queueing = 0
 	}
+	p.queueLen = queueLen
 
 	buffered := len(p.buffer)
 	notRateLimited := p.opt.RateLimiter == nil ||
 		atomic.LoadUint32(&p.rateLimitAllowed) >= 3
 
 	if buffered == 0 {
-		bufferEmptyCount := atomic.AddUint32(&p.bufferEmpty, 1)
-		if queueing && notRateLimited && bufferEmptyCount >= 2 {
+		p.bufferEmpty++
+		if queueing && notRateLimited && p.bufferEmpty >= 2 {
 			p.addFetcher(stop)
-			atomic.StoreUint32(&p.queueing, 0)
-			atomic.StoreUint32(&p.bufferEmpty, 0)
+			p.queueing = 0
+			p.bufferEmpty = 0
 			return
 		}
 	} else {
-		atomic.StoreUint32(&p.bufferEmpty, 0)
+		p.bufferEmpty = 0
 	}
 
 	if !queueing && atomic.LoadUint32(&p.fetcherIdle) >= 3 {
@@ -280,7 +283,7 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
-		atomic.StoreUint32(&p.queueing, 0)
+		p.queueing = 0
 		return
 	}
 

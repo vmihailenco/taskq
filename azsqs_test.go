@@ -38,58 +38,49 @@ func TestSQSFallback(t *testing.T) {
 }
 
 func TestSQSDelay(t *testing.T) {
-	testDelay(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-delay"),
-		WaitTimeout: waitTimeout,
-	}))
+	testDelay(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-delay"),
+	})
 }
 
 func TestSQSRetry(t *testing.T) {
-	testRetry(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-retry"),
-		WaitTimeout: waitTimeout,
-	}))
+	testRetry(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-retry"),
+	})
 }
 
 func TestSQSNamedMessage(t *testing.T) {
-	testNamedMessage(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-named-message"),
-		WaitTimeout: waitTimeout,
-		Redis:       redisRing(),
-	}))
+	testNamedMessage(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-named-message"),
+	})
 }
 
 func TestSQSCallOnce(t *testing.T) {
-	testCallOnce(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-call-once"),
-		WaitTimeout: waitTimeout,
-		Redis:       redisRing(),
-	}))
+	testCallOnce(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-call-once"),
+	})
 }
 
 func TestSQSLen(t *testing.T) {
-	testLen(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+	testLen(t, azsqsManager(), &msgqueue.Options{
 		Name: queueName("queue-len"),
-	}))
+	})
 }
 
 func TestSQSRateLimit(t *testing.T) {
-	testRateLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-rate-limit"),
-		WaitTimeout: waitTimeout,
-	}))
+	testRateLimit(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-rate-limit"),
+	})
 }
 
 func TestSQSErrorDelay(t *testing.T) {
-	testErrorDelay(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-delayer"),
-		WaitTimeout: waitTimeout,
-	}))
+	testErrorDelay(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-delayer"),
+	})
 }
 
 func TestSQSWorkerLimit(t *testing.T) {
-	testWorkerLimit(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
-		Name:        queueName("sqs-worker-limit"),
-		WaitTimeout: waitTimeout,
-	}))
+	testWorkerLimit(t, azsqsManager(), &msgqueue.Options{
+		Name: queueName("sqs-worker-limit"),
+	})
 }
