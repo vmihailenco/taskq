@@ -237,7 +237,8 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 
 	queueing := n > 256
 	buffered := len(p.buffer)
-	notRateLimited := atomic.LoadUint32(&p.rateLimitAllowed) >= 3
+	notRateLimited := p.opt.RateLimiter == nil ||
+		atomic.LoadUint32(&p.rateLimitAllowed) >= 3
 
 	if queueing && buffered == 0 {
 		if notRateLimited {
