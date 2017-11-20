@@ -1,4 +1,6 @@
-# Golang task/job queue with in-memory, SQS, IronMQ backends [![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg?branch=v1)](https://travis-ci.org/go-msgqueue/msgqueue)
+# Golang task/job queue with in-memory, SQS, IronMQ backends
+
+[![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg)](https://travis-ci.org/go-msgqueue/msgqueue)
 
 ## Installation
 
