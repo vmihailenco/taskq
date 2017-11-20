@@ -72,11 +72,11 @@ func TestIronmqRateLimit(t *testing.T) {
 	testRateLimit(t, q)
 }
 
-func TestIronmqDelayer(t *testing.T) {
+func TestIronmqErrorDelay(t *testing.T) {
 	q := ironmq.NewQueue(mq.New(queueName("ironmq-delayer")), &msgqueue.Options{
 		WaitTimeout: waitTimeout,
 	})
-	testDelayer(t, q)
+	testErrorDelay(t, q)
 }
 
 func TestIronmqWorkerLimit(t *testing.T) {

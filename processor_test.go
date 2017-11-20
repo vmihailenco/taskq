@@ -183,7 +183,13 @@ func testDelay(t *testing.T, q msgqueue.Queue) {
 		Handler: handler,
 	})
 
-	tm := <-handlerCh
+	var tm time.Time
+	select {
+	case tm = <-handlerCh:
+	case <-time.After(testTimeout):
+		t.Fatalf("message was not processed")
+	}
+
 	sub := tm.Sub(start)
 	if !durEqual(sub, msg.Delay) {
 		t.Fatalf("message was delayed by %s, wanted %s", sub, msg.Delay)
@@ -423,7 +429,7 @@ func testRateLimit(t *testing.T, q msgqueue.Queue) {
 	}
 }
 
-func testDelayer(t *testing.T, q msgqueue.Queue) {
+func testErrorDelay(t *testing.T, q msgqueue.Queue) {
 	t.Parallel()
 
 	_ = q.Purge()

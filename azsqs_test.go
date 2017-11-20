@@ -80,8 +80,8 @@ func TestSQSRateLimit(t *testing.T) {
 	}))
 }
 
-func TestSQSDelayer(t *testing.T) {
-	testDelayer(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
+func TestSQSErrorDelay(t *testing.T) {
+	testErrorDelay(t, azsqs.NewQueue(awsSQS(), accountId, &msgqueue.Options{
 		Name:        queueName("sqs-delayer"),
 		WaitTimeout: waitTimeout,
 	}))
