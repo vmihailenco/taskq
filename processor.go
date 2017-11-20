@@ -56,6 +56,7 @@ type Processor struct {
 	queueing           uint32 // atomic
 	bufferEmpty        uint32 // atomic
 	fetcherIdle        uint32 // atomic
+	workerIdle         uint32 // atomic
 	rateLimitAllowed   uint32 // atomic
 	rateLimitAllowance uint32 // atomic
 
@@ -165,6 +166,9 @@ func (p *Processor) Start() error {
 	stop := make(chan struct{})
 	p.stopCh = stop
 
+	atomic.StoreInt32(&p.fetcherNumber, 0)
+	atomic.StoreInt32(&p.workerNumber, 0)
+
 	p.addWorker(stop)
 
 	p.jobsWG.Add(1)
@@ -209,6 +213,7 @@ func (p *Processor) addFetcher(stop <-chan struct{}) int32 {
 	}
 
 	p.startFetcher(id, stop)
+
 	return id
 }
 
@@ -257,8 +262,9 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	if buffered == 0 {
 		bufferEmptyCount := atomic.AddUint32(&p.bufferEmpty, 1)
 		if queueing && notRateLimited && bufferEmptyCount >= 2 {
-			atomic.StoreUint32(&p.bufferEmpty, 0)
 			p.addFetcher(stop)
+			atomic.StoreUint32(&p.queueing, 0)
+			atomic.StoreUint32(&p.bufferEmpty, 0)
 			return
 		}
 	} else {
@@ -267,12 +273,20 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 
 	if !queueing && atomic.LoadUint32(&p.fetcherIdle) >= 3 {
 		p.removeFetcher()
+		atomic.StoreUint32(&p.fetcherIdle, 0)
 	}
 
 	if (queueing && notRateLimited) || buffered > cap(p.buffer)/2 {
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
+		atomic.StoreUint32(&p.queueing, 0)
+		return
+	}
+
+	if !queueing && atomic.LoadUint32(&p.workerIdle) >= 3 {
+		p.removeWorker()
+		atomic.StoreUint32(&p.workerIdle, 0)
 	}
 }
 
@@ -290,25 +304,22 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	close(p.stopCh)
 	p.stopCh = nil
 
-	atomic.StoreInt32(&p.fetcherNumber, 0)
-	atomic.StoreInt32(&p.workerNumber, 0)
-
 	done := make(chan struct{}, 1)
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
 	go func() {
 		p.jobsWG.Wait()
 		done <- struct{}{}
 	}()
 
+	timer := time.NewTimer(timeout)
+	var err error
 	select {
 	case <-done:
+		timer.Stop()
 	case <-timer.C:
-		return fmt.Errorf("workers are not stopped after %s", timeout)
+		err = fmt.Errorf("workers are not stopped after %s", timeout)
 	}
 
-	return nil
+	return err
 }
 
 func (p *Processor) paused() time.Duration {
@@ -388,6 +399,10 @@ func (p *Processor) reserveOne() (*Message, error) {
 
 func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 	defer p.jobsWG.Done()
+
+	timer := time.NewTimer(time.Minute)
+	timer.Stop()
+
 	for {
 		if closed(stop) {
 			break
@@ -404,7 +419,8 @@ func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 			continue
 		}
 
-		_, err := p.fetchMessages(id)
+		timer.Reset(p.opt.ReservationTimeout * 4 / 5)
+		timeout, err := p.fetchMessages(id, timer.C)
 		if err != nil {
 			if err == internal.ErrNotSupported {
 				break
@@ -416,14 +432,23 @@ func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 			)
 			time.Sleep(p.opt.WaitTimeout)
 		}
+		if timeout {
+			break
+		}
+
+		if !timer.Stop() {
+			<-timer.C
+		}
 	}
 }
 
-func (p *Processor) fetchMessages(id int32) (int, error) {
+func (p *Processor) fetchMessages(
+	id int32, timeoutC <-chan time.Time,
+) (timeout bool, err error) {
 	size := p.reservationSize(p.opt.ReservationSize)
 	msgs, err := p.q.ReserveN(size)
 	if err != nil {
-		return 0, err
+		return false, err
 	}
 
 	if d := size - len(msgs); d > 0 {
@@ -438,28 +463,18 @@ func (p *Processor) fetchMessages(id int32) (int, error) {
 		}
 	}
 
-	timeout := make(chan struct{})
-	timer := time.AfterFunc(p.opt.ReservationTimeout*4/5, func() {
-		close(timeout)
-	})
-	defer timer.Stop()
-
-	for _, msg := range msgs {
+	for i, msg := range msgs {
 		select {
 		case p.buffer <- msg:
-		case <-timeout:
-			p.release(msg, nil)
+		case <-timeoutC:
+			for _, msg := range msgs[i:] {
+				p.release(msg, nil)
+			}
+			return true, nil
 		}
 	}
 
-	select {
-	case <-timeout:
-		p.removeFetcher()
-		p.releaseBuffer()
-	default:
-	}
-
-	return len(msgs), nil
+	return false, nil
 }
 
 func (p *Processor) reservationSize(max int) int {
@@ -508,9 +523,9 @@ func (p *Processor) saveReservationSize(n int) {
 
 func (p *Processor) releaseBuffer() {
 	for {
-		msg, ok := p.dequeueMessage()
-		if !ok {
-			return
+		msg := p.dequeueMessage()
+		if msg == nil {
+			break
 		}
 		p.release(msg, nil)
 	}
@@ -522,8 +537,9 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if id > 0 {
-		timer = time.NewTimer(0)
-		defer timer.Stop()
+		timer = time.NewTimer(time.Minute)
+		timer.Stop()
+		timeout = timer.C
 	}
 
 	if p.opt.WorkerLimit > 0 {
@@ -532,34 +548,39 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 
 	for {
 		if id >= atomic.LoadInt32(&p.workerNumber) {
-			break
+			return
 		}
 
 		if p.opt.WorkerLimit > 0 {
 			if !p.lockWorker(id, stop) {
-				break
+				return
 			}
+		}
+
+		if timer != nil {
+			timer.Reset(time.Second)
+		}
+
+		msg, timeout := p.waitMessage(stop, timeout)
+		if timeout {
+			atomic.AddUint32(&p.workerIdle, 1)
+			continue
 		}
 
 		if timer != nil {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			timer.Reset(3 * time.Second)
-		}
-
-		msg, ok := p.waitMessage(timeout, stop)
-		if !ok {
-			break
 		}
 
 		if msg == nil {
-			continue
+			return
 		}
 
 		select {
 		case <-stop:
 			p.release(msg, nil)
+			return
 		default:
 			p.process(msg)
 		}
@@ -567,11 +588,11 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 }
 
 func (p *Processor) waitMessage(
-	timeout <-chan time.Time, stop <-chan struct{},
-) (*Message, bool) {
-	msg, ok := p.dequeueMessage()
-	if ok {
-		return msg, true
+	stop <-chan struct{}, timeoutC <-chan time.Time,
+) (msg *Message, timeout bool) {
+	msg = p.dequeueMessage()
+	if msg != nil {
+		return msg, false
 	}
 
 	if atomic.LoadInt32(&p.fetcherNumber) == 0 {
@@ -583,21 +604,20 @@ func (p *Processor) waitMessage(
 
 	select {
 	case msg := <-p.buffer:
-		return msg, true
-	case <-timeout:
-		p.removeWorker()
-		return nil, true
+		return msg, false
 	case <-stop:
-		return p.dequeueMessage()
+		return p.dequeueMessage(), false
+	case <-timeoutC:
+		return nil, true
 	}
 }
 
-func (p *Processor) dequeueMessage() (*Message, bool) {
+func (p *Processor) dequeueMessage() *Message {
 	select {
 	case msg := <-p.buffer:
-		return msg, true
+		return msg
 	default:
-		return nil, false
+		return nil
 	}
 }
 
@@ -757,8 +777,8 @@ func (p *Processor) resetPause() {
 }
 
 func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
-	timer := time.NewTimer(0)
-	defer timer.Stop()
+	timer := time.NewTimer(time.Minute)
+	timer.Stop()
 
 	lock := p.workerLocks[id]
 	for {
@@ -775,8 +795,9 @@ func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 
 		select {
 		case <-stop:
+			timer.Stop()
 			return false
-		case <-time.After(time.Second):
+		case <-timer.C:
 		}
 	}
 }
