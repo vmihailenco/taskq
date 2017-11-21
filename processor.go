@@ -797,7 +797,7 @@ func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 			return true
 		}
 
-		timeout := time.Duration(rand.Intn(1000)) * time.Millisecond
+		timeout := time.Duration(500+rand.Intn(1000)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
