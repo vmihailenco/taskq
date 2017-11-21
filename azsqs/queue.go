@@ -294,6 +294,10 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 		if err == nil {
 			return nil
 		}
+		if i > 0 &&
+			strings.Contains(err.Error(), "Message does not exist") {
+			return nil
+		}
 		if !strings.Contains(err.Error(), "Please try again") {
 			break
 		}
