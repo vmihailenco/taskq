@@ -124,6 +124,7 @@ func (q *Queue) Add(msg *msgqueue.Message) error {
 		return msgqueue.ErrDuplicate
 	}
 	q.wg.Add(1)
+	msg.Compress = q.Options().Compress
 	return q.enqueueMessage(msg)
 }
 

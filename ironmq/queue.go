@@ -158,6 +158,7 @@ func (q *Queue) Add(msg *msgqueue.Message) error {
 		return err
 	}
 
+	msg.Compress = q.Options().Compress
 	msg = msgutil.WrapMessage(msg)
 	return q.addQueue.Add(msg)
 }
