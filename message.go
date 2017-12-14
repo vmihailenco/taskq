@@ -31,6 +31,8 @@ type Message struct {
 	Body    string
 	bodyErr error
 
+	Compress bool
+
 	// SQS/IronMQ reservation id that is used to release/delete the message..
 	ReservationId string
 
@@ -70,7 +72,7 @@ func (m *Message) EncodeArgs() (string, error) {
 	if m.Body != "" {
 		return m.Body, nil
 	}
-	m.Body, m.bodyErr = encodeArgs(m.Args)
+	m.Body, m.bodyErr = encodeArgs(m.Args, m.Compress)
 	return m.Body, m.bodyErr
 }
 

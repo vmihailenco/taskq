@@ -46,7 +46,7 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 		return err
 	}
 
-	args, err := decodeArgs(body, h.ft)
+	args, err := decodeArgs(body, h.ft, msg.Compress)
 	if err != nil {
 		return err
 	}

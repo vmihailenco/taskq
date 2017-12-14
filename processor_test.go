@@ -368,6 +368,8 @@ func testCallOnce(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 func testLen(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
+	opt.Handler = func() {}
+
 	q := man.NewQueue(opt)
 	_ = q.Purge()
 
