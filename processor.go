@@ -99,7 +99,9 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 // Starts creates new Processor and starts it.
 func StartProcessor(q Queue, opt *Options) *Processor {
 	p := NewProcessor(q, opt)
-	p.Start()
+	if err := p.Start(); err != nil {
+		panic(err)
+	}
 	return p
 }
 
@@ -347,7 +349,9 @@ func (p *Processor) paused() time.Duration {
 // ProcessAll starts workers to process messages in the queue and then stops
 // them when all messages are processed.
 func (p *Processor) ProcessAll() error {
-	p.Start()
+	if err := p.Start(); err != nil {
+		return err
+	}
 
 	var prev *ProcessorStats
 	var noWork int
@@ -589,7 +593,7 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 			p.release(msg, nil)
 			return
 		default:
-			p.process(msg)
+			_ = p.process(msg)
 		}
 	}
 }
@@ -673,9 +677,8 @@ func (p *Processor) put(msg *Message, err error) {
 	}
 }
 
-func (p *Processor) Put(msg *Message) error {
+func (p *Processor) Put(msg *Message) {
 	p.put(msg, msg.Err)
-	return nil
 }
 
 // Purge discards messages from the internal queue.
@@ -737,7 +740,9 @@ func (p *Processor) delete(msg *Message, err error) {
 		}
 	}
 
-	p.q.Delete(msg)
+	if err := p.q.Delete(msg); err != nil {
+		internal.Logf("%s Delete failed: %s", p.q, err)
+	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
