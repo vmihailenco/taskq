@@ -41,12 +41,12 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	body, err := msg.EncodeArgs()
+	body, err := msg.EncodeArgs(false)
 	if err != nil {
 		return err
 	}
 
-	args, err := decodeArgs(body, h.ft)
+	args, err := decodeArgs(body, h.ft, false)
 	if err != nil {
 		return err
 	}
