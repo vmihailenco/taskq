@@ -31,6 +31,13 @@ func TestSQSProcessor(t *testing.T) {
 	})
 }
 
+func TestSQSCompress(t *testing.T) {
+	testProcessor(t, azsqsManager(), &msgqueue.Options{
+		Name:     queueName("sqs-compress"),
+		Compress: true,
+	})
+}
+
 func TestSQSFallback(t *testing.T) {
 	testFallback(t, azsqsManager(), &msgqueue.Options{
 		Name: queueName("sqs-fallback"),

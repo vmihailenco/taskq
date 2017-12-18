@@ -21,8 +21,7 @@ func UnwrapMessage(msg *msgqueue.Message) (*msgqueue.Message, error) {
 	return msg, nil
 }
 
-func UnwrapMessageHandler(fn interface{}) msgqueue.HandlerFunc {
-	h := msgqueue.NewHandler(fn)
+func UnwrapMessageHandler(h msgqueue.Handler) msgqueue.HandlerFunc {
 	return msgqueue.HandlerFunc(func(msg *msgqueue.Message) error {
 		msg = msg.Args[0].(*msgqueue.Message)
 		return h.HandleMessage(msg)

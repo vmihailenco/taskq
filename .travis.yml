@@ -23,3 +23,4 @@ install:
   - go get github.com/vmihailenco/msgpack
   - go get github.com/iron-io/iron_go3/mq
   - go get github.com/aws/aws-sdk-go/service/sqs
+  - go get github.com/golang/snappy

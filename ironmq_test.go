@@ -20,6 +20,13 @@ func TestIronmqProcessor(t *testing.T) {
 	})
 }
 
+func TestIronmqCompress(t *testing.T) {
+	testProcessor(t, ironmqManager(), &msgqueue.Options{
+		Name:     queueName("ironmq-compress"),
+		Compress: true,
+	})
+}
+
 func TestIronmqFallback(t *testing.T) {
 	testFallback(t, ironmqManager(), &msgqueue.Options{
 		Name: queueName("ironmq-fallback"),

@@ -65,6 +65,9 @@ type Options struct {
 	// Default is 4 * number of CPUs.
 	MaxFetchers int
 
+	// Compress data before sending to the queue.
+	Compress bool
+
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
 	ReservationSize int

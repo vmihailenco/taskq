@@ -3,7 +3,6 @@ package msgqueue
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/vmihailenco/msgpack"
@@ -28,8 +27,7 @@ type Message struct {
 	Args []interface{}
 
 	// Text representation of the Args.
-	Body    string
-	bodyErr error
+	Body string
 
 	// SQS/IronMQ reservation id that is used to release/delete the message..
 	ReservationId string
@@ -57,21 +55,6 @@ func (m *Message) String() string {
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	m.Name = argsName(append(args, timeSlot(delay)))
 	m.Delay = delay
-	if m.Delay > 3*time.Second {
-		// Some random delay to better distribute the load.
-		m.Delay += time.Duration(rand.Intn(5)+1) * time.Second
-	}
-}
-
-func (m *Message) EncodeArgs() (string, error) {
-	if m.bodyErr != nil {
-		return "", m.bodyErr
-	}
-	if m.Body != "" {
-		return m.Body, nil
-	}
-	m.Body, m.bodyErr = encodeArgs(m.Args)
-	return m.Body, m.bodyErr
 }
 
 func timeSlot(resolution time.Duration) int64 {

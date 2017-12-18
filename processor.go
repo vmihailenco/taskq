@@ -88,9 +88,9 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		buffer: make(chan *Message, opt.BufferSize),
 	}
 
-	p.handler = NewHandler(opt.Handler)
+	p.handler = NewHandler(opt.Handler, opt.Compress)
 	if opt.FallbackHandler != nil {
-		p.fallbackHandler = NewHandler(opt.FallbackHandler)
+		p.fallbackHandler = NewHandler(opt.FallbackHandler, opt.Compress)
 	}
 
 	return p

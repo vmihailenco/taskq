@@ -1,4 +1,4 @@
-package msgqueue
+package internal
 
 import (
 	"bytes"
@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/golang/snappy"
 	"github.com/vmihailenco/msgpack"
 )
 
-func encodeArgs(args []interface{}) (string, error) {
+func EncodeArgs(args []interface{}, compress bool) (string, error) {
 	b, err := msgpack.Marshal(args...)
 	if err != nil {
 		return "", err
 	}
 
-	s := base64.StdEncoding.EncodeToString(b)
-	return s, nil
+	if compress {
+		b = snappy.Encode(nil, b)
+	}
+
+	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func decodeArgs(s string, fnType reflect.Type) ([]reflect.Value, error) {
+func DecodeArgs(s string, fnType reflect.Type, decompress bool) ([]reflect.Value, error) {
 	if fnType.NumIn() == 0 && s == "" {
 		return nil, nil
 	}
@@ -27,6 +31,13 @@ func decodeArgs(s string, fnType reflect.Type) ([]reflect.Value, error) {
 	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return nil, err
+	}
+
+	if decompress {
+		b, err = snappy.Decode(nil, b)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	buf := bytes.NewBuffer(b)

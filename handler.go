@@ -3,6 +3,8 @@ package msgqueue
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/go-msgqueue/msgqueue/internal"
 )
 
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
@@ -21,17 +23,21 @@ func (fn HandlerFunc) HandleMessage(msg *Message) error {
 type reflectFunc struct {
 	fv reflect.Value // Kind() == reflect.Func
 	ft reflect.Type
+
+	compress bool
 }
 
 var _ Handler = (*reflectFunc)(nil)
 
-func NewHandler(fn interface{}) Handler {
+func NewHandler(fn interface{}, compress bool) Handler {
 	if h, ok := fn.(Handler); ok {
 		return h
 	}
 
 	h := reflectFunc{
 		fv: reflect.ValueOf(fn),
+
+		compress: compress,
 	}
 	h.ft = h.fv.Type()
 	if h.ft.Kind() != reflect.Func {
@@ -41,12 +47,19 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	body, err := msg.EncodeArgs()
-	if err != nil {
-		return err
+	body := msg.Body
+	var compress bool
+	if body == "" {
+		var err error
+		body, err = internal.EncodeArgs(msg.Args, false)
+		if err != nil {
+			return err
+		}
+	} else {
+		compress = h.compress
 	}
 
-	args, err := decodeArgs(body, h.ft)
+	args, err := internal.DecodeArgs(body, h.ft, compress)
 	if err != nil {
 		return err
 	}

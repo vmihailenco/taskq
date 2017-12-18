@@ -413,8 +413,6 @@ var _ = Describe("empty queue", func() {
 		})
 	}
 
-	testEmptyQueue()
-
 	Context("when processor is stopped", func() {
 		BeforeEach(func() {
 			err := q.Processor().Stop()
