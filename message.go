@@ -63,14 +63,14 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	}
 }
 
-func (m *Message) EncodeArgs() (string, error) {
+func (m *Message) EncodeArgs(compress bool) (string, error) {
 	if m.bodyErr != nil {
 		return "", m.bodyErr
 	}
 	if m.Body != "" {
 		return m.Body, nil
 	}
-	m.Body, m.bodyErr = encodeArgs(m.Args)
+	m.Body, m.bodyErr = encodeArgs(m.Args, compress)
 	return m.Body, m.bodyErr
 }
 

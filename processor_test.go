@@ -83,6 +83,7 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	}
 
 	opt.WaitTimeout = waitTimeout
+	opt.Compress = true
 
 	q := man.NewQueue(opt)
 	_ = q.Purge()
