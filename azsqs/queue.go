@@ -97,7 +97,7 @@ func (q *Queue) initAddQueue() {
 		Name:      q.opt.Name + "-add",
 		GroupName: q.opt.GroupName,
 
-		BufferSize: 1000,
+		BufferSize: 512,
 		RetryLimit: 3,
 		MinBackoff: time.Second,
 		Handler:    msgqueue.HandlerFunc(q.addBatcherAdd),
