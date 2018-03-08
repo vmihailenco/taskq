@@ -48,7 +48,10 @@ func NewQueue(opt *msgqueue.Options) *Queue {
 	q := Queue{
 		opt: opt,
 	}
-	q.p = msgqueue.StartProcessor(&q, opt)
+	q.p = msgqueue.NewProcessor(&q, opt)
+	if err := q.p.Start(); err != nil {
+		panic(err)
+	}
 
 	registerQueue(&q)
 	return &q
