@@ -100,14 +100,14 @@ type Options struct {
 	// Processing rate limit.
 	RateLimit rate.Limit
 
+	// Optional rate limiter interface. The default is to use Redis.
+	RateLimiter RateLimiter
+
 	// Redis client that is used for storing metadata.
 	Redis Redis
 
 	// Optional storage interface. The default is to use Redis.
 	Storage Storage
-
-	// Optional rate limiter interface. The default is to use Redis.
-	RateLimiter RateLimiter
 
 	inited bool
 }

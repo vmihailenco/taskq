@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bsm/redis-lock"
+	"golang.org/x/time/rate"
 
 	"github.com/go-msgqueue/msgqueue/internal"
 )
@@ -34,6 +35,70 @@ type ProcessorStats struct {
 	MaxDuration   time.Duration
 }
 
+type limiter struct {
+	bucket  string
+	limiter RateLimiter
+	limit   rate.Limit
+
+	allowedCount uint32 // atomic
+	cancelled    uint32 // atomic
+}
+
+func (l *limiter) Reserve(max int) int {
+	if l.limiter == nil {
+		return max
+	}
+
+	for {
+		cancelled := atomic.LoadUint32(&l.cancelled)
+		if cancelled == 0 {
+			break
+		}
+
+		if cancelled >= uint32(max) {
+			if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, ^uint32(max-1)) {
+				return max
+			}
+			continue
+		}
+
+		if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, ^uint32(cancelled-1)) {
+			return int(cancelled)
+		}
+	}
+
+	var size int
+	for {
+		delay, allow := l.limiter.AllowRate(l.bucket, l.limit)
+		if allow {
+			size++
+			if size == max {
+				atomic.AddUint32(&l.allowedCount, 1)
+				return size
+			}
+			continue
+		} else {
+			atomic.StoreUint32(&l.allowedCount, 0)
+		}
+
+		if size > 0 {
+			return size
+		}
+		time.Sleep(delay)
+	}
+}
+
+func (l *limiter) Cancel(n int) {
+	if l.limiter == nil {
+		return
+	}
+	atomic.AddUint32(&l.cancelled, uint32(n))
+}
+
+func (l *limiter) Limited() bool {
+	return l.limiter != nil && atomic.LoadUint32(&l.allowedCount) < 3
+}
+
 // Processor reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Processor struct {
@@ -43,7 +108,8 @@ type Processor struct {
 	handler         Handler
 	fallbackHandler Handler
 
-	buffer chan *Message
+	buffer  chan *Message
+	limiter *limiter
 
 	stopCh chan struct{}
 
@@ -53,13 +119,11 @@ type Processor struct {
 
 	jobsWG sync.WaitGroup
 
-	queueLen           int
-	queueing           int
-	bufferEmpty        int
-	fetcherIdle        uint32 // atomic
-	workerIdle         uint32 // atomic
-	rateLimitAllowed   uint32 // atomic
-	rateLimitAllowance uint32 // atomic
+	queueLen    int
+	queueing    int
+	bufferEmpty int
+	fetcherIdle uint32 // atomic
+	workerIdle  uint32 // atomic
 
 	errCount uint32
 	delaySec uint32
@@ -86,6 +150,11 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		opt: opt,
 
 		buffer: make(chan *Message, opt.BufferSize),
+		limiter: &limiter{
+			bucket:  q.Name(),
+			limiter: opt.RateLimiter,
+			limit:   opt.RateLimit,
+		},
 	}
 
 	p.handler = NewHandler(opt.Handler, opt.Compress)
@@ -151,7 +220,7 @@ func (p *Processor) Len() int {
 }
 
 func (p *Processor) add(msg *Message) {
-	_ = p.reservationSize(1)
+	_ = p.limiter.Reserve(1)
 	p.buffer <- msg
 }
 
@@ -261,8 +330,7 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	p.queueLen = queueLen
 
 	buffered := len(p.buffer)
-	rateLimited := p.opt.RateLimiter != nil &&
-		atomic.LoadUint32(&p.rateLimitAllowed) < 3
+	rateLimited := p.limiter.Limited()
 
 	if buffered == 0 {
 		p.bufferEmpty++
@@ -456,14 +524,14 @@ func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 func (p *Processor) fetchMessages(
 	id int32, timeoutC <-chan time.Time,
 ) (timeout bool, err error) {
-	size := p.reservationSize(p.opt.ReservationSize)
+	size := p.limiter.Reserve(p.opt.ReservationSize)
 	msgs, err := p.q.ReserveN(size)
 	if err != nil {
 		return false, err
 	}
 
 	if d := size - len(msgs); d > 0 {
-		p.saveReservationSize(d)
+		p.limiter.Cancel(d)
 	}
 
 	if id > 0 {
@@ -486,50 +554,6 @@ func (p *Processor) fetchMessages(
 	}
 
 	return false, nil
-}
-
-func (p *Processor) reservationSize(max int) int {
-	if p.opt.RateLimiter == nil {
-		return max
-	}
-
-	allowance := atomic.LoadUint32(&p.rateLimitAllowance)
-	if allowance > 0 {
-		if allowance >= uint32(max) {
-			atomic.AddUint32(&p.rateLimitAllowance, ^uint32(max-1))
-			return max
-		}
-
-		atomic.AddUint32(&p.rateLimitAllowance, ^uint32(allowance-1))
-		return int(allowance)
-	}
-
-	var size int
-	for {
-		delay, allow := p.opt.RateLimiter.AllowRate(p.q.Name(), p.opt.RateLimit)
-		if allow {
-			size++
-			if size == max {
-				atomic.AddUint32(&p.rateLimitAllowed, 1)
-				return size
-			}
-			continue
-		} else {
-			atomic.StoreUint32(&p.rateLimitAllowed, 0)
-		}
-
-		if size > 0 {
-			return size
-		}
-		time.Sleep(delay)
-	}
-}
-
-func (p *Processor) saveReservationSize(n int) {
-	if p.opt.RateLimiter == nil {
-		return
-	}
-	atomic.AddUint32(&p.rateLimitAllowance, uint32(n))
 }
 
 func (p *Processor) releaseBuffer() {
