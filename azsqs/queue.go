@@ -17,6 +17,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+const delayUntilAttr = "MsgqueueDelayUntil"
+
 type manager struct {
 	sqs       *sqs.SQS
 	accountId string
@@ -241,7 +243,7 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 		MaxNumberOfMessages:   aws.Int64(int64(n)),
 		WaitTimeSeconds:       aws.Int64(int64(q.opt.WaitTimeout / time.Second)),
 		AttributeNames:        []*string{aws.String("ApproximateReceiveCount")},
-		MessageAttributeNames: []*string{aws.String("delay")},
+		MessageAttributeNames: []*string{aws.String(delayUntilAttr)},
 	}
 	out, err := q.sqs.ReceiveMessage(in)
 	if err != nil {
@@ -252,19 +254,23 @@ func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
 	for i, sqsMsg := range out.Messages {
 		var reservedCount int
 		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
-			reservedCount, _ = strconv.Atoi(*v)
-		}
-
-		var delay time.Duration
-		if v, ok := sqsMsg.MessageAttributes["delay"]; ok {
-			dur, err := time.ParseDuration(*v.StringValue)
+			var err error
+			reservedCount, err = strconv.Atoi(*v)
 			if err != nil {
 				return nil, err
 			}
-			if reservedCount == 1 {
-				delay = dur
-			} else {
-				reservedCount--
+		}
+
+		var delay time.Duration
+		if v, ok := sqsMsg.MessageAttributes[delayUntilAttr]; ok {
+			until, err := time.Parse(time.RFC3339, *v.StringValue)
+			if err != nil {
+				return nil, err
+			}
+
+			delay = until.Sub(time.Now())
+			if delay < 0 {
+				delay = 0
 			}
 		}
 
@@ -328,18 +334,21 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
 
 	if q.p != nil {
-		if err := q.p.StopTimeout(timeout); err != nil && firstErr == nil {
+		err := q.p.StopTimeout(timeout)
+		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	q.addBatcher.SetSync(true)
-	if err := q.addQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+	err := q.addQueue.CloseTimeout(timeout)
+	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 
 	q.delBatcher.SetSync(true)
-	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+	err = q.delQueue.CloseTimeout(timeout)
+	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 
@@ -384,10 +393,11 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			entry.DelaySeconds = aws.Int64(int64(msg.Delay / time.Second))
 		} else {
 			entry.DelaySeconds = aws.Int64(int64(maxDelay / time.Second))
+			delayUntil := time.Now().Add(msg.Delay - maxDelay)
 			entry.MessageAttributes = map[string]*sqs.MessageAttributeValue{
-				"delay": &sqs.MessageAttributeValue{
+				delayUntilAttr: &sqs.MessageAttributeValue{
 					DataType:    aws.String("String"),
-					StringValue: aws.String((msg.Delay - maxDelay).String()),
+					StringValue: aws.String(delayUntil.Format(time.RFC3339)),
 				},
 			}
 		}
