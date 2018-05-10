@@ -72,6 +72,7 @@ type Options struct {
 	// Default is 10 messages.
 	ReservationSize int
 	// Time after which the reserved message is returned to the queue.
+	// Default is 5 minutes.
 	ReservationTimeout time.Duration
 	// Time that a long polling receive call waits for a message to become
 	// available before returning an empty response.
@@ -83,10 +84,13 @@ type Options struct {
 
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
+	// Default is 100 retries.
 	RetryLimit int
 	// Minimum backoff time between retries.
+	// Default is 30 seconds.
 	MinBackoff time.Duration
 	// Maximum backoff time between retries.
+	// Default is 15 minutes.
 	MaxBackoff time.Duration
 
 	// Number of consecutive failures after which queue processing is paused.
@@ -143,7 +147,7 @@ func (opt *Options) Init() {
 		opt.ReservationSize = 10
 	}
 	if opt.ReservationTimeout == 0 {
-		opt.ReservationTimeout = 300 * time.Second
+		opt.ReservationTimeout = 5 * time.Minute
 	}
 	if opt.BufferSize == 0 {
 		opt.BufferSize = opt.ReservationSize
@@ -153,13 +157,13 @@ func (opt *Options) Init() {
 	}
 
 	if opt.RetryLimit == 0 {
-		opt.RetryLimit = 10
+		opt.RetryLimit = 100
 	}
 	if opt.MinBackoff == 0 {
 		opt.MinBackoff = 30 * time.Second
 	}
 	if opt.MaxBackoff == 0 {
-		opt.MaxBackoff = 12 * time.Hour
+		opt.MaxBackoff = 15 * time.Minute
 	}
 
 	if opt.Storage == nil {

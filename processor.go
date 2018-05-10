@@ -636,9 +636,14 @@ func (p *Processor) process(msg *Message) error {
 	atomic.AddUint32(&p.inFlight, 1)
 
 	if msg.Delay > 0 {
-		p.release(msg, nil)
+		err := p.q.Add(msg)
+		if err != nil {
+			return err
+		}
+		p.delete(msg, nil)
 		return nil
 	}
+
 	msg.Delay = exponentialBackoff(
 		p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
 
