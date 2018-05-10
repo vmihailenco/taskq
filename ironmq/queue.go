@@ -217,6 +217,7 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 	})
 }
 
+// Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *msgqueue.Message) error {
 	err := retry(func() error {
 		return q.q.DeleteMessage(msg.Id, msg.ReservationId)
@@ -230,6 +231,7 @@ func (q *Queue) Delete(msg *msgqueue.Message) error {
 	return err
 }
 
+// Purge deletes all messages from the queue using IronMQ API.
 func (q *Queue) Purge() error {
 	return q.q.Clear()
 }

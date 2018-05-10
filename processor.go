@@ -56,13 +56,13 @@ func (l *limiter) Reserve(max int) int {
 		}
 
 		if cancelled >= uint32(max) {
-			if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, ^uint32(max-1)) {
+			if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, uint32(max)-1) {
 				return max
 			}
 			continue
 		}
 
-		if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, ^uint32(cancelled-1)) {
+		if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, uint32(cancelled)-1) {
 			return int(cancelled)
 		}
 	}

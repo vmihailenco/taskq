@@ -85,7 +85,7 @@ func testProcessor(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.WaitTimeout = waitTimeout
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
@@ -137,7 +137,7 @@ func testFallback(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.WaitTimeout = waitTimeout
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
@@ -174,7 +174,7 @@ func testDelay(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.WaitTimeout = waitTimeout
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	start := time.Now()
 
@@ -229,7 +229,7 @@ func testRetry(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.MinBackoff = time.Second
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	msg := msgqueue.NewMessage("hello", "world")
 	err := q.Add(msg)
@@ -272,7 +272,7 @@ func testNamedMessage(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options)
 	opt.Redis = redisRing()
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -325,7 +325,7 @@ func testCallOnce(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.Redis = redisRing()
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	go func() {
 		for i := 0; i < 3; i++ {
@@ -369,7 +369,7 @@ func testLen(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	t.Parallel()
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	nmessages := 10
 	for i := 0; i < nmessages; i++ {
@@ -403,7 +403,7 @@ func testRateLimit(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.Redis = redisRing()
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -451,7 +451,7 @@ func testErrorDelay(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	opt.RetryLimit = 3
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	err := q.Call()
 	if err != nil {
@@ -487,7 +487,7 @@ func testWorkerLimit(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) 
 	opt.WorkerLimit = 1
 
 	q := man.NewQueue(opt)
-	_ = q.Purge()
+	purge(t, q)
 
 	for i := 0; i < 3; i++ {
 		err := q.Call()
@@ -527,5 +527,20 @@ func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 		if !durEqual(since, timing) {
 			t.Fatalf("#%d: timing is %s, wanted %s", i+1, since, timing)
 		}
+	}
+}
+
+func purge(t *testing.T, q msgqueue.Queue) {
+	err := q.Purge()
+	if err == nil {
+		return
+	}
+
+	p := msgqueue.NewProcessor(q, &msgqueue.Options{
+		Handler: func() {},
+	})
+	err = p.ProcessAll()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

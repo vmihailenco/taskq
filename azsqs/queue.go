@@ -312,10 +312,12 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 	return err
 }
 
+// Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *msgqueue.Message) error {
 	return q.delQueue.Add(msgutil.WrapMessage(msg))
 }
 
+// Purge deletes all messages from the queue using SQS API.
 func (q *Queue) Purge() error {
 	in := &sqs.PurgeQueueInput{
 		QueueUrl: aws.String(q.queueURL()),
