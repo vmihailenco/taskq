@@ -68,7 +68,7 @@ var _ = Describe("message with invalid number of args", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Processor().ProcessOne()
-		Expect(err).To(MatchError("msgqueue: arg=0 decoding failed: EOF"))
+		Expect(err).To(MatchError("msgqueue: decoding arg=0 failed (data=): EOF"))
 
 		err = q.Processor().ProcessAll()
 		Expect(err).NotTo(HaveOccurred())
