@@ -84,13 +84,13 @@ type Options struct {
 
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
-	// Default is 100 retries.
+	// Default is 64 retries.
 	RetryLimit int
 	// Minimum backoff time between retries.
 	// Default is 30 seconds.
 	MinBackoff time.Duration
 	// Maximum backoff time between retries.
-	// Default is 15 minutes.
+	// Default is 30 minutes.
 	MaxBackoff time.Duration
 
 	// Number of consecutive failures after which queue processing is paused.
@@ -157,13 +157,13 @@ func (opt *Options) Init() {
 	}
 
 	if opt.RetryLimit == 0 {
-		opt.RetryLimit = 100
+		opt.RetryLimit = 64
 	}
 	if opt.MinBackoff == 0 {
 		opt.MinBackoff = 30 * time.Second
 	}
 	if opt.MaxBackoff == 0 {
-		opt.MaxBackoff = 15 * time.Minute
+		opt.MaxBackoff = 30 * time.Minute
 	}
 
 	if opt.Storage == nil {
