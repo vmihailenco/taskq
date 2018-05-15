@@ -89,7 +89,8 @@ func DecodeArgs(s string, fnType reflect.Type, decompress bool) ([]reflect.Value
 		arg := reflect.New(fnType.In(i)).Elem()
 		err = dec.DecodeValue(arg)
 		if err != nil {
-			err = fmt.Errorf("msgqueue: arg=%d decoding failed: %s", i, err)
+			err = fmt.Errorf(
+				"msgqueue: decoding arg=%d failed (data=%.100s): %s", i, b, err)
 			break
 		}
 		in[i] = arg
