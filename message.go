@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"time"
 
+	"github.com/go-msgqueue/msgqueue/internal"
 	"github.com/vmihailenco/msgpack"
 )
 
@@ -47,10 +48,8 @@ func NewMessage(args ...interface{}) *Message {
 }
 
 func (m *Message) String() string {
-	return fmt.Sprintf(
-		"Message<Id=%q Name=%q ReservedCount=%d>",
-		m.Id, m.Name, m.ReservedCount,
-	)
+	return fmt.Sprintf("Message<Id=%q Name=%q ReservedCount=%d>",
+		m.Id, m.Name, m.ReservedCount)
 }
 
 // SetDelayName sets delay and generates message name from the args.
@@ -58,6 +57,20 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	h := hashArgs(append(args, delay, timeSlot(delay)))
 	m.Name = string(h)
 	m.Delay = delay
+}
+
+func (m *Message) EncodeBody(compress bool) (string, error) {
+	if m.Body != "" {
+		return m.Body, nil
+	}
+
+	s, err := internal.EncodeArgs(m.Args, compress)
+	if err != nil {
+		return "", err
+	}
+
+	m.Body = s
+	return s, nil
 }
 
 func timeSlot(period time.Duration) int64 {

@@ -154,11 +154,6 @@ func (q *Queue) createQueue() error {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	_, err := internal.EncodeArgs(msg.Args, q.opt.Compress)
-	if err != nil {
-		return err
-	}
-
 	msg = msgutil.WrapMessage(msg)
 	return q.addQueue.Add(msg)
 }
@@ -265,7 +260,7 @@ func (q *Queue) add(msg *msgqueue.Message) error {
 		return err
 	}
 
-	body, err := internal.EncodeArgs(msg.Args, q.opt.Compress)
+	body, err := msg.EncodeBody(q.opt.Compress)
 	if err != nil {
 		return err
 	}

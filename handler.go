@@ -51,7 +51,7 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	var compress bool
 	if body == "" {
 		var err error
-		body, err = internal.EncodeArgs(msg.Args, false)
+		body, err = msg.EncodeBody(false)
 		if err != nil {
 			return err
 		}

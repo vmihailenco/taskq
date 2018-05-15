@@ -164,11 +164,6 @@ func (q *Queue) DeleteQueue() *memqueue.Queue {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *msgqueue.Message) error {
-	_, err := internal.EncodeArgs(msg.Args, q.opt.Compress)
-	if err != nil {
-		return err
-	}
-
 	msg = msgutil.WrapMessage(msg)
 	return q.addQueue.Add(msg)
 }
@@ -378,9 +373,9 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			return err
 		}
 
-		body, err := internal.EncodeArgs(msg.Args, q.opt.Compress)
+		body, err := msg.EncodeBody(q.opt.Compress)
 		if err != nil {
-			internal.Logf("azsqs: EncodeArgs failed: %s", err)
+			internal.Logf("azsqs: EncodeBody failed: %s", err)
 			continue
 		}
 		if body == "" {
@@ -445,9 +440,9 @@ func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []
 			continue
 		}
 
-		body, err := internal.EncodeArgs(msg.Args, q.opt.Compress)
+		body, err := msg.EncodeBody(q.opt.Compress)
 		if err != nil {
-			internal.Logf("azsqs: EncodeArgs failed: %s", err)
+			internal.Logf("azsqs: Message.EncodeBody failed: %s", err)
 			continue
 		}
 
