@@ -737,10 +737,8 @@ func (p *Processor) release(msg *Message, err error) {
 			}
 		}
 
-		internal.Logf(
-			"%s handler failed (retry in dur=%s): %s",
-			p.q, msg.Delay, err,
-		)
+		internal.Logf("%s handler failed (will retry=%d in dur=%s): %s",
+			p.q, msg.ReservedCount, msg.Delay, err)
 	}
 
 	if err := p.q.Release(msg); err != nil {
@@ -760,7 +758,8 @@ func (p *Processor) releaseBackoff(msg *Message, err error) time.Duration {
 
 func (p *Processor) delete(msg *Message, err error) {
 	if err != nil {
-		internal.Logf("%s handler failed: %s", p.q, err)
+		internal.Logf("%s handler failed after retry=%d: %s",
+			p.q, msg.ReservedCount, err)
 
 		if p.fallbackHandler != nil {
 			if err := p.fallbackHandler.HandleMessage(msg); err != nil {

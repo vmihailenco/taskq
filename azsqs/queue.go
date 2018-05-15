@@ -179,8 +179,8 @@ func (q *Queue) Call(args ...interface{}) error {
 	return q.Add(msg)
 }
 
-// CallOnce works like Call, but it adds message with same args
-// only once in a period.
+// CallOnce works like Call, but it returns ErrDuplicate if message
+// with such args was already added in a period.
 func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
 	msg.SetDelayName(period, args...)

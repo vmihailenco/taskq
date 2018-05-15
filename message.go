@@ -3,11 +3,13 @@ package msgqueue
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"time"
 
 	"github.com/vmihailenco/msgpack"
 )
 
+// ErrDuplicate is returned when adding duplicate message to the queue.
 var ErrDuplicate = errors.New("queue: message with such name already exists")
 
 // Message is used to create and retrieve messages from a queue.
@@ -53,18 +55,25 @@ func (m *Message) String() string {
 
 // SetDelayName sets delay and generates message name from the args.
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
-	m.Name = argsName(append(args, timeSlot(delay)))
+	h := hashArgs(append(args, delay, timeSlot(delay)))
+	m.Name = string(h)
 	m.Delay = delay
 }
 
-func timeSlot(resolution time.Duration) int64 {
-	if resolution <= 0 {
+func timeSlot(period time.Duration) int64 {
+	if period <= 0 {
 		return 0
 	}
-	return time.Now().UnixNano() / int64(resolution)
+	return time.Now().UnixNano() / int64(period)
 }
 
-func argsName(args []interface{}) string {
+func hashArgs(args []interface{}) []byte {
 	b, _ := msgpack.Marshal(args...)
-	return string(b)
+	if len(b) <= 128 {
+		return b
+	}
+
+	h := fnv.New128a()
+	_, _ = h.Write(b)
+	return h.Sum(nil)
 }

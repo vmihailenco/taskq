@@ -113,8 +113,8 @@ func (q *Queue) Call(args ...interface{}) error {
 	return q.Add(msg)
 }
 
-// CallOnce works like Call, but it adds message with same args
-// only once in a period.
+// CallOnce works like Call, but it returns ErrDuplicate if message
+// with such args was already added in a period.
 func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := msgqueue.NewMessage(args...)
 	msg.SetDelayName(period, args...)
@@ -152,6 +152,7 @@ func (q *Queue) isUniqueName(name string) bool {
 	if name == "" {
 		return true
 	}
+
 	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.opt.GroupName, name)
 	exists := q.opt.Storage.Exists(key)
 	return !exists
