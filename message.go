@@ -56,7 +56,7 @@ func (m *Message) String() string {
 func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 	h := hashArgs(append(args, delay, timeSlot(delay)))
 	m.Name = string(h)
-	m.Delay = delay
+	m.Delay = delay + 5*time.Second
 }
 
 func (m *Message) EncodeBody(compress bool) (string, error) {
