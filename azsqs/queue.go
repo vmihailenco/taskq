@@ -133,6 +133,14 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
+func (q *Queue) GetAddQueue() *memqueue.Queue {
+	return q.addQueue
+}
+
+func (q *Queue) GetDeleteQueue() *memqueue.Queue {
+	return q.delQueue
+}
+
 func (q *Queue) Len() (int, error) {
 	params := &sqs.GetQueueAttributesInput{
 		QueueUrl:       aws.String(q.queueURL()),
