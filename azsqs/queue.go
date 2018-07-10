@@ -412,7 +412,8 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 	out, err := q.sqs.SendMessageBatch(in)
 	if err != nil {
-		internal.Logf("azsqs: SendMessageBatch failed: %s", err)
+		internal.Logf("azsqs: SendMessageBatch msgs=%d size=%d failed: %s",
+			len(msgs), q.batchSize(msgs), err)
 		return err
 	}
 
@@ -438,30 +439,33 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 func (q *Queue) shouldBatchAdd(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
 	batch = append(batch, msg)
 
+	const sizeLimit = 250 * 1024
+	if q.batchSize(batch) > sizeLimit {
+		return false
+	}
+
+	const messagesLimit = 10
+	return len(batch) < messagesLimit
+}
+
+func (q *Queue) batchSize(batch []*msgqueue.Message) int {
 	var size int
 	for _, msg := range batch {
 		msg, err := msgutil.UnwrapMessage(msg)
 		if err != nil {
 			internal.Logf("azsqs: UnwrapMessage failed: %s", err)
-			return false
+			continue
 		}
 
 		body, err := msg.EncodeBody(q.opt.Compress)
 		if err != nil {
 			internal.Logf("azsqs: Message.EncodeBody failed: %s", err)
-			return false
+			continue
 		}
 
 		size += len(body)
-
-		const sizeLimit = 250 * 1024
-		if size > sizeLimit {
-			return false
-		}
 	}
-
-	const messagesLimit = 10
-	return len(batch) < messagesLimit
+	return size
 }
 
 func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
