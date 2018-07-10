@@ -76,7 +76,7 @@ func NewQueue(mqueue mq.Queue, opt *msgqueue.Options) *Queue {
 
 func (q *Queue) initAddQueue() {
 	opt := &msgqueue.Options{
-		Name:      q.opt.Name + "-add",
+		Name:      "ironmq:" + q.opt.Name + ":add",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
@@ -95,7 +95,7 @@ func (q *Queue) initAddQueue() {
 
 func (q *Queue) initDelQueue() {
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      q.opt.Name + "-delete",
+		Name:      "ironmq:" + q.opt.Name + ":delete",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
@@ -106,8 +106,8 @@ func (q *Queue) initDelQueue() {
 		Redis: q.opt.Redis,
 	})
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
-		Handler:  q.deleteBatch,
-		Splitter: q.splitDeleteBatch,
+		Handler:     q.deleteBatch,
+		ShouldBatch: q.shouldBatchDelete,
 	})
 }
 
@@ -301,13 +301,9 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	return nil
 }
 
-func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
+func (q *Queue) shouldBatchDelete(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
 	const messagesLimit = 10
-
-	if len(msgs) >= messagesLimit {
-		return msgs, nil
-	}
-	return nil, msgs
+	return len(batch)+1 < messagesLimit
 }
 
 func retry(fn func() error) error {

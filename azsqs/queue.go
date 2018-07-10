@@ -82,7 +82,7 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 
 func (q *Queue) initAddQueue() {
 	opt := &msgqueue.Options{
-		Name:      q.opt.Name + "-add",
+		Name:      "azsqs:" + q.opt.Name + ":add",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
@@ -98,14 +98,14 @@ func (q *Queue) initAddQueue() {
 	}
 	q.addQueue = memqueue.NewQueue(opt)
 	q.addBatcher = msgqueue.NewBatcher(q.addQueue.Processor(), &msgqueue.BatcherOptions{
-		Handler:  q.addBatch,
-		Splitter: q.splitAddBatch,
+		Handler:     q.addBatch,
+		ShouldBatch: q.shouldBatchAdd,
 	})
 }
 
 func (q *Queue) initDelQueue() {
 	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
-		Name:      q.opt.Name + "-delete",
+		Name:      "azsqs:" + q.opt.Name + ":delete",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
@@ -116,8 +116,8 @@ func (q *Queue) initDelQueue() {
 		Redis: q.opt.Redis,
 	})
 	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
-		Handler:  q.deleteBatch,
-		Splitter: q.splitDeleteBatch,
+		Handler:     q.deleteBatch,
+		ShouldBatch: q.shouldBatchDelete,
 	})
 }
 
@@ -420,36 +420,33 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	return nil
 }
 
-func (q *Queue) splitAddBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
-	const messagesLimit = 10
-	const sizeLimit = 250 * 1024
+func (q *Queue) shouldBatchAdd(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
+	batch = append(batch, msg)
 
 	var size int
-	for i, msg := range msgs {
+	for _, msg := range batch {
 		msg, err := msgutil.UnwrapMessage(msg)
 		if err != nil {
 			internal.Logf("azsqs: UnwrapMessage failed: %s", err)
-			continue
+			return false
 		}
 
 		body, err := msg.EncodeBody(q.opt.Compress)
 		if err != nil {
 			internal.Logf("azsqs: Message.EncodeBody failed: %s", err)
-			continue
+			return false
 		}
 
 		size += len(body)
-		if size >= sizeLimit {
-			var rest []*msgqueue.Message
-			return msgs[:i], append(rest, msgs[i:]...)
+
+		const sizeLimit = 250 * 1024
+		if size > sizeLimit {
+			return false
 		}
 	}
 
-	if len(msgs) >= messagesLimit {
-		return msgs, nil
-	}
-
-	return nil, msgs
+	const messagesLimit = 10
+	return len(batch) < messagesLimit
 }
 
 func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
@@ -503,13 +500,9 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	return nil
 }
 
-func (q *Queue) splitDeleteBatch(msgs []*msgqueue.Message) ([]*msgqueue.Message, []*msgqueue.Message) {
+func (q *Queue) shouldBatchDelete(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
 	const messagesLimit = 10
-
-	if len(msgs) >= messagesLimit {
-		return msgs, nil
-	}
-	return nil, msgs
+	return len(batch)+1 < messagesLimit
 }
 
 func findMessageById(msgs []*msgqueue.Message, id string) *msgqueue.Message {

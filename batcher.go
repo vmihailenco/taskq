@@ -10,8 +10,8 @@ var errBatched = errors.New("message is batched for later processing")
 var errBatchProcessed = errors.New("message is processed in a batch")
 
 type BatcherOptions struct {
-	Handler  func([]*Message) error
-	Splitter func([]*Message) ([]*Message, []*Message)
+	Handler     func([]*Message) error
+	ShouldBatch func([]*Message, *Message) bool
 
 	RetryLimit int
 	Timeout    time.Duration
@@ -33,9 +33,9 @@ type Batcher struct {
 
 	timer *time.Timer
 
-	mu   sync.Mutex
-	msgs []*Message
-	sync bool
+	mu    sync.Mutex
+	batch []*Message
+	sync  bool
 }
 
 func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
@@ -59,34 +59,40 @@ func (b *Batcher) SetSync(v bool) {
 }
 
 func (b *Batcher) wait() {
-	if len(b.msgs) > 0 {
-		b.process(b.msgs)
-		b.msgs = nil
+	if len(b.batch) > 0 {
+		b.process(b.batch)
+		b.batch = nil
 	}
 }
 
 func (b *Batcher) Add(msg *Message) error {
-	var msgs []*Message
+	var batch []*Message
 
 	b.mu.Lock()
 
-	if len(b.msgs) == 0 {
-		b.stopTimer()
-		b.timer.Reset(b.opt.Timeout)
-	}
-
-	b.msgs = append(b.msgs, msg)
 	if b.sync {
-		msgs = b.msgs
-		b.msgs = nil
+		if len(b.batch) > 0 {
+			panic("not reached")
+		}
+		batch = []*Message{msg}
 	} else {
-		msgs, b.msgs = b.opt.Splitter(b.msgs)
+		if len(b.batch) == 0 {
+			b.stopTimer()
+			b.timer.Reset(b.opt.Timeout)
+		}
+
+		if b.opt.ShouldBatch(b.batch, msg) {
+			b.batch = append(b.batch, msg)
+		} else {
+			batch = b.batch
+			b.batch = []*Message{msg}
+		}
 	}
 
 	b.mu.Unlock()
 
-	if len(msgs) > 0 {
-		b.process(msgs)
+	if len(batch) > 0 {
+		b.process(batch)
 		return errBatchProcessed
 	}
 
@@ -102,9 +108,9 @@ func (b *Batcher) stopTimer() {
 	}
 }
 
-func (b *Batcher) process(msgs []*Message) {
-	err := b.opt.Handler(msgs)
-	for _, msg := range msgs {
+func (b *Batcher) process(batch []*Message) {
+	err := b.opt.Handler(batch)
+	for _, msg := range batch {
 		if err != nil && msg.Err == nil {
 			msg.Err = err
 		}

@@ -214,13 +214,18 @@ func testRetry(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 
 	handlerCh := make(chan time.Time, 10)
 	opt.Handler = func(hello, world string) error {
+		if hello != "hello" {
+			t.Fatalf("got %q, wanted hello", hello)
+		}
+		if world != "world" {
+			t.Fatalf("got %q, wanted world", world)
+		}
 		handlerCh <- time.Now()
 		return errors.New("fake error")
 	}
 
-	var fallbackCount int64
 	opt.FallbackHandler = func() error {
-		atomic.AddInt64(&fallbackCount, 1)
+		handlerCh <- time.Now()
 		return nil
 	}
 
@@ -240,15 +245,11 @@ func testRetry(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 	p := q.Processor()
 	p.Start()
 
-	timings := []time.Duration{0, time.Second, 3 * time.Second}
+	timings := []time.Duration{0, time.Second, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
 
 	if err := p.Stop(); err != nil {
 		t.Fatal(err)
-	}
-
-	if n := atomic.LoadInt64(&fallbackCount); n != 1 {
-		t.Fatalf("fallback handler is called %d times, wanted 1", n)
 	}
 
 	if err := q.Close(); err != nil {
@@ -536,6 +537,61 @@ func testInvalidCredentials(t *testing.T, man msgqueue.Manager, opt *msgqueue.Op
 
 	err = q.Close()
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testBatchProcessor(
+	t *testing.T, man msgqueue.Manager, opt *msgqueue.Options, messageSize int,
+) {
+	t.Parallel()
+
+	const N = 16
+	payload := strings.Repeat("x", messageSize)
+
+	var wg sync.WaitGroup
+	wg.Add(N)
+
+	opt.Handler = func(s string) {
+		defer wg.Done()
+		if s != payload {
+			t.Fatalf("s != largeStr")
+		}
+	}
+	opt.WaitTimeout = waitTimeout
+
+	q := man.NewQueue(opt)
+	purge(t, q)
+
+	for i := 0; i < N; i++ {
+		err := q.Call(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	p := q.Processor()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(testTimeout):
+		t.Fatalf("messages were not processed")
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
