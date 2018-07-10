@@ -90,3 +90,13 @@ func TestIronmqInvalidCredentials(t *testing.T) {
 		Name: queueName("invalid-credentials"),
 	})
 }
+
+func TestIronmqInvalidCredentialsAndCompress(t *testing.T) {
+	manager := ironmq.NewManager(&iron_config.Settings{
+		ProjectId: "123",
+	})
+	testInvalidCredentials(t, manager, &msgqueue.Options{
+		Name:     queueName("invalid-credentials-and-compress"),
+		Compress: true,
+	})
+}

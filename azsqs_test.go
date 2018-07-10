@@ -99,6 +99,14 @@ func TestSQSInvalidCredentials(t *testing.T) {
 	})
 }
 
+func TestSQSInvalidCredentialsAndCompress(t *testing.T) {
+	man := azsqs.NewManager(awsSQS(), "123")
+	testInvalidCredentials(t, man, &msgqueue.Options{
+		Name:     queueName("invalid-credentials-and-compress"),
+		Compress: true,
+	})
+}
+
 func TestSQSBatchProcessorSmallMessage(t *testing.T) {
 	testBatchProcessor(t, azsqsManager(), &msgqueue.Options{
 		Name: queueName("batch-processor-small-message"),

@@ -87,7 +87,7 @@ func (q *Queue) initAddQueue() {
 		Redis: q.opt.Redis,
 	}
 	if q.opt.Handler != nil {
-		h := msgqueue.NewHandler(q.opt.Handler, opt.Compress)
+		h := msgqueue.NewHandler(q.opt.Handler, q.opt.Compress)
 		opt.FallbackHandler = msgutil.UnwrapMessageHandler(h)
 	}
 	q.addQueue = memqueue.NewQueue(opt)

@@ -2,6 +2,7 @@ package msgqueue_test
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -367,27 +368,34 @@ func testCallOnce(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
 }
 
 func testLen(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
+	const N = 10
+
 	t.Parallel()
 
 	q := man.NewQueue(opt)
 	purge(t, q)
 
-	nmessages := 10
-	for i := 0; i < nmessages; i++ {
+	for i := 0; i < N; i++ {
 		err := q.Call()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	time.Sleep(time.Second)
+	eventually(func() error {
+		n, err := q.Len()
+		if err != nil {
+			return err
+		}
 
-	i, err := q.Len()
-	if err != nil {
+		if n != N {
+			return fmt.Errorf("got %d messages, wanted %d", n, N)
+		}
+		return nil
+	}, testTimeout)
+
+	if err := q.Close(); err != nil {
 		t.Fatal(err)
-	}
-	if i != nmessages {
-		t.Fatalf("got %d messages, wanted %d", i, nmessages)
 	}
 }
 
@@ -628,5 +636,45 @@ func purge(t *testing.T, q msgqueue.Queue) {
 	err = p.ProcessAll()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func eventually(fn func() error, timeout time.Duration) error {
+	errCh := make(chan error)
+	done := make(chan struct{})
+	exit := make(chan struct{})
+
+	go func() {
+		for {
+			err := fn()
+			if err == nil {
+				close(done)
+				return
+			}
+
+			select {
+			case errCh <- err:
+			default:
+			}
+
+			select {
+			case <-exit:
+				return
+			case <-time.After(timeout / 100):
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		close(exit)
+		select {
+		case err := <-errCh:
+			return err
+		default:
+			return fmt.Errorf("timeout after %s", timeout)
+		}
 	}
 }
