@@ -91,3 +91,10 @@ func TestSQSWorkerLimit(t *testing.T) {
 		Name: queueName("sqs-worker-limit"),
 	})
 }
+
+func TestSQSInvalidCredentials(t *testing.T) {
+	man := azsqs.NewManager(awsSQS(), "123")
+	testInvalidCredentials(t, man, &msgqueue.Options{
+		Name: queueName("sqs-invalid-credentials"),
+	})
+}

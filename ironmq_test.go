@@ -80,3 +80,13 @@ func TestIronmqWorkerLimit(t *testing.T) {
 		Name: queueName("worker-limit"),
 	})
 }
+
+func TestIronmqInvalidCredentials(t *testing.T) {
+	settings := &iron_config.Settings{
+		ProjectId: "123",
+	}
+	manager := ironmq.NewManager(settings)
+	testInvalidCredentials(t, manager, &msgqueue.Options{
+		Name: queueName("invalid-credentials"),
+	})
+}

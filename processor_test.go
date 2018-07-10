@@ -510,6 +510,36 @@ func testWorkerLimit(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) 
 	}
 }
 
+func testInvalidCredentials(t *testing.T, man msgqueue.Manager, opt *msgqueue.Options) {
+	t.Parallel()
+
+	ch := make(chan time.Time, 10)
+	opt.Handler = func(s1, s2 string) {
+		if s1 != "hello" {
+			t.Fatalf("got %q, wanted hello", s1)
+		}
+		if s2 != "world" {
+			t.Fatalf("got %q, wanted world", s1)
+		}
+		ch <- time.Now()
+	}
+
+	q := man.NewQueue(opt)
+
+	err := q.Call("hello", "world")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	timings := []time.Duration{3 * time.Second}
+	testTimings(t, ch, timings)
+
+	err = q.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func durEqual(d1, d2 time.Duration) bool {
 	return d1 >= d2 && d2-d1 < 3*time.Second
 }

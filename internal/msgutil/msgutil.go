@@ -23,7 +23,10 @@ func UnwrapMessage(msg *msgqueue.Message) (*msgqueue.Message, error) {
 
 func UnwrapMessageHandler(h msgqueue.Handler) msgqueue.HandlerFunc {
 	return msgqueue.HandlerFunc(func(msg *msgqueue.Message) error {
-		msg = msg.Args[0].(*msgqueue.Message)
+		msg, err := UnwrapMessage(msg)
+		if err != nil {
+			return err
+		}
 		return h.HandleMessage(msg)
 	})
 }
