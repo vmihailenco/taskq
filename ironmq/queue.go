@@ -240,13 +240,19 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
 
 	if q.p != nil {
-		if err := q.p.StopTimeout(timeout); err != nil && firstErr == nil {
+		err := q.p.StopTimeout(timeout)
+		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	q.delBatcher.SetSync(true)
-	if err := q.delQueue.CloseTimeout(timeout); err != nil && firstErr == nil {
+	err := q.delBatcher.Close()
+	if err != nil && firstErr == nil {
+		firstErr = err
+	}
+
+	err = q.delQueue.CloseTimeout(timeout)
+	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 

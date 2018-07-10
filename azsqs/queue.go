@@ -337,13 +337,21 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		}
 	}
 
-	q.addBatcher.SetSync(true)
-	err := q.addQueue.CloseTimeout(timeout)
+	err := q.addBatcher.Close()
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
 
-	q.delBatcher.SetSync(true)
+	err = q.addQueue.CloseTimeout(timeout)
+	if err != nil && firstErr == nil {
+		firstErr = err
+	}
+
+	err = q.delBatcher.Close()
+	if err != nil && firstErr == nil {
+		firstErr = err
+	}
+
 	err = q.delQueue.CloseTimeout(timeout)
 	if err != nil && firstErr == nil {
 		firstErr = err
@@ -412,8 +420,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 		if entry.SenderFault != nil && *entry.SenderFault {
 			internal.Logf(
 				"azsqs: SendMessageBatch failed with code=%s message=%q",
-				tos(entry.Code), tos(entry.Message),
-			)
+				tos(entry.Code), tos(entry.Message))
 			continue
 		}
 

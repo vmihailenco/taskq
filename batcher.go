@@ -33,9 +33,9 @@ type Batcher struct {
 
 	timer *time.Timer
 
-	mu    sync.Mutex
-	batch []*Message
-	sync  bool
+	mu     sync.Mutex
+	batch  []*Message
+	closed bool
 }
 
 func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
@@ -47,15 +47,6 @@ func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
 	b.timer = time.AfterFunc(time.Minute, b.onTimeout)
 	b.timer.Stop()
 	return &b
-}
-
-func (b *Batcher) SetSync(v bool) {
-	b.mu.Lock()
-	b.sync = v
-	if v {
-		b.wait()
-	}
-	b.mu.Unlock()
 }
 
 func (b *Batcher) wait() {
@@ -70,7 +61,7 @@ func (b *Batcher) Add(msg *Message) error {
 
 	b.mu.Lock()
 
-	if b.sync {
+	if b.closed {
 		if len(b.batch) > 0 {
 			panic("not reached")
 		}
@@ -126,8 +117,15 @@ func (b *Batcher) onTimeout() {
 
 func (b *Batcher) Close() error {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+
 	b.stopTimer()
 	b.wait()
-	b.mu.Unlock()
+
 	return nil
 }
