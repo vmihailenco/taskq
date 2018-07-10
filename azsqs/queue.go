@@ -80,20 +80,6 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 	return &q
 }
 
-func (q *Queue) Len() (int, error) {
-	params := &sqs.GetQueueAttributesInput{
-		QueueUrl:       aws.String(q.queueURL()),
-		AttributeNames: []*string{aws.String("ApproximateNumberOfMessages")},
-	}
-	resp, err := q.sqs.GetQueueAttributes(params)
-	if err != nil {
-		return 0, err
-	}
-
-	prop := resp.Attributes["ApproximateNumberOfMessages"]
-	return strconv.Atoi(*prop)
-}
-
 func (q *Queue) initAddQueue() {
 	opt := &msgqueue.Options{
 		Name:      q.opt.Name + "-add",
@@ -147,19 +133,25 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
+func (q *Queue) Len() (int, error) {
+	params := &sqs.GetQueueAttributesInput{
+		QueueUrl:       aws.String(q.queueURL()),
+		AttributeNames: []*string{aws.String("ApproximateNumberOfMessages")},
+	}
+	resp, err := q.sqs.GetQueueAttributes(params)
+	if err != nil {
+		return 0, err
+	}
+
+	prop := resp.Attributes["ApproximateNumberOfMessages"]
+	return strconv.Atoi(*prop)
+}
+
 func (q *Queue) Processor() *msgqueue.Processor {
 	if q.p == nil {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
-}
-
-func (q *Queue) AddQueue() *memqueue.Queue {
-	return q.addQueue
-}
-
-func (q *Queue) DeleteQueue() *memqueue.Queue {
-	return q.delQueue
 }
 
 // Add adds message to the queue.

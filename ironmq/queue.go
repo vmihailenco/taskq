@@ -111,15 +111,6 @@ func (q *Queue) initDelQueue() {
 	})
 }
 
-func (q *Queue) Len() (int, error) {
-	queueInfo, err := q.q.Info()
-	if err != nil {
-		return 0, err
-	}
-
-	return queueInfo.Size, nil
-}
-
 func (q *Queue) Name() string {
 	return q.q.Name
 }
@@ -132,19 +123,19 @@ func (q *Queue) Options() *msgqueue.Options {
 	return q.opt
 }
 
+func (q *Queue) Len() (int, error) {
+	queueInfo, err := q.q.Info()
+	if err != nil {
+		return 0, err
+	}
+	return queueInfo.Size, nil
+}
+
 func (q *Queue) Processor() *msgqueue.Processor {
 	if q.p == nil {
 		q.p = msgqueue.NewProcessor(q, q.opt)
 	}
 	return q.p
-}
-
-func (q *Queue) AddQueue() *memqueue.Queue {
-	return q.addQueue
-}
-
-func (q *Queue) DeleteQueue() *memqueue.Queue {
-	return q.delQueue
 }
 
 func (q *Queue) createQueue() error {
