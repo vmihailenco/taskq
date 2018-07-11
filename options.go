@@ -2,10 +2,12 @@ package msgqueue
 
 import (
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis"
 	"github.com/go-redis/redis_rate"
+	"github.com/hashicorp/golang-lru/simplelru"
 	"golang.org/x/time/rate"
 )
 
@@ -27,13 +29,23 @@ type Storage interface {
 }
 
 type redisStorage struct {
-	Redis
+	redis Redis
 }
 
 var _ Storage = (*redisStorage)(nil)
 
+func newRedisStorage(redis Redis) redisStorage {
+	return redisStorage{
+		redis: redis,
+	}
+}
+
 func (s redisStorage) Exists(key string) bool {
-	val, err := s.SetNX(key, "", 24*time.Hour).Result()
+	if localCacheExists(key) {
+		return true
+	}
+
+	val, err := s.redis.SetNX(key, "", 24*time.Hour).Result()
 	if err != nil {
 		return true
 	}
@@ -167,7 +179,7 @@ func (opt *Options) Init() {
 	}
 
 	if opt.Storage == nil {
-		opt.Storage = redisStorage{opt.Redis}
+		opt.Storage = newRedisStorage(opt.Redis)
 	}
 
 	if opt.RateLimit != rate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
@@ -175,4 +187,30 @@ func (opt *Options) Init() {
 		limiter.Fallback = rate.NewLimiter(opt.RateLimit, 1)
 		opt.RateLimiter = limiter
 	}
+}
+
+var (
+	mu    sync.Mutex
+	cache *simplelru.LRU
+)
+
+func localCacheExists(key string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if cache == nil {
+		var err error
+		cache, err = simplelru.NewLRU(128000, nil)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	_, ok := cache.Get(key)
+	if ok {
+		return true
+	}
+
+	cache.Add(key, nil)
+	return false
 }
