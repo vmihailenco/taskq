@@ -82,7 +82,7 @@ func timeSlot(period time.Duration) int64 {
 
 func hashArgs(args []interface{}) []byte {
 	b, _ := msgpack.Marshal(args...)
-	if len(b) <= 128 {
+	if len(b) <= 64 {
 		return b
 	}
 
