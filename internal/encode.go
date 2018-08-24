@@ -21,7 +21,7 @@ func EncodeArgs(args []interface{}, compress bool) (string, error) {
 	b := buffers.Get().([]byte)
 	buf := bytes.NewBuffer(b[:0])
 	enc := msgpack.NewEncoder(buf)
-	err := enc.Encode(args...)
+	err := enc.EncodeMulti(args...)
 	if err != nil {
 		buffers.Put(b)
 		return "", err

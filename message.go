@@ -1,6 +1,7 @@
 package msgqueue
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -81,7 +82,11 @@ func timeSlot(period time.Duration) int64 {
 }
 
 func hashArgs(args []interface{}) []byte {
-	b, _ := msgpack.Marshal(args...)
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf)
+	_ = enc.EncodeMulti(args...)
+	b := buf.Bytes()
+
 	if len(b) <= 64 {
 		return b
 	}
