@@ -229,14 +229,14 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*msgqueue.Message, error) {
 	if n > 10 {
 		n = 10
 	}
 	in := &sqs.ReceiveMessageInput{
 		QueueUrl:              aws.String(q.queueURL()),
 		MaxNumberOfMessages:   aws.Int64(int64(n)),
-		WaitTimeSeconds:       aws.Int64(int64(q.opt.WaitTimeout / time.Second)),
+		WaitTimeSeconds:       aws.Int64(int64(waitTimeout / time.Second)),
 		AttributeNames:        []*string{aws.String("ApproximateReceiveCount")},
 		MessageAttributeNames: []*string{aws.String(delayUntilAttr)},
 	}

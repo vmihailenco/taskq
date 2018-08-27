@@ -461,7 +461,7 @@ func (p *Processor) reserveOne() (*Message, error) {
 	default:
 	}
 
-	msgs, err := p.q.ReserveN(1)
+	msgs, err := p.q.ReserveN(1, p.opt.ReservationTimeout, p.opt.WaitTimeout)
 	if err != nil && err != internal.ErrNotSupported {
 		return nil, err
 	}
@@ -525,7 +525,7 @@ func (p *Processor) fetchMessages(
 	id int32, timeoutC <-chan time.Time,
 ) (timeout bool, err error) {
 	size := p.limiter.Reserve(p.opt.ReservationSize)
-	msgs, err := p.q.ReserveN(size)
+	msgs, err := p.q.ReserveN(size, p.opt.ReservationTimeout, p.opt.WaitTimeout)
 	if err != nil {
 		return false, err
 	}

@@ -158,7 +158,7 @@ func (q *Queue) isUniqueName(name string) bool {
 	return !exists
 }
 
-func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*msgqueue.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 

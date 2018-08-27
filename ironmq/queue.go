@@ -171,13 +171,13 @@ func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
 	return q.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int) ([]*msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*msgqueue.Message, error) {
 	if n > 100 {
 		n = 100
 	}
 
-	reservationSecs := int(q.opt.ReservationTimeout / time.Second)
-	waitSecs := int(q.opt.WaitTimeout / time.Second)
+	reservationSecs := int(reservationTimeout / time.Second)
+	waitSecs := int(waitTimeout / time.Second)
 
 	mqMsgs, err := q.q.LongPoll(n, reservationSecs, waitSecs, false)
 	if err != nil {
