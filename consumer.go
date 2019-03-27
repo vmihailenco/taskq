@@ -1,4 +1,4 @@
-package msgqueue
+package taskq
 
 import (
 	"errors"
@@ -8,20 +8,23 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bsm/redis-lock"
-	"golang.org/x/time/rate"
+	"github.com/vmihailenco/taskq/internal"
 
-	"github.com/go-msgqueue/msgqueue/internal"
+	lock "github.com/bsm/redis-lock"
+	"golang.org/x/time/rate"
 )
 
 const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
+const workerIdleTimeout = 3 * time.Second
+
+var ErrAsyncTask = errors.New("taskq: async task")
 
 type Delayer interface {
 	Delay() time.Duration
 }
 
-type ProcessorStats struct {
+type ConsumerStats struct {
 	WorkerNumber  uint32
 	FetcherNumber uint32
 	BufferSize    uint32
@@ -99,14 +102,11 @@ func (l *limiter) Limited() bool {
 	return l.limiter != nil && atomic.LoadUint32(&l.allowedCount) < 3
 }
 
-// Processor reserves messages from the queue, processes them,
+// Consumer reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
-type Processor struct {
+type Consumer struct {
 	q   Queue
-	opt *Options
-
-	handler         Handler
-	fallbackHandler Handler
+	opt *QueueOptions
 
 	buffer  chan *Message
 	limiter *limiter
@@ -138,14 +138,10 @@ type Processor struct {
 	maxDuration uint32
 }
 
-// New creates new Processor for the queue using provided processing options.
-func NewProcessor(q Queue, opt *Options) *Processor {
-	if opt.Name == "" {
-		opt.Name = q.Name()
-	}
-	opt.Init()
-
-	p := &Processor{
+// New creates new Consumer for the queue using provided processing options.
+func NewConsumer(q Queue) *Consumer {
+	opt := q.Options()
+	p := &Consumer{
 		q:   q,
 		opt: opt,
 
@@ -157,38 +153,33 @@ func NewProcessor(q Queue, opt *Options) *Processor {
 		},
 	}
 
-	p.handler = NewHandler(opt.Handler, opt.Compress)
-	if opt.FallbackHandler != nil {
-		p.fallbackHandler = NewHandler(opt.FallbackHandler, opt.Compress)
-	}
-
 	return p
 }
 
-// Starts creates new Processor and starts it.
-func StartProcessor(q Queue, opt *Options) *Processor {
-	p := NewProcessor(q, opt)
+// Starts creates new Consumer and starts it.
+func StartConsumer(q Queue) *Consumer {
+	p := NewConsumer(q)
 	if err := p.Start(); err != nil {
 		panic(err)
 	}
 	return p
 }
 
-func (p *Processor) Queue() Queue {
+func (p *Consumer) Queue() Queue {
 	return p.q
 }
 
-func (p *Processor) Options() *Options {
+func (p *Consumer) Options() *QueueOptions {
 	return p.opt
 }
 
-func (p *Processor) String() string {
-	return fmt.Sprintf("Processor<%s>", p.q.Name())
+func (p *Consumer) String() string {
+	return fmt.Sprintf("Consumer<%s>", p.q.Name())
 }
 
 // Stats returns processor stats.
-func (p *Processor) Stats() *ProcessorStats {
-	return &ProcessorStats{
+func (p *Consumer) Stats() *ConsumerStats {
+	return &ConsumerStats{
 		WorkerNumber:  uint32(atomic.LoadInt32(&p.workerNumber)),
 		FetcherNumber: uint32(atomic.LoadInt32(&p.fetcherNumber)),
 		BufferSize:    uint32(cap(p.buffer)),
@@ -203,7 +194,7 @@ func (p *Processor) Stats() *ProcessorStats {
 	}
 }
 
-func (p *Processor) Add(msg *Message) error {
+func (p *Consumer) Add(msg *Message) error {
 	if msg.Delay > 0 {
 		time.AfterFunc(msg.Delay, func() {
 			msg.Delay = 0
@@ -215,24 +206,19 @@ func (p *Processor) Add(msg *Message) error {
 	return nil
 }
 
-func (p *Processor) Len() int {
+func (p *Consumer) Len() int {
 	return len(p.buffer)
 }
 
-func (p *Processor) add(msg *Message) {
+func (p *Consumer) add(msg *Message) {
 	_ = p.limiter.Reserve(1)
 	p.buffer <- msg
 }
 
-// Process is low-level API to process message bypassing the internal queue.
-func (p *Processor) Process(msg *Message) error {
-	return p.process(msg)
-}
-
-// Start starts processing messages in the queue.
-func (p *Processor) Start() error {
+// Start starts consuming messages in the queue.
+func (p *Consumer) Start() error {
 	if p.stopCh != nil {
-		return errors.New("Processor is already started")
+		return errors.New("Consumer is already started")
 	}
 
 	stop := make(chan struct{})
@@ -249,7 +235,7 @@ func (p *Processor) Start() error {
 	return nil
 }
 
-func (p *Processor) addWorker(stop <-chan struct{}) int32 {
+func (p *Consumer) addWorker(stop <-chan struct{}) int32 {
 	id := atomic.AddInt32(&p.workerNumber, 1) - 1
 	if id >= int32(p.opt.MaxWorkers) {
 		atomic.AddInt32(&p.workerNumber, -1)
@@ -268,16 +254,16 @@ func (p *Processor) addWorker(stop <-chan struct{}) int32 {
 	return id
 }
 
-func (p *Processor) startWorker(id int32, stop <-chan struct{}) {
+func (p *Consumer) startWorker(id int32, stop <-chan struct{}) {
 	p.jobsWG.Add(1)
 	go p.worker(id, stop)
 }
 
-func (p *Processor) removeWorker() {
+func (p *Consumer) removeWorker() {
 	atomic.AddInt32(&p.workerNumber, -1)
 }
 
-func (p *Processor) addFetcher(stop <-chan struct{}) int32 {
+func (p *Consumer) addFetcher(stop <-chan struct{}) int32 {
 	id := atomic.AddInt32(&p.fetcherNumber, 1) - 1
 	if id >= int32(p.opt.MaxFetchers) {
 		atomic.AddInt32(&p.fetcherNumber, -1)
@@ -289,16 +275,16 @@ func (p *Processor) addFetcher(stop <-chan struct{}) int32 {
 	return id
 }
 
-func (p *Processor) startFetcher(id int32, stop <-chan struct{}) {
+func (p *Consumer) startFetcher(id int32, stop <-chan struct{}) {
 	p.jobsWG.Add(1)
 	go p.fetcher(id, stop)
 }
 
-func (p *Processor) removeFetcher() {
+func (p *Consumer) removeFetcher() {
 	atomic.AddInt32(&p.fetcherNumber, -1)
 }
 
-func (p *Processor) autotune(stop <-chan struct{}) {
+func (p *Consumer) autotune(stop <-chan struct{}) {
 	defer p.jobsWG.Done()
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -314,7 +300,7 @@ func (p *Processor) autotune(stop <-chan struct{}) {
 	}
 }
 
-func (p *Processor) _autotune(stop <-chan struct{}) {
+func (p *Consumer) _autotune(stop <-chan struct{}) {
 	queueLen, err := p.q.Len()
 	if err != nil {
 		internal.Logf("%s Len failed: %s", p.q, err)
@@ -363,18 +349,18 @@ func (p *Processor) _autotune(stop <-chan struct{}) {
 	}
 }
 
-func (p *Processor) hasFetcher() bool {
+func (p *Consumer) hasFetcher() bool {
 	return atomic.LoadInt32(&p.fetcherNumber) > 0
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
-func (p *Processor) Stop() error {
+func (p *Consumer) Stop() error {
 	return p.StopTimeout(stopTimeout)
 }
 
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
-func (p *Processor) StopTimeout(timeout time.Duration) error {
+func (p *Consumer) StopTimeout(timeout time.Duration) error {
 	if p.stopCh == nil || closed(p.stopCh) {
 		return nil
 	}
@@ -399,7 +385,7 @@ func (p *Processor) StopTimeout(timeout time.Duration) error {
 	return err
 }
 
-func (p *Processor) paused() time.Duration {
+func (p *Consumer) paused() time.Duration {
 	const threshold = 100
 
 	if p.opt.PauseErrorsThreshold == 0 ||
@@ -416,12 +402,12 @@ func (p *Processor) paused() time.Duration {
 
 // ProcessAll starts workers to process messages in the queue and then stops
 // them when all messages are processed.
-func (p *Processor) ProcessAll() error {
+func (p *Consumer) ProcessAll() error {
 	if err := p.Start(); err != nil {
 		return err
 	}
 
-	var prev *ProcessorStats
+	var prev *ConsumerStats
 	var noWork int
 	for {
 		st := p.Stats()
@@ -444,7 +430,7 @@ func (p *Processor) ProcessAll() error {
 }
 
 // ProcessOne processes at most one message in the queue.
-func (p *Processor) ProcessOne() error {
+func (p *Consumer) ProcessOne() error {
 	msg, err := p.reserveOne()
 	if err != nil {
 		return err
@@ -454,7 +440,7 @@ func (p *Processor) ProcessOne() error {
 	return p.process(msg)
 }
 
-func (p *Processor) reserveOne() (*Message, error) {
+func (p *Consumer) reserveOne() (*Message, error) {
 	select {
 	case msg := <-p.buffer:
 		return msg, nil
@@ -467,16 +453,16 @@ func (p *Processor) reserveOne() (*Message, error) {
 	}
 
 	if len(msgs) == 0 {
-		return nil, errors.New("msgqueue: queue is empty")
+		return nil, errors.New("taskq: queue is empty")
 	}
 	if len(msgs) != 1 {
-		return nil, fmt.Errorf("msgqueue: queue returned %d messages", len(msgs))
+		return nil, fmt.Errorf("taskq: queue returned %d messages", len(msgs))
 	}
 
 	return msgs[0], nil
 }
 
-func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
+func (p *Consumer) fetcher(id int32, stop <-chan struct{}) {
 	defer p.jobsWG.Done()
 
 	timer := time.NewTimer(time.Minute)
@@ -521,7 +507,7 @@ func (p *Processor) fetcher(id int32, stop <-chan struct{}) {
 	}
 }
 
-func (p *Processor) fetchMessages(
+func (p *Consumer) fetchMessages(
 	id int32, timeoutC <-chan time.Time,
 ) (timeout bool, err error) {
 	size := p.limiter.Reserve(p.opt.ReservationSize)
@@ -556,7 +542,7 @@ func (p *Processor) fetchMessages(
 	return false, nil
 }
 
-func (p *Processor) releaseBuffer() {
+func (p *Consumer) releaseBuffer() {
 	for {
 		msg := p.dequeueMessage()
 		if msg == nil {
@@ -566,34 +552,34 @@ func (p *Processor) releaseBuffer() {
 	}
 }
 
-func (p *Processor) worker(id int32, stop <-chan struct{}) {
+func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 	defer p.jobsWG.Done()
 
 	var timer *time.Timer
 	var timeout <-chan time.Time
-	if id > 0 {
+	if workerID > 0 {
 		timer = time.NewTimer(time.Minute)
 		timer.Stop()
 		timeout = timer.C
 	}
 
 	if p.opt.WorkerLimit > 0 {
-		defer p.unlockWorker(id)
+		defer p.unlockWorker(workerID)
 	}
 
 	for {
-		if id >= atomic.LoadInt32(&p.workerNumber) {
+		if workerID >= atomic.LoadInt32(&p.workerNumber) {
 			return
 		}
 
 		if p.opt.WorkerLimit > 0 {
-			if !p.lockWorker(id, stop) {
+			if !p.lockWorker(workerID, stop) {
 				return
 			}
 		}
 
 		if timer != nil {
-			timer.Reset(time.Second)
+			timer.Reset(workerIdleTimeout)
 		}
 
 		msg, timeout := p.waitMessage(stop, timeout)
@@ -622,7 +608,7 @@ func (p *Processor) worker(id int32, stop <-chan struct{}) {
 	}
 }
 
-func (p *Processor) waitMessage(
+func (p *Consumer) waitMessage(
 	stop <-chan struct{}, timeoutC <-chan time.Time,
 ) (msg *Message, timeout bool) {
 	msg = p.dequeueMessage()
@@ -631,8 +617,8 @@ func (p *Processor) waitMessage(
 	}
 
 	if !p.hasFetcher() {
-		fetcherId := p.addFetcher(stop)
-		if fetcherId != 0 {
+		fetcherID := p.addFetcher(stop)
+		if fetcherID > 0 {
 			p.removeFetcher()
 		}
 	}
@@ -647,7 +633,7 @@ func (p *Processor) waitMessage(
 	}
 }
 
-func (p *Processor) dequeueMessage() *Message {
+func (p *Consumer) dequeueMessage() *Message {
 	select {
 	case msg := <-p.buffer:
 		return msg
@@ -656,7 +642,12 @@ func (p *Processor) dequeueMessage() *Message {
 	}
 }
 
-func (p *Processor) process(msg *Message) error {
+// Process is low-level API to process message bypassing the internal queue.
+func (p *Consumer) Process(msg *Message) error {
+	return p.process(msg)
+}
+
+func (p *Consumer) process(msg *Message) error {
 	atomic.AddUint32(&p.inFlight, 1)
 
 	if msg.Delay > 0 {
@@ -668,64 +659,48 @@ func (p *Processor) process(msg *Message) error {
 		return nil
 	}
 
-	msg.Delay = exponentialBackoff(
-		p.opt.MinBackoff, p.opt.MaxBackoff, msg.ReservedCount)
-
-	start := time.Now()
-	err := p.handler.HandleMessage(msg)
-	if err == errBatched {
-		return nil
-	}
-	p.updateAvgDuration(time.Since(start))
-	if err == errBatchProcessed {
-		return nil
-	}
-
+	err := p.q.HandleMessage(msg)
 	if err == nil {
 		p.resetPause()
 	}
-	p.put(msg, err)
-
+	if err != ErrAsyncTask {
+		p.Put(msg, err)
+	}
 	return err
 }
 
-func (p *Processor) put(msg *Message, err error) {
-	if err == nil {
+func (p *Consumer) Put(msg *Message, msgErr error) {
+	if msgErr == nil {
 		atomic.AddUint32(&p.processed, 1)
-		p.delete(msg, err)
+		p.delete(msg, msgErr)
 		return
 	}
 
+	if msg.Task == nil {
+		msg.Task = p.q.GetTask(msg.TaskName)
+	}
+	opt := msg.Task.Options()
+
 	atomic.AddUint32(&p.errCount, 1)
-	if msg.ReservedCount < p.opt.RetryLimit {
+	if msg.ReservedCount < opt.RetryLimit {
+		msg.Delay = exponentialBackoff(
+			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
+		if msgErr != nil {
+			if delayer, ok := msgErr.(Delayer); ok {
+				msg.Delay = delayer.Delay()
+			}
+		}
+
 		atomic.AddUint32(&p.retries, 1)
-		p.release(msg, err)
+		p.release(msg, msgErr)
 	} else {
 		atomic.AddUint32(&p.fails, 1)
-		p.delete(msg, err)
+		p.delete(msg, msgErr)
 	}
 }
 
-func (p *Processor) Put(msg *Message) {
-	p.put(msg, msg.Err)
-}
-
-// Purge discards messages from the internal queue.
-func (p *Processor) Purge() error {
-	for {
-		select {
-		case msg := <-p.buffer:
-			p.delete(msg, nil)
-		default:
-			return nil
-		}
-	}
-}
-
-func (p *Processor) release(msg *Message, err error) {
-	msg.Delay = p.releaseBackoff(msg, err)
-
-	if err != nil {
+func (p *Consumer) release(msg *Message, msgErr error) {
+	if msgErr != nil {
 		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
 			old := atomic.LoadUint32(&p.delaySec)
@@ -738,7 +713,7 @@ func (p *Processor) release(msg *Message, err error) {
 		}
 
 		internal.Logf("%s handler failed (will retry=%d in dur=%s): %s",
-			p.q, msg.ReservedCount, msg.Delay, err)
+			p.q, msg.ReservedCount, msg.Delay, msgErr)
 	}
 
 	if err := p.q.Release(msg); err != nil {
@@ -747,24 +722,14 @@ func (p *Processor) release(msg *Message, err error) {
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
-func (p *Processor) releaseBackoff(msg *Message, err error) time.Duration {
-	if err != nil {
-		if delayer, ok := err.(Delayer); ok {
-			return delayer.Delay()
-		}
-	}
-	return msg.Delay
-}
-
-func (p *Processor) delete(msg *Message, err error) {
+func (p *Consumer) delete(msg *Message, err error) {
 	if err != nil {
 		internal.Logf("%s handler failed after retry=%d: %s",
 			p.q, msg.ReservedCount, err)
 
-		if p.fallbackHandler != nil {
-			if err := p.fallbackHandler.HandleMessage(msg); err != nil {
-				internal.Logf("%s fallback handler failed: %s", p.q, err)
-			}
+		msg.StickyErr = err
+		if err := p.q.HandleMessage(msg); err != nil {
+			internal.Logf("%s fallback handler failed: %s", p.q, err)
 		}
 	}
 
@@ -774,7 +739,19 @@ func (p *Processor) delete(msg *Message, err error) {
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
-func (p *Processor) updateAvgDuration(dur time.Duration) {
+// Purge discards messages from the internal queue.
+func (p *Consumer) Purge() error {
+	for {
+		select {
+		case msg := <-p.buffer:
+			p.delete(msg, nil)
+		default:
+			return nil
+		}
+	}
+}
+
+func (p *Consumer) updateAvgDuration(dur time.Duration) {
 	const decay = float32(1) / 30
 
 	us := uint32(dur / timePrecision)
@@ -811,12 +788,12 @@ func (p *Processor) updateAvgDuration(dur time.Duration) {
 	}
 }
 
-func (p *Processor) resetPause() {
+func (p *Consumer) resetPause() {
 	atomic.StoreUint32(&p.delaySec, 0)
 	atomic.StoreUint32(&p.errCount, 0)
 }
 
-func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
+func (p *Consumer) lockWorker(id int32, stop <-chan struct{}) bool {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
@@ -842,7 +819,7 @@ func (p *Processor) lockWorker(id int32, stop <-chan struct{}) bool {
 	}
 }
 
-func (p *Processor) unlockWorker(id int32) {
+func (p *Consumer) unlockWorker(id int32) {
 	lock := p.workerLocks[id]
 	if err := lock.Unlock(); err != nil {
 		internal.Logf("redlock.Unlock failed: %s", err)

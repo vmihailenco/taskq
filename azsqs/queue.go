@@ -1,6 +1,7 @@
 package azsqs
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -8,68 +9,73 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/internal"
-	"github.com/go-msgqueue/msgqueue/internal/msgutil"
-	"github.com/go-msgqueue/msgqueue/memqueue"
+	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/internal"
+	"github.com/vmihailenco/taskq/internal/base"
+	"github.com/vmihailenco/taskq/internal/msgutil"
+	"github.com/vmihailenco/taskq/memqueue"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
-const delayUntilAttr = "MsgqueueDelayUntil"
+const delayUntilAttr = "TaskqDelayUntil"
 
 type manager struct {
 	sqs       *sqs.SQS
-	accountId string
+	accountID string
 }
 
-var _ msgqueue.Manager = (*manager)(nil)
+var _ taskq.Manager = (*manager)(nil)
 
-func (m *manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
-	return NewQueue(m.sqs, m.accountId, opt)
+func (m *manager) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
+	return NewQueue(m.sqs, m.accountID, opt)
 }
 
-func (manager) Queues() []msgqueue.Queue {
-	var queues []msgqueue.Queue
+func (manager) Queues() []taskq.Queue {
+	var queues []taskq.Queue
 	for _, q := range Queues() {
 		queues = append(queues, q)
 	}
 	return queues
 }
 
-func NewManager(sqs *sqs.SQS, accountId string) msgqueue.Manager {
+func NewManager(sqs *sqs.SQS, accountID string) taskq.Manager {
 	return &manager{
 		sqs:       sqs,
-		accountId: accountId,
+		accountID: accountID,
 	}
 }
 
 type Queue struct {
+	base base.Queue
+
 	sqs       *sqs.SQS
-	accountId string
-	opt       *msgqueue.Options
+	accountID string
+	opt       *taskq.QueueOptions
 
 	addQueue   *memqueue.Queue
-	addBatcher *msgqueue.Batcher
+	addTask    *taskq.Task
+	addBatcher *base.Batcher
 
 	delQueue   *memqueue.Queue
-	delBatcher *msgqueue.Batcher
+	delTask    *taskq.Task
+	delBatcher *base.Batcher
 
 	mu        sync.RWMutex
 	_queueURL string
 
-	p *msgqueue.Processor
+	consumer *taskq.Consumer
 }
 
-var _ msgqueue.Queue = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
+func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := Queue{
 		sqs:       sqs,
-		accountId: accountId,
+		accountID: accountID,
 		opt:       opt,
 	}
 
@@ -81,41 +87,39 @@ func NewQueue(sqs *sqs.SQS, accountId string, opt *msgqueue.Options) *Queue {
 }
 
 func (q *Queue) initAddQueue() {
-	opt := &msgqueue.Options{
+	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
 		Name:      "azsqs:" + q.opt.Name + ":add",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
-		RetryLimit: 3,
-		MinBackoff: time.Second,
-		Handler:    msgqueue.HandlerFunc(q.addBatcherAdd),
-
-		Redis: q.opt.Redis,
-	}
-	if q.opt.Handler != nil {
-		h := msgqueue.NewHandler(q.opt.Handler, q.opt.Compress)
-		opt.FallbackHandler = msgutil.UnwrapMessageHandler(h)
-	}
-	q.addQueue = memqueue.NewQueue(opt)
-	q.addBatcher = msgqueue.NewBatcher(q.addQueue.Processor(), &msgqueue.BatcherOptions{
+		Redis:      q.opt.Redis,
+	})
+	q.addTask = q.addQueue.NewTask(&taskq.TaskOptions{
+		Handler:         taskq.HandlerFunc(q.addBatcherAdd),
+		FallbackHandler: msgutil.UnwrapMessageHandler(q.HandleMessage),
+		RetryLimit:      3,
+		MinBackoff:      time.Second,
+	})
+	q.addBatcher = base.NewBatcher(q.addQueue.Consumer(), &base.BatcherOptions{
 		Handler:     q.addBatch,
 		ShouldBatch: q.shouldBatchAdd,
 	})
 }
 
 func (q *Queue) initDelQueue() {
-	q.delQueue = memqueue.NewQueue(&msgqueue.Options{
+	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
 		Name:      "azsqs:" + q.opt.Name + ":delete",
 		GroupName: q.opt.GroupName,
 
 		BufferSize: 1000,
+		Redis:      q.opt.Redis,
+	})
+	q.delTask = q.delQueue.NewTask(&taskq.TaskOptions{
+		Handler:    taskq.HandlerFunc(q.delBatcherAdd),
 		RetryLimit: 3,
 		MinBackoff: time.Second,
-		Handler:    msgqueue.HandlerFunc(q.delBatcherAdd),
-
-		Redis: q.opt.Redis,
 	})
-	q.delBatcher = msgqueue.NewBatcher(q.delQueue.Processor(), &msgqueue.BatcherOptions{
+	q.delBatcher = base.NewBatcher(q.delQueue.Consumer(), &base.BatcherOptions{
 		Handler:     q.deleteBatch,
 		ShouldBatch: q.shouldBatchDelete,
 	})
@@ -129,8 +133,24 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("Queue<Name=%s>", q.Name())
 }
 
-func (q *Queue) Options() *msgqueue.Options {
+func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
+}
+
+func (q *Queue) HandleMessage(msg *taskq.Message) error {
+	return q.base.HandleMessage(msg)
+}
+
+func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
+	return q.base.NewTask(q, opt)
+}
+
+func (q *Queue) GetTask(name string) *taskq.Task {
+	return q.base.GetTask(name)
+}
+
+func (q *Queue) RemoveTask(name string) {
+	q.base.RemoveTask(name)
 }
 
 func (q *Queue) GetAddQueue() *memqueue.Queue {
@@ -139,6 +159,13 @@ func (q *Queue) GetAddQueue() *memqueue.Queue {
 
 func (q *Queue) GetDeleteQueue() *memqueue.Queue {
 	return q.delQueue
+}
+
+func (q *Queue) Consumer() *taskq.Consumer {
+	if q.consumer == nil {
+		q.consumer = taskq.NewConsumer(q)
+	}
+	return q.consumer
 }
 
 func (q *Queue) Len() (int, error) {
@@ -155,31 +182,13 @@ func (q *Queue) Len() (int, error) {
 	return strconv.Atoi(*prop)
 }
 
-func (q *Queue) Processor() *msgqueue.Processor {
-	if q.p == nil {
-		q.p = msgqueue.NewProcessor(q, q.opt)
-	}
-	return q.p
-}
-
 // Add adds message to the queue.
-func (q *Queue) Add(msg *msgqueue.Message) error {
+func (q *Queue) Add(msg *taskq.Message) error {
+	if msg.TaskName == "" {
+		return internal.ErrTaskNameRequired
+	}
 	msg = msgutil.WrapMessage(msg)
-	return q.addQueue.Add(msg)
-}
-
-// Call creates a message using the args and adds it to the queue.
-func (q *Queue) Call(args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	return q.Add(msg)
-}
-
-// CallOnce works like Call, but it returns ErrDuplicate if message
-// with such args was already added in a period.
-func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	msg.SetDelayName(period, args...)
-	return q.Add(msg)
+	return q.addTask.AddMessage(msg)
 }
 
 func (q *Queue) queueURL() string {
@@ -220,7 +229,7 @@ func (q *Queue) createQueue() (string, error) {
 func (q *Queue) getQueueURL() (string, error) {
 	in := &sqs.GetQueueUrlInput{
 		QueueName:              aws.String(q.Name()),
-		QueueOwnerAWSAccountId: &q.accountId,
+		QueueOwnerAWSAccountId: &q.accountID,
 	}
 	out, err := q.sqs.GetQueueUrl(in)
 	if err != nil {
@@ -229,7 +238,7 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*taskq.Message, error) {
 	if n > 10 {
 		n = 10
 	}
@@ -245,49 +254,54 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 		return nil, err
 	}
 
-	msgs := make([]*msgqueue.Message, len(out.Messages))
-	for i, sqsMsg := range out.Messages {
-		var reservedCount int
-		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
-			var err error
-			reservedCount, err = strconv.Atoi(*v)
+	msgs := make([]*taskq.Message, 0, len(out.Messages))
+	for _, sqsMsg := range out.Messages {
+		msg := new(taskq.Message)
+
+		if *sqsMsg.Body != "_" {
+			b, err := base64.RawStdEncoding.DecodeString(*sqsMsg.Body)
+			if err != nil {
+				return nil, err
+			}
+
+			err = msg.UnmarshalBinary(b)
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		var delay time.Duration
+		msg.ReservationID = *sqsMsg.ReceiptHandle
+
+		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
+			var err error
+			msg.ReservedCount, err = strconv.Atoi(*v)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		if v, ok := sqsMsg.MessageAttributes[delayUntilAttr]; ok {
 			until, err := time.Parse(time.RFC3339, *v.StringValue)
 			if err != nil {
 				return nil, err
 			}
 
-			delay = until.Sub(time.Now())
-			if delay < 0 {
-				delay = 0
+			msg.Delay = until.Sub(time.Now())
+			if msg.Delay < 0 {
+				msg.Delay = 0
 			}
 		}
 
-		if *sqsMsg.Body == "_" {
-			*sqsMsg.Body = ""
-		}
-
-		msgs[i] = &msgqueue.Message{
-			Body:          *sqsMsg.Body,
-			Delay:         delay,
-			ReservationId: *sqsMsg.ReceiptHandle,
-			ReservedCount: reservedCount,
-		}
+		msgs = append(msgs, msg)
 	}
 
 	return msgs, nil
 }
 
-func (q *Queue) Release(msg *msgqueue.Message) error {
+func (q *Queue) Release(msg *taskq.Message) error {
 	in := &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(q.queueURL()),
-		ReceiptHandle:     &msg.ReservationId,
+		ReceiptHandle:     &msg.ReservationID,
 		VisibilityTimeout: aws.Int64(int64(msg.Delay / time.Second)),
 	}
 	var err error
@@ -308,8 +322,8 @@ func (q *Queue) Release(msg *msgqueue.Message) error {
 }
 
 // Delete deletes the message from the queue.
-func (q *Queue) Delete(msg *msgqueue.Message) error {
-	return q.delQueue.Add(msgutil.WrapMessage(msg))
+func (q *Queue) Delete(msg *taskq.Message) error {
+	return q.delTask.AddMessage(msgutil.WrapMessage(msg))
 }
 
 // Purge deletes all messages from the queue using SQS API.
@@ -321,17 +335,17 @@ func (q *Queue) Purge() error {
 	return err
 }
 
-// Close is CloseTimeout with 30 seconds timeout.
+// Close is like CloseTimeout with 30 seconds timeout.
 func (q *Queue) Close() error {
 	return q.CloseTimeout(30 * time.Second)
 }
 
-// Close closes the queue waiting for pending messages to be processed.
+// CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
 
-	if q.p != nil {
-		err := q.p.StopTimeout(timeout)
+	if q.consumer != nil {
+		err := q.consumer.StopTimeout(timeout)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -360,11 +374,11 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	return firstErr
 }
 
-func (q *Queue) addBatcherAdd(msg *msgqueue.Message) error {
+func (q *Queue) addBatcherAdd(msg *taskq.Message) error {
 	return q.addBatcher.Add(msg)
 }
 
-func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
+func (q *Queue) addBatch(msgs []*taskq.Message) error {
 	const maxDelay = 15 * time.Minute
 
 	if len(msgs) == 0 {
@@ -381,11 +395,13 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 			return err
 		}
 
-		body, err := msg.EncodeBody(q.opt.Compress)
+		b, err := msg.MarshalBinary()
 		if err != nil {
-			internal.Logf("azsqs: EncodeBody failed: %s", err)
+			internal.Logf("azsqs: MarshalBinary failed: %s", err)
 			continue
 		}
+
+		body := base64.RawStdEncoding.EncodeToString(b)
 		if body == "" {
 			body = "_" // SQS requires body.
 		}
@@ -427,7 +443,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 
 		msg := findMessageById(msgs, tos(entry.Id))
 		if msg != nil {
-			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
 			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
@@ -436,7 +452,7 @@ func (q *Queue) addBatch(msgs []*msgqueue.Message) error {
 	return nil
 }
 
-func (q *Queue) shouldBatchAdd(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
+func (q *Queue) shouldBatchAdd(batch []*taskq.Message, msg *taskq.Message) bool {
 	batch = append(batch, msg)
 
 	const sizeLimit = 250 * 1024
@@ -448,7 +464,7 @@ func (q *Queue) shouldBatchAdd(batch []*msgqueue.Message, msg *msgqueue.Message)
 	return len(batch) < messagesLimit
 }
 
-func (q *Queue) batchSize(batch []*msgqueue.Message) int {
+func (q *Queue) batchSize(batch []*taskq.Message) int {
 	var size int
 	for _, msg := range batch {
 		msg, err := msgutil.UnwrapMessage(msg)
@@ -457,22 +473,22 @@ func (q *Queue) batchSize(batch []*msgqueue.Message) int {
 			continue
 		}
 
-		body, err := msg.EncodeBody(q.opt.Compress)
+		b, err := msg.MarshalBinary()
 		if err != nil {
 			internal.Logf("azsqs: Message.EncodeBody failed: %s", err)
 			continue
 		}
 
-		size += len(body)
+		size += base64.RawStdEncoding.EncodedLen(len(b))
 	}
 	return size
 }
 
-func (q *Queue) delBatcherAdd(msg *msgqueue.Message) error {
+func (q *Queue) delBatcherAdd(msg *taskq.Message) error {
 	return q.delBatcher.Add(msg)
 }
 
-func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
+func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 	if len(msgs) == 0 {
 		return errors.New("azsqs: no messages to delete")
 	}
@@ -486,7 +502,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 		entries[i] = &sqs.DeleteMessageBatchRequestEntry{
 			Id:            aws.String(strconv.Itoa(i)),
-			ReceiptHandle: &msg.ReservationId,
+			ReceiptHandle: &msg.ReservationID,
 		}
 	}
 
@@ -511,7 +527,7 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 
 		msg := findMessageById(msgs, tos(entry.Id))
 		if msg != nil {
-			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
 			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
@@ -519,12 +535,12 @@ func (q *Queue) deleteBatch(msgs []*msgqueue.Message) error {
 	return nil
 }
 
-func (q *Queue) shouldBatchDelete(batch []*msgqueue.Message, msg *msgqueue.Message) bool {
+func (q *Queue) shouldBatchDelete(batch []*taskq.Message, msg *taskq.Message) bool {
 	const messagesLimit = 10
 	return len(batch)+1 < messagesLimit
 }
 
-func findMessageById(msgs []*msgqueue.Message, id string) *msgqueue.Message {
+func findMessageById(msgs []*taskq.Message, id string) *taskq.Message {
 	i, err := strconv.Atoi(id)
 	if err != nil {
 		return nil

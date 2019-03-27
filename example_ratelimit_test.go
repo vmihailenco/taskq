@@ -1,11 +1,11 @@
-package msgqueue_test
+package taskq_test
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/memqueue"
+	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/memqueue"
 )
 
 type RateLimitError string
@@ -20,7 +20,8 @@ func (RateLimitError) Delay() time.Duration {
 
 func Example_customRateLimit() {
 	start := time.Now()
-	q := memqueue.NewQueue(&msgqueue.Options{
+	q := memqueue.NewQueue(&taskq.QueueOptions{})
+	task := q.NewTask(&taskq.TaskOptions{
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return RateLimitError("calm down")
@@ -29,7 +30,7 @@ func Example_customRateLimit() {
 		MinBackoff: time.Millisecond,
 	})
 
-	q.Call()
+	task.Call()
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

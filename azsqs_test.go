@@ -1,120 +1,105 @@
-package msgqueue_test
+package taskq_test
 
 import (
 	"os"
 	"testing"
 
+	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/azsqs"
+
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
-
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/azsqs"
 )
 
-var accountId string
+var accountID string
 
 func init() {
-	accountId = os.Getenv("AWS_ACCOUNT_ID")
+	accountID = os.Getenv("AWS_ACCOUNT_ID")
 }
 
 func awsSQS() *sqs.SQS {
 	return sqs.New(session.New())
 }
 
-func azsqsManager() msgqueue.Manager {
-	return azsqs.NewManager(awsSQS(), accountId)
+func azsqsManager() taskq.Manager {
+	return azsqs.NewManager(awsSQS(), accountID)
 }
 
-func TestSQSProcessor(t *testing.T) {
-	testProcessor(t, azsqsManager(), &msgqueue.Options{
-		Name: queueName("processor"),
-	})
-}
-
-func TestSQSCompress(t *testing.T) {
-	testProcessor(t, azsqsManager(), &msgqueue.Options{
-		Name:     queueName("compress"),
-		Compress: true,
+func TestSQSConsumer(t *testing.T) {
+	testConsumer(t, azsqsManager(), &taskq.QueueOptions{
+		Name: queueName("consumer"),
 	})
 }
 
 func TestSQSFallback(t *testing.T) {
-	testFallback(t, azsqsManager(), &msgqueue.Options{
+	testFallback(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("fallback"),
 	})
 }
 
 func TestSQSDelay(t *testing.T) {
-	testDelay(t, azsqsManager(), &msgqueue.Options{
+	testDelay(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("delay"),
 	})
 }
 
 func TestSQSRetry(t *testing.T) {
-	testRetry(t, azsqsManager(), &msgqueue.Options{
+	testRetry(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("retry"),
 	})
 }
 
 func TestSQSNamedMessage(t *testing.T) {
-	testNamedMessage(t, azsqsManager(), &msgqueue.Options{
+	testNamedMessage(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("named-message"),
 	})
 }
 
 func TestSQSCallOnce(t *testing.T) {
-	testCallOnce(t, azsqsManager(), &msgqueue.Options{
+	testCallOnce(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("call-once"),
 	})
 }
 
 func TestSQSLen(t *testing.T) {
-	testLen(t, azsqsManager(), &msgqueue.Options{
+	testLen(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("queue-len"),
 	})
 }
 
 func TestSQSRateLimit(t *testing.T) {
-	testRateLimit(t, azsqsManager(), &msgqueue.Options{
+	testRateLimit(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("rate-limit"),
 	})
 }
 
 func TestSQSErrorDelay(t *testing.T) {
-	testErrorDelay(t, azsqsManager(), &msgqueue.Options{
+	testErrorDelay(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("delayer"),
 	})
 }
 
 func TestSQSWorkerLimit(t *testing.T) {
-	testWorkerLimit(t, azsqsManager(), &msgqueue.Options{
+	testWorkerLimit(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("worker-limit"),
 	})
 }
 
 func TestSQSInvalidCredentials(t *testing.T) {
 	man := azsqs.NewManager(awsSQS(), "123")
-	testInvalidCredentials(t, man, &msgqueue.Options{
+	testInvalidCredentials(t, man, &taskq.QueueOptions{
 		Name: queueName("invalid-credentials"),
 	})
 }
 
-func TestSQSInvalidCredentialsAndCompress(t *testing.T) {
-	man := azsqs.NewManager(awsSQS(), "123")
-	testInvalidCredentials(t, man, &msgqueue.Options{
-		Name:     queueName("invalid-credentials-and-compress"),
-		Compress: true,
-	})
-}
-
-func TestSQSBatchProcessorSmallMessage(t *testing.T) {
-	testBatchProcessor(t, azsqsManager(), &msgqueue.Options{
-		Name: queueName("batch-processor-small-message"),
+func TestSQSBatchConsumerSmallMessage(t *testing.T) {
+	testBatchConsumer(t, azsqsManager(), &taskq.QueueOptions{
+		Name: queueName("batch-consumer-small-message"),
 	}, 100)
 }
 
-func TestSQSBatchProcessorLarge(t *testing.T) {
-	testBatchProcessor(t, azsqsManager(), &msgqueue.Options{
+func TestSQSBatchConsumerLarge(t *testing.T) {
+	testBatchConsumer(t, azsqsManager(), &taskq.QueueOptions{
 		Name: queueName("batch-processor-large-message"),
 	}, 64000)
 }

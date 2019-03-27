@@ -1,26 +1,20 @@
-package msgqueue
+package base
 
 import (
-	"errors"
 	"sync"
 	"time"
+
+	"github.com/vmihailenco/taskq"
 )
 
-var errBatched = errors.New("message is batched for later processing")
-var errBatchProcessed = errors.New("message is processed in a batch")
-
 type BatcherOptions struct {
-	Handler     func([]*Message) error
-	ShouldBatch func([]*Message, *Message) bool
+	Handler     func([]*taskq.Message) error
+	ShouldBatch func([]*taskq.Message, *taskq.Message) bool
 
-	RetryLimit int
-	Timeout    time.Duration
+	Timeout time.Duration
 }
 
-func (opt *BatcherOptions) init(p *Processor) {
-	if opt.RetryLimit == 0 {
-		opt.RetryLimit = p.Options().RetryLimit
-	}
+func (opt *BatcherOptions) init() {
 	if opt.Timeout == 0 {
 		opt.Timeout = 3 * time.Second
 	}
@@ -28,21 +22,21 @@ func (opt *BatcherOptions) init(p *Processor) {
 
 // Batcher collects messages for later batch processing.
 type Batcher struct {
-	p   *Processor
-	opt *BatcherOptions
+	consumer *taskq.Consumer
+	opt      *BatcherOptions
 
 	timer *time.Timer
 
 	mu     sync.Mutex
-	batch  []*Message
+	batch  []*taskq.Message
 	closed bool
 }
 
-func NewBatcher(p *Processor, opt *BatcherOptions) *Batcher {
-	opt.init(p)
+func NewBatcher(consumer *taskq.Consumer, opt *BatcherOptions) *Batcher {
+	opt.init()
 	b := Batcher{
-		p:   p,
-		opt: opt,
+		consumer: consumer,
+		opt:      opt,
 	}
 	b.timer = time.AfterFunc(time.Minute, b.onTimeout)
 	b.timer.Stop()
@@ -56,8 +50,8 @@ func (b *Batcher) wait() {
 	}
 }
 
-func (b *Batcher) Add(msg *Message) error {
-	var batch []*Message
+func (b *Batcher) Add(msg *taskq.Message) error {
+	var batch []*taskq.Message
 
 	b.mu.Lock()
 
@@ -65,7 +59,7 @@ func (b *Batcher) Add(msg *Message) error {
 		if len(b.batch) > 0 {
 			panic("not reached")
 		}
-		batch = []*Message{msg}
+		batch = []*taskq.Message{msg}
 	} else {
 		if len(b.batch) == 0 {
 			b.stopTimer()
@@ -76,7 +70,7 @@ func (b *Batcher) Add(msg *Message) error {
 			b.batch = append(b.batch, msg)
 		} else {
 			batch = b.batch
-			b.batch = []*Message{msg}
+			b.batch = []*taskq.Message{msg}
 		}
 	}
 
@@ -84,10 +78,9 @@ func (b *Batcher) Add(msg *Message) error {
 
 	if len(batch) > 0 {
 		b.process(batch)
-		return errBatchProcessed
 	}
 
-	return errBatched
+	return taskq.ErrAsyncTask
 }
 
 func (b *Batcher) stopTimer() {
@@ -99,13 +92,10 @@ func (b *Batcher) stopTimer() {
 	}
 }
 
-func (b *Batcher) process(batch []*Message) {
+func (b *Batcher) process(batch []*taskq.Message) {
 	err := b.opt.Handler(batch)
 	for _, msg := range batch {
-		if err != nil && msg.Err == nil {
-			msg.Err = err
-		}
-		b.p.Put(msg)
+		b.consumer.Put(msg, err)
 	}
 }
 

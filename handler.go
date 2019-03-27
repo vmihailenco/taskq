@@ -1,13 +1,16 @@
-package msgqueue
+package taskq
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
 
-	"github.com/go-msgqueue/msgqueue/internal"
+	"github.com/vmihailenco/msgpack"
 )
 
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
+var messageType = reflect.TypeOf((*Message)(nil))
 
 // Handler is an interface for processing messages.
 type Handler interface {
@@ -24,56 +27,82 @@ type reflectFunc struct {
 	fv reflect.Value // Kind() == reflect.Func
 	ft reflect.Type
 
-	compress bool
+	returnsError bool
 }
 
 var _ Handler = (*reflectFunc)(nil)
 
-func NewHandler(fn interface{}, compress bool) Handler {
+func NewHandler(fn interface{}) Handler {
+	if fn == nil {
+		panic(errors.New("taskq: handler func is nil"))
+	}
 	if h, ok := fn.(Handler); ok {
 		return h
 	}
 
 	h := reflectFunc{
 		fv: reflect.ValueOf(fn),
-
-		compress: compress,
 	}
 	h.ft = h.fv.Type()
 	if h.ft.Kind() != reflect.Func {
-		panic(fmt.Sprintf("got %s, wanted %s", h.ft.Kind(), reflect.Func))
+		panic(fmt.Sprintf("taskq: got %s, wanted %s", h.ft.Kind(), reflect.Func))
 	}
+
+	h.returnsError = returnsError(h.ft)
+	if h.returnsError && acceptsMessage(h.ft) {
+		return HandlerFunc(fn.(func(*Message) error))
+	}
+
 	return &h
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	body := msg.Body
-	var compress bool
-	if body == "" {
-		var err error
-		body, err = msg.EncodeBody(false)
-		if err != nil {
-			return err
-		}
-	} else {
-		compress = h.compress
-	}
-
-	args, err := internal.DecodeArgs(body, h.ft, compress)
+	b, err := msg.MarshalArgs()
 	if err != nil {
 		return err
 	}
 
-	if len(args) != h.ft.NumIn() {
-		return fmt.Errorf("got %d args, handler expects %d args", len(args), h.ft.NumIn())
+	dec := msgpack.NewDecoder(bytes.NewBuffer(b))
+	n, err := dec.DecodeArrayLen()
+	if err != nil {
+		return err
 	}
 
-	out := h.fv.Call(args)
-	if n := h.ft.NumOut(); n > 0 && h.ft.Out(n-1) == errorType {
-		if errv := out[n-1]; !errv.IsNil() {
+	if n == -1 {
+		n = 0
+	}
+	if n != h.ft.NumIn() {
+		return fmt.Errorf("taskq: got %d args, wanted %d", n, h.ft.NumIn())
+	}
+
+	in := make([]reflect.Value, h.ft.NumIn())
+	for i := 0; i < h.ft.NumIn(); i++ {
+		arg := reflect.New(h.ft.In(i)).Elem()
+		err = dec.DecodeValue(arg)
+		if err != nil {
+			err = fmt.Errorf(
+				"taskq: decoding arg=%d failed (data=%.100x): %s", i, b, err)
+			return err
+		}
+		in[i] = arg
+	}
+
+	out := h.fv.Call(in)
+	if h.returnsError {
+		errv := out[h.ft.NumOut()-1]
+		if !errv.IsNil() {
 			return errv.Interface().(error)
 		}
 	}
 
 	return nil
+}
+
+func acceptsMessage(typ reflect.Type) bool {
+	return typ.NumIn() == 1 && typ.In(0) == messageType
+}
+
+func returnsError(typ reflect.Type) bool {
+	n := typ.NumOut()
+	return n > 0 && typ.Out(n-1) == errorType
 }

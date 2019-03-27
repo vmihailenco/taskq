@@ -1,4 +1,4 @@
-package msgqueue
+package taskq
 
 import (
 	"runtime"
@@ -10,6 +10,33 @@ import (
 	"github.com/hashicorp/golang-lru/simplelru"
 	"golang.org/x/time/rate"
 )
+
+type Queue interface {
+	Name() string
+	Options() *QueueOptions
+	Consumer() *Consumer
+
+	Handler
+	NewTask(opt *TaskOptions) *Task
+	GetTask(name string) *Task
+	RemoveTask(name string)
+
+	Len() (int, error)
+	Add(msg *Message) error
+	ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*Message, error)
+	Release(*Message) error
+	Delete(msg *Message) error
+	Purge() error
+	Close() error
+	CloseTimeout(timeout time.Duration) error
+}
+
+// Manager is an interface that abstracts creation of new queues.
+// It is implemented in subpackages memqueue, azsqs, and ironmq.
+type Manager interface {
+	NewQueue(*QueueOptions) Queue
+	Queues() []Queue
+}
 
 type Redis interface {
 	Del(keys ...string) *redis.IntCmd
@@ -56,16 +83,11 @@ type RateLimiter interface {
 	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
 }
 
-type Options struct {
+type QueueOptions struct {
 	// Queue name.
 	Name string
 	// Queue group name.
 	GroupName string
-
-	// Function called to process a message.
-	Handler interface{}
-	// Function called to process failed message.
-	FallbackHandler interface{}
 
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
@@ -76,9 +98,6 @@ type Options struct {
 	// Maximum number of goroutines fetching messages.
 	// Default is 4 * number of CPUs.
 	MaxFetchers int
-
-	// Compress data before sending to the queue.
-	Compress bool
 
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
@@ -93,17 +112,6 @@ type Options struct {
 	// Size of the buffer where reserved messages are stored.
 	// Default is the same as ReservationSize.
 	BufferSize int
-
-	// Number of tries/releases after which the message fails permanently
-	// and is deleted.
-	// Default is 64 retries.
-	RetryLimit int
-	// Minimum backoff time between retries.
-	// Default is 30 seconds.
-	MinBackoff time.Duration
-	// Maximum backoff time between retries.
-	// Default is 30 minutes.
-	MaxBackoff time.Duration
 
 	// Number of consecutive failures after which queue processing is paused.
 	// Default is 100 failures.
@@ -124,7 +132,7 @@ type Options struct {
 	inited bool
 }
 
-func (opt *Options) Init() {
+func (opt *QueueOptions) Init() {
 	if opt.inited {
 		return
 	}
@@ -166,16 +174,6 @@ func (opt *Options) Init() {
 	}
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = 10 * time.Second
-	}
-
-	if opt.RetryLimit == 0 {
-		opt.RetryLimit = 64
-	}
-	if opt.MinBackoff == 0 {
-		opt.MinBackoff = 30 * time.Second
-	}
-	if opt.MaxBackoff == 0 {
-		opt.MaxBackoff = 30 * time.Minute
 	}
 
 	if opt.Storage == nil {

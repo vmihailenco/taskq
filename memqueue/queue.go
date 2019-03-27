@@ -6,50 +6,53 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/internal"
+	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/internal"
+	"github.com/vmihailenco/taskq/internal/base"
 )
 
 type manager struct{}
 
-var _ msgqueue.Manager = (*manager)(nil)
+var _ taskq.Manager = (*manager)(nil)
 
-func (manager) NewQueue(opt *msgqueue.Options) msgqueue.Queue {
+func (manager) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
 	return NewQueue(opt)
 }
 
-func (manager) Queues() []msgqueue.Queue {
-	var queues []msgqueue.Queue
+func (manager) Queues() []taskq.Queue {
+	var queues []taskq.Queue
 	for _, q := range Queues() {
 		queues = append(queues, q)
 	}
 	return queues
 }
 
-func NewManager() msgqueue.Manager {
+func NewManager() taskq.Manager {
 	return manager{}
 }
 
 type Queue struct {
-	opt *msgqueue.Options
+	base base.Queue
+
+	opt *taskq.QueueOptions
 
 	sync    bool
 	noDelay bool
 
-	wg sync.WaitGroup
-	p  *msgqueue.Processor
+	wg       sync.WaitGroup
+	consumer *taskq.Consumer
 }
 
-var _ msgqueue.Queue = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(opt *msgqueue.Options) *Queue {
+func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := Queue{
 		opt: opt,
 	}
-	q.p = msgqueue.NewProcessor(&q, opt)
-	if err := q.p.Start(); err != nil {
+	q.consumer = taskq.NewConsumer(&q)
+	if err := q.consumer.Start(); err != nil {
 		panic(err)
 	}
 
@@ -65,12 +68,28 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("Memqueue<Name=%s>", q.Name())
 }
 
-func (q *Queue) Options() *msgqueue.Options {
+func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
 }
 
-func (q *Queue) Processor() *msgqueue.Processor {
-	return q.p
+func (q *Queue) HandleMessage(msg *taskq.Message) error {
+	return q.base.HandleMessage(msg)
+}
+
+func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
+	return q.base.NewTask(q, opt)
+}
+
+func (q *Queue) GetTask(name string) *taskq.Task {
+	return q.base.GetTask(name)
+}
+
+func (q *Queue) RemoveTask(name string) {
+	q.base.RemoveTask(name)
+}
+
+func (q *Queue) Consumer() *taskq.Consumer {
+	return q.consumer
 }
 
 func (q *Queue) SetSync(sync bool) {
@@ -81,12 +100,12 @@ func (q *Queue) SetNoDelay(noDelay bool) {
 	q.noDelay = noDelay
 }
 
-// Close is CloseTimeout with 30 seconds timeout.
+// Close is like CloseTimeout with 30 seconds timeout.
 func (q *Queue) Close() error {
 	return q.CloseTimeout(30 * time.Second)
 }
 
-// Close closes the queue waiting for pending messages to be processed.
+// CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	defer unregisterQueue(q)
 
@@ -104,46 +123,35 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		return fmt.Errorf("message are not processed after %s", timeout)
 	}
 
-	return q.p.StopTimeout(timeout)
+	return q.consumer.StopTimeout(timeout)
 }
 
-// Call creates a message using the args and adds it to the queue.
-func (q *Queue) Call(args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	return q.Add(msg)
-}
-
-// CallOnce works like Call, but it returns ErrDuplicate if message
-// with such args was already added in a period.
-func (q *Queue) CallOnce(period time.Duration, args ...interface{}) error {
-	msg := msgqueue.NewMessage(args...)
-	msg.SetDelayName(period, args...)
-	return q.Add(msg)
+func (q *Queue) Len() (int, error) {
+	return q.consumer.Len(), nil
 }
 
 // Add adds message to the queue.
-func (q *Queue) Add(msg *msgqueue.Message) error {
+func (q *Queue) Add(msg *taskq.Message) error {
+	if msg.TaskName == "" {
+		return internal.ErrTaskNameRequired
+	}
 	if !q.isUniqueName(msg.Name) {
-		return msgqueue.ErrDuplicate
+		return taskq.ErrDuplicate
 	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
 
-func (q *Queue) Len() (int, error) {
-	return q.Processor().Len(), nil
-}
-
-func (q *Queue) enqueueMessage(msg *msgqueue.Message) error {
+func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	if (q.noDelay || q.sync) && msg.Delay > 0 {
 		msg.Delay = 0
 	}
 	msg.ReservedCount++
 
 	if q.sync {
-		return q.p.Process(msg)
+		return q.consumer.Process(msg)
 	}
-	return q.p.Add(msg)
+	return q.consumer.Add(msg)
 }
 
 func (q *Queue) isUniqueName(name string) bool {
@@ -158,22 +166,22 @@ func (q *Queue) isUniqueName(name string) bool {
 	return !exists
 }
 
-func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*msgqueue.Message, error) {
+func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*taskq.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 
-func (q *Queue) Release(msg *msgqueue.Message) error {
+func (q *Queue) Release(msg *taskq.Message) error {
 	return q.enqueueMessage(msg)
 }
 
-func (q *Queue) Delete(msg *msgqueue.Message) error {
+func (q *Queue) Delete(msg *taskq.Message) error {
 	q.wg.Done()
 	return nil
 }
 
-func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
+func (q *Queue) DeleteBatch(msgs []*taskq.Message) error {
 	if len(msgs) == 0 {
-		return errors.New("msgqueue: no messages to delete")
+		return errors.New("taskq: no messages to delete")
 	}
 	for _, msg := range msgs {
 		if err := q.Delete(msg); err != nil {
@@ -184,5 +192,5 @@ func (q *Queue) DeleteBatch(msgs []*msgqueue.Message) error {
 }
 
 func (q *Queue) Purge() error {
-	return q.p.Purge()
+	return q.consumer.Purge()
 }

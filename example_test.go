@@ -1,4 +1,4 @@
-package msgqueue_test
+package taskq_test
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/go-msgqueue/msgqueue"
-	"github.com/go-msgqueue/msgqueue/memqueue"
+	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/memqueue"
 )
 
 func timeSince(start time.Time) time.Duration {
@@ -24,7 +24,8 @@ func timeSinceCeil(start time.Time) time.Duration {
 
 func Example_retryOnError() {
 	start := time.Now()
-	q := memqueue.NewQueue(&msgqueue.Options{
+	q := memqueue.NewQueue(&taskq.QueueOptions{})
+	task := q.NewTask(&taskq.TaskOptions{
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return errors.New("fake error")
@@ -33,7 +34,7 @@ func Example_retryOnError() {
 		MinBackoff: time.Second,
 	})
 
-	q.Call()
+	task.Call()
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -45,15 +46,16 @@ func Example_retryOnError() {
 
 func Example_messageDelay() {
 	start := time.Now()
-	q := memqueue.NewQueue(&msgqueue.Options{
+	q := memqueue.NewQueue(&taskq.QueueOptions{})
+	task := q.NewTask(&taskq.TaskOptions{
 		Handler: func() {
 			fmt.Println("processed with delay", timeSince(start))
 		},
 	})
 
-	msg := msgqueue.NewMessage()
+	msg := taskq.NewMessage()
 	msg.Delay = time.Second
-	q.Add(msg)
+	_ = task.AddMessage(msg)
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -63,15 +65,17 @@ func Example_messageDelay() {
 
 func Example_rateLimit() {
 	start := time.Now()
-	q := memqueue.NewQueue(&msgqueue.Options{
-		Handler:   func() {},
+	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Redis:     redisRing(),
 		RateLimit: rate.Every(time.Second),
+	})
+	task := q.NewTask(&taskq.TaskOptions{
+		Handler: func() {},
 	})
 
 	const n = 5
 	for i := 0; i < n; i++ {
-		q.Call()
+		_ = task.Call()
 	}
 
 	// Wait for all messages to be processed.
@@ -82,17 +86,19 @@ func Example_rateLimit() {
 }
 
 func Example_once() {
-	q := memqueue.NewQueue(&msgqueue.Options{
+	q := memqueue.NewQueue(&taskq.QueueOptions{
+		Redis:     redisRing(),
+		RateLimit: rate.Every(time.Second),
+	})
+	task := q.NewTask(&taskq.TaskOptions{
 		Handler: func(name string) {
 			fmt.Println("hello", name)
 		},
-		Redis:     redisRing(),
-		RateLimit: rate.Every(time.Second),
 	})
 
 	for i := 0; i < 10; i++ {
 		// Call once in a second.
-		q.CallOnce(time.Second, "world")
+		_ = task.CallOnce(time.Second, "world")
 	}
 
 	// Wait for all messages to be processed.
