@@ -31,9 +31,9 @@ type Queue interface {
 	CloseTimeout(timeout time.Duration) error
 }
 
-// Manager is an interface that abstracts creation of new queues.
+// Factory is an interface that abstracts creation of new queues.
 // It is implemented in subpackages memqueue, azsqs, and ironmq.
-type Manager interface {
+type Factory interface {
 	NewQueue(*QueueOptions) Queue
 	Queues() []Queue
 }

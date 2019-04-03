@@ -18,18 +18,18 @@ import (
 	"github.com/vmihailenco/taskq/memqueue"
 )
 
-type manager struct {
+type factory struct {
 	cfg *iron_config.Settings
 }
 
-var _ taskq.Manager = (*manager)(nil)
+var _ taskq.Factory = (*factory)(nil)
 
-func (m *manager) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (m *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
 	q := mq.ConfigNew(opt.Name, m.cfg)
 	return NewQueue(q, opt)
 }
 
-func (manager) Queues() []taskq.Queue {
+func (factory) Queues() []taskq.Queue {
 	var queues []taskq.Queue
 	for _, q := range Queues() {
 		queues = append(queues, q)
@@ -37,8 +37,8 @@ func (manager) Queues() []taskq.Queue {
 	return queues
 }
 
-func NewManager(cfg *iron_config.Settings) taskq.Manager {
-	return &manager{
+func NewFactory(cfg *iron_config.Settings) taskq.Factory {
+	return &factory{
 		cfg: cfg,
 	}
 }

@@ -21,18 +21,18 @@ import (
 
 const delayUntilAttr = "TaskqDelayUntil"
 
-type manager struct {
+type factory struct {
 	sqs       *sqs.SQS
 	accountID string
 }
 
-var _ taskq.Manager = (*manager)(nil)
+var _ taskq.Factory = (*factory)(nil)
 
-func (m *manager) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (m *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
 	return NewQueue(m.sqs, m.accountID, opt)
 }
 
-func (manager) Queues() []taskq.Queue {
+func (factory) Queues() []taskq.Queue {
 	var queues []taskq.Queue
 	for _, q := range Queues() {
 		queues = append(queues, q)
@@ -40,8 +40,8 @@ func (manager) Queues() []taskq.Queue {
 	return queues
 }
 
-func NewManager(sqs *sqs.SQS, accountID string) taskq.Manager {
-	return &manager{
+func NewFactory(sqs *sqs.SQS, accountID string) taskq.Factory {
+	return &factory{
 		sqs:       sqs,
 		accountID: accountID,
 	}

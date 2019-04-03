@@ -11,15 +11,15 @@ import (
 	"github.com/vmihailenco/taskq/internal/base"
 )
 
-type manager struct{}
+type factory struct{}
 
-var _ taskq.Manager = (*manager)(nil)
+var _ taskq.Factory = (*factory)(nil)
 
-func (manager) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
 	return NewQueue(opt)
 }
 
-func (manager) Queues() []taskq.Queue {
+func (factory) Queues() []taskq.Queue {
 	var queues []taskq.Queue
 	for _, q := range Queues() {
 		queues = append(queues, q)
@@ -27,8 +27,8 @@ func (manager) Queues() []taskq.Queue {
 	return queues
 }
 
-func NewManager() taskq.Manager {
-	return manager{}
+func NewFactory() taskq.Factory {
+	return factory{}
 }
 
 type Queue struct {

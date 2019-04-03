@@ -68,7 +68,7 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func testConsumer(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testConsumer(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -116,7 +116,7 @@ func testConsumer(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testFallback(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testFallback(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -166,7 +166,7 @@ func testFallback(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testDelay(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testDelay(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -213,7 +213,7 @@ func testDelay(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testRetry(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testRetry(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -261,7 +261,7 @@ func testRetry(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testNamedMessage(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testNamedMessage(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -320,7 +320,7 @@ func testNamedMessage(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) 
 	}
 }
 
-func testCallOnce(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testCallOnce(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -374,7 +374,7 @@ func testCallOnce(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testLen(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testLen(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	const N = 10
 
 	t.Parallel()
@@ -410,7 +410,7 @@ func testLen(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testRateLimit(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testRateLimit(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -459,7 +459,7 @@ func testRateLimit(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testErrorDelay(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testErrorDelay(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -496,7 +496,7 @@ func testErrorDelay(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testWorkerLimit(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testWorkerLimit(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	opt.WaitTimeout = waitTimeout
@@ -535,7 +535,7 @@ func testWorkerLimit(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
 	}
 }
 
-func testInvalidCredentials(t *testing.T, man taskq.Manager, opt *taskq.QueueOptions) {
+func testInvalidCredentials(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 
 	q := man.NewQueue(opt)
@@ -568,7 +568,7 @@ func testInvalidCredentials(t *testing.T, man taskq.Manager, opt *taskq.QueueOpt
 }
 
 func testBatchConsumer(
-	t *testing.T, man taskq.Manager, opt *taskq.QueueOptions, messageSize int,
+	t *testing.T, man taskq.Factory, opt *taskq.QueueOptions, messageSize int,
 ) {
 	t.Parallel()
 
