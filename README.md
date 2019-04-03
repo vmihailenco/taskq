@@ -20,7 +20,7 @@ go get -u github.com/go-msgqueue/msgqueue
  - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
  - Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
- - Message compression using Snappy compressor via `Options.Compress`.
+ - Automatic message compression using Snappy.
  - Statistics.
 
 ## Design overview

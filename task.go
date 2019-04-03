@@ -13,9 +13,6 @@ type TaskOptions struct {
 	// Function called to process failed message.
 	FallbackHandler interface{}
 
-	// Compress data before sending to the queue.
-	Compress bool
-
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
 	// Default is 64 retries.
