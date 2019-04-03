@@ -95,6 +95,7 @@ func (q *Queue) initAddQueue() {
 		Redis:      q.opt.Redis,
 	})
 	q.addTask = q.addQueue.NewTask(&taskq.TaskOptions{
+		Name:            "add-message",
 		Handler:         taskq.HandlerFunc(q.addBatcherAdd),
 		FallbackHandler: msgutil.UnwrapMessageHandler(q.HandleMessage),
 		RetryLimit:      3,
@@ -115,6 +116,7 @@ func (q *Queue) initDelQueue() {
 		Redis:      q.opt.Redis,
 	})
 	q.delTask = q.delQueue.NewTask(&taskq.TaskOptions{
+		Name:       "delete-message",
 		Handler:    taskq.HandlerFunc(q.delBatcherAdd),
 		RetryLimit: 3,
 		MinBackoff: time.Second,

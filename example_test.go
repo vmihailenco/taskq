@@ -26,6 +26,7 @@ func Example_retryOnError() {
 	start := time.Now()
 	q := memqueue.NewQueue(&taskq.QueueOptions{})
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return errors.New("fake error")
@@ -48,6 +49,7 @@ func Example_messageDelay() {
 	start := time.Now()
 	q := memqueue.NewQueue(&taskq.QueueOptions{})
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() {
 			fmt.Println("processed with delay", timeSince(start))
 		},
@@ -70,6 +72,7 @@ func Example_rateLimit() {
 		RateLimit: rate.Every(time.Second),
 	})
 	task := q.NewTask(&taskq.TaskOptions{
+		Name:    "test",
 		Handler: func() {},
 	})
 
@@ -91,6 +94,7 @@ func Example_once() {
 		RateLimit: rate.Every(time.Second),
 	})
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(name string) {
 			fmt.Println("hello", name)
 		},

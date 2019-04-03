@@ -26,9 +26,6 @@ type TaskOptions struct {
 }
 
 func (opt *TaskOptions) init() {
-	if opt.Name == "" {
-		opt.Name = "default"
-	}
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 64
 	}

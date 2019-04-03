@@ -77,6 +77,7 @@ func testConsumer(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	ch := make(chan time.Time)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %s, wanted hello", hello)
@@ -126,6 +127,7 @@ func testFallback(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	ch := make(chan time.Time)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() error {
 			return errors.New("fake error")
 		},
@@ -175,6 +177,7 @@ func testDelay(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	handlerCh := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() {
 			handlerCh <- time.Now()
 		},
@@ -222,6 +225,7 @@ func testRetry(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	handlerCh := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %q, wanted hello", hello)
@@ -272,6 +276,7 @@ func testNamedMessage(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) 
 
 	ch := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(hello string) error {
 			if hello != "world" {
 				panic("hello != world")
@@ -331,6 +336,7 @@ func testCallOnce(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	ch := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() {
 			ch <- time.Now()
 		},
@@ -383,6 +389,7 @@ func testLen(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	task := q.NewTask(&taskq.TaskOptions{
+		Name:    "test",
 		Handler: func() {},
 	})
 
@@ -422,6 +429,7 @@ func testRateLimit(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	var count int64
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() {
 			atomic.AddInt64(&count, 1)
 		},
@@ -468,6 +476,7 @@ func testErrorDelay(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	handlerCh := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() error {
 			handlerCh <- time.Now()
 			return RateLimitError("fake error")
@@ -508,6 +517,7 @@ func testWorkerLimit(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 
 	ch := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() {
 			ch <- time.Now()
 			time.Sleep(time.Second)
@@ -542,6 +552,7 @@ func testInvalidCredentials(t *testing.T, man taskq.Factory, opt *taskq.QueueOpt
 
 	ch := make(chan time.Time, 10)
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(s1, s2 string) {
 			if s1 != "hello" {
 				t.Fatalf("got %q, wanted hello", s1)
@@ -583,6 +594,7 @@ func testBatchConsumer(
 	purge(t, q)
 
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func(s string) {
 			defer wg.Done()
 			if s != payload {
@@ -651,6 +663,7 @@ func purge(t *testing.T, q taskq.Queue) {
 	}
 
 	_ = q.NewTask(&taskq.TaskOptions{
+		Name:    "test",
 		Handler: func() {},
 	})
 

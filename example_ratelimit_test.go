@@ -22,6 +22,7 @@ func Example_customRateLimit() {
 	start := time.Now()
 	q := memqueue.NewQueue(&taskq.QueueOptions{})
 	task := q.NewTask(&taskq.TaskOptions{
+		Name: "test",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return RateLimitError("calm down")
