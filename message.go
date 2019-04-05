@@ -7,9 +7,10 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/vmihailenco/taskq/internal"
-
+	"github.com/valyala/gozstd"
 	"github.com/vmihailenco/msgpack"
+
+	"github.com/vmihailenco/taskq/internal"
 )
 
 // ErrDuplicate is returned when adding duplicate message to the queue.
@@ -32,7 +33,8 @@ type Message struct {
 	Args []interface{} `msgpack:"-"`
 
 	// Binary representation of the args.
-	ArgsBin []byte
+	ArgsCompressed bool
+	ArgsBin        []byte
 
 	// SQS/IronMQ reservation id that is used to release/delete the message.
 	ReservationID string `msgpack:"-"`
@@ -69,10 +71,12 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 	if m.ArgsBin != nil {
 		return m.ArgsBin, nil
 	}
+
 	b, err := msgpack.Marshal(m.Args)
 	if err != nil {
 		return nil, err
 	}
+
 	m.ArgsBin = b
 	return b, nil
 }
@@ -90,6 +94,14 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+	if len(m.ArgsBin) > 512 {
+		compressed := gozstd.Compress(nil, m.ArgsBin)
+		if len(compressed) < len(m.ArgsBin) {
+			m.ArgsCompressed = true
+			m.ArgsBin = compressed
+		}
+	}
+
 	b, err := msgpack.Marshal(m)
 	if err != nil {
 		return nil, err
@@ -100,7 +112,22 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 }
 
 func (m *Message) UnmarshalBinary(b []byte) error {
-	return msgpack.Unmarshal(b, m)
+	err := msgpack.Unmarshal(b, m)
+	if err != nil {
+		return err
+	}
+
+	if m.ArgsCompressed {
+		b, err = gozstd.Decompress(nil, b)
+		if err != nil {
+			return err
+		}
+
+		m.ArgsCompressed = false
+		m.ArgsBin = b
+	}
+
+	return nil
 }
 
 func timeSlot(period time.Duration) int64 {
