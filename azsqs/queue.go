@@ -1,7 +1,6 @@
 package azsqs
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -261,7 +260,7 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 		msg := new(taskq.Message)
 
 		if *sqsMsg.Body != "_" {
-			b, err := base64.RawStdEncoding.DecodeString(*sqsMsg.Body)
+			b, err := internal.DecodeString(*sqsMsg.Body)
 			if err != nil {
 				return nil, err
 			}
@@ -403,7 +402,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 			continue
 		}
 
-		body := base64.RawStdEncoding.EncodeToString(b)
+		body := internal.EncodeToString(b)
 		if body == "" {
 			body = "_" // SQS requires body.
 		}
@@ -481,7 +480,7 @@ func (q *Queue) batchSize(batch []*taskq.Message) int {
 			continue
 		}
 
-		size += base64.RawStdEncoding.EncodedLen(len(b))
+		size += internal.MaxEncodedLen(len(b))
 	}
 	return size
 }

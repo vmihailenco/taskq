@@ -1,7 +1,6 @@
 package ironmq
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -196,7 +195,7 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 
 	msgs := make([]*taskq.Message, 0, len(mqMsgs))
 	for _, mqMsg := range mqMsgs {
-		b, err := base64.RawStdEncoding.DecodeString(mqMsg.Body)
+		b, err := internal.DecodeString(mqMsg.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +282,7 @@ func (q *Queue) add(msg *taskq.Message) error {
 	}
 
 	id, err := q.q.PushMessage(mq.Message{
-		Body:  base64.RawStdEncoding.EncodeToString(b),
+		Body:  internal.EncodeToString(b),
 		Delay: int64(msg.Delay / time.Second),
 	})
 	if err != nil {
