@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vmihailenco/taskq/internal"
-
 	lock "github.com/bsm/redis-lock"
 	"golang.org/x/time/rate"
+
+	"github.com/vmihailenco/taskq/internal"
 )
 
 const timePrecision = time.Microsecond
@@ -563,10 +563,7 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		timeout = timer.C
 	}
 
-	if p.opt.WorkerLimit > 0 {
-		defer p.unlockWorker(workerID)
-	}
-
+	var unlockDeferred bool
 	for {
 		if workerID >= atomic.LoadInt32(&p.workerNumber) {
 			return
@@ -575,6 +572,10 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		if p.opt.WorkerLimit > 0 {
 			if !p.lockWorker(workerID, stop) {
 				return
+			}
+			if !unlockDeferred {
+				defer p.unlockWorker(workerID)
+				unlockDeferred = true
 			}
 		}
 
