@@ -195,20 +195,20 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 
 	msgs := make([]*taskq.Message, 0, len(mqMsgs))
 	for _, mqMsg := range mqMsgs {
-		b, err := internal.DecodeString(mqMsg.Body)
-		if err != nil {
-			return nil, err
-		}
-
 		msg := new(taskq.Message)
-		err = msg.UnmarshalBinary(b)
-		if err != nil {
-			return nil, err
-		}
-
 		msg.ID = mqMsg.Id
 		msg.ReservationID = mqMsg.ReservationId
 		msg.ReservedCount = mqMsg.ReservedCount
+
+		b, err := internal.DecodeString(mqMsg.Body)
+		if err != nil {
+			msg.StickyErr = err
+		} else {
+			err = msg.UnmarshalBinary(b)
+			if err != nil {
+				msg.StickyErr = err
+			}
+		}
 
 		msgs = append(msgs, msg)
 	}

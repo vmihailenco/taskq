@@ -659,6 +659,11 @@ func (p *Consumer) process(msg *Message) error {
 		return nil
 	}
 
+	if msg.StickyErr != nil {
+		p.Put(msg, msg.StickyErr)
+		return msg.StickyErr
+	}
+
 	err := p.q.HandleMessage(msg)
 	if err == nil {
 		p.resetPause()

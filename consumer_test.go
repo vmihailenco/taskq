@@ -3,6 +3,7 @@ package taskq_test
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"runtime"
 	"strings"
 	"sync"
@@ -584,7 +585,12 @@ func testBatchConsumer(
 	t.Parallel()
 
 	const N = 16
-	payload := strings.Repeat("x", messageSize)
+
+	payload := make([]byte, messageSize)
+	_, err := rand.Read(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(N)
@@ -597,7 +603,7 @@ func testBatchConsumer(
 		Name: "test",
 		Handler: func(s string) {
 			defer wg.Done()
-			if s != payload {
+			if s != string(payload) {
 				t.Fatalf("s != largeStr")
 			}
 		},
@@ -673,7 +679,7 @@ func purge(t *testing.T, q taskq.Queue) {
 		t.Fatal(err)
 	}
 
-	q.RemoveTask("default")
+	q.RemoveTask("test")
 }
 
 func eventually(fn func() error, timeout time.Duration) error {

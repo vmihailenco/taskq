@@ -29,7 +29,7 @@ func (q *Queue) task(taskName string) (*taskq.Task, error) {
 func (q *Queue) NewTask(queue taskq.Queue, opt *taskq.TaskOptions) *taskq.Task {
 	task, ok := q.tasks[opt.Name]
 	if ok {
-		panic(fmt.Errorf("% already has %s", q, task))
+		panic(fmt.Errorf("%s is already registered", task))
 	}
 	task = taskq.NewTask(queue, opt)
 	if q.tasks == nil {

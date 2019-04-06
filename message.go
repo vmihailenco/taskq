@@ -118,7 +118,7 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	}
 
 	if m.ArgsCompressed {
-		b, err = gozstd.Decompress(nil, b)
+		b, err = gozstd.Decompress(nil, m.ArgsBin)
 		if err != nil {
 			return err
 		}

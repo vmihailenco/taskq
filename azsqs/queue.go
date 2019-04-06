@@ -258,19 +258,6 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 	msgs := make([]*taskq.Message, 0, len(out.Messages))
 	for _, sqsMsg := range out.Messages {
 		msg := new(taskq.Message)
-
-		if *sqsMsg.Body != "_" {
-			b, err := internal.DecodeString(*sqsMsg.Body)
-			if err != nil {
-				return nil, err
-			}
-
-			err = msg.UnmarshalBinary(b)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		msg.ReservationID = *sqsMsg.ReceiptHandle
 
 		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
@@ -290,6 +277,18 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 			msg.Delay = until.Sub(time.Now())
 			if msg.Delay < 0 {
 				msg.Delay = 0
+			}
+		}
+
+		if *sqsMsg.Body != "_" {
+			b, err := internal.DecodeString(*sqsMsg.Body)
+			if err != nil {
+				msg.StickyErr = err
+			} else {
+				err = msg.UnmarshalBinary(b)
+				if err != nil {
+					msg.StickyErr = err
+				}
 			}
 		}
 

@@ -18,7 +18,7 @@ func EncodeToString(src []byte) string {
 
 func DecodeString(src string) ([]byte, error) {
 	dst := make([]byte, len(src))
-	ndst, nsrc, err := ascii85.Decode(dst, StringToBytes(src), false)
+	ndst, nsrc, err := ascii85.Decode(dst, StringToBytes(src), true)
 	if err != nil {
 		return nil, err
 	}
