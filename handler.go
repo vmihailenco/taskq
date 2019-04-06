@@ -49,8 +49,17 @@ func NewHandler(fn interface{}) Handler {
 	}
 
 	h.returnsError = returnsError(h.ft)
-	if h.returnsError && acceptsMessage(h.ft) {
-		return HandlerFunc(fn.(func(*Message) error))
+	if acceptsMessage(h.ft) {
+		if h.returnsError {
+			return HandlerFunc(fn.(func(*Message) error))
+		}
+		if h.ft.NumOut() == 0 {
+			theFn := fn.(func(*Message))
+			return HandlerFunc(func(msg *Message) error {
+				theFn(msg)
+				return nil
+			})
+		}
 	}
 
 	return &h

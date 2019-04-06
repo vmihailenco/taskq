@@ -20,6 +20,12 @@ func TestIronmqConsumer(t *testing.T) {
 	})
 }
 
+func TestIronmqUnknownTask(t *testing.T) {
+	testUnknownTask(t, ironmqFactory(), &taskq.QueueOptions{
+		Name: queueName("ironmq-unknown-task"),
+	})
+}
+
 func TestIronmqFallback(t *testing.T) {
 	testFallback(t, ironmqFactory(), &taskq.QueueOptions{
 		Name: queueName("ironmq-fallback"),

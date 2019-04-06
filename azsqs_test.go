@@ -31,6 +31,12 @@ func TestSQSConsumer(t *testing.T) {
 	})
 }
 
+func TestSQSUnknownTask(t *testing.T) {
+	testUnknownTask(t, azsqsFactory(), &taskq.QueueOptions{
+		Name: queueName("unknown-task"),
+	})
+}
+
 func TestSQSFallback(t *testing.T) {
 	testFallback(t, azsqsFactory(), &taskq.QueueOptions{
 		Name: queueName("fallback"),

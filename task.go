@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+var unknownTaskOpt *TaskOptions
+
+func init() {
+	SetUnknownTaskOptions(&TaskOptions{})
+}
+
+func SetUnknownTaskOptions(opt *TaskOptions) {
+	opt.init()
+	unknownTaskOpt = opt
+}
+
 type TaskOptions struct {
 	Name string
 
@@ -23,9 +34,15 @@ type TaskOptions struct {
 	// Maximum backoff time between retries.
 	// Default is 30 minutes.
 	MaxBackoff time.Duration
+
+	inited bool
 }
 
 func (opt *TaskOptions) init() {
+	if !opt.inited {
+		opt.inited = true
+		return
+	}
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 64
 	}
@@ -47,14 +64,17 @@ type Task struct {
 
 func NewTask(queue Queue, opt *TaskOptions) *Task {
 	opt.init()
+
 	t := &Task{
 		queue: queue,
 		opt:   opt,
 	}
+
 	t.handler = NewHandler(opt.Handler)
 	if opt.FallbackHandler != nil {
 		t.fallbackHandler = NewHandler(opt.FallbackHandler)
 	}
+
 	return t
 }
 

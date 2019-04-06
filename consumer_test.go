@@ -118,6 +118,43 @@ func testConsumer(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
+func testUnknownTask(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
+	t.Parallel()
+
+	opt.WaitTimeout = waitTimeout
+	q := man.NewQueue(opt)
+	purge(t, q)
+
+	_ = q.NewTask(&taskq.TaskOptions{
+		Name:    "test",
+		Handler: func() {},
+	})
+
+	taskq.SetUnknownTaskOptions(&taskq.TaskOptions{
+		RetryLimit: 1,
+	})
+
+	msg := taskq.NewMessage()
+	msg.TaskName = "unknown"
+	err := q.Add(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := q.Consumer()
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testFallback(t *testing.T, man taskq.Factory, opt *taskq.QueueOptions) {
 	t.Parallel()
 

@@ -684,7 +684,13 @@ func (p *Consumer) Put(msg *Message, msgErr error) {
 	if msg.Task == nil {
 		msg.Task = p.q.GetTask(msg.TaskName)
 	}
-	opt := msg.Task.Options()
+
+	var opt *TaskOptions
+	if msg.Task != nil {
+		opt = msg.Task.Options()
+	} else {
+		opt = unknownTaskOpt
+	}
 
 	atomic.AddUint32(&p.errCount, 1)
 	if msg.ReservedCount < opt.RetryLimit {
