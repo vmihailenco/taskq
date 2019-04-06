@@ -39,10 +39,11 @@ type TaskOptions struct {
 }
 
 func (opt *TaskOptions) init() {
-	if !opt.inited {
-		opt.inited = true
+	if opt.inited {
 		return
 	}
+	opt.inited = true
+
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 64
 	}
