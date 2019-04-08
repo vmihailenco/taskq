@@ -46,7 +46,7 @@ type Message struct {
 	Task      *Task `msgpack:"-"`
 	StickyErr error `msgpack:"-"`
 
-	bin []byte
+	marshalBinaryCache []byte
 }
 
 func NewMessage(args ...interface{}) *Message {
@@ -68,25 +68,30 @@ func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
+	if m.TaskName == "" {
+		return nil, internal.ErrTaskNameRequired
+	}
+
 	if m.ArgsBin != nil {
-		return m.ArgsBin, nil
+		if !m.ArgsCompressed {
+			return m.ArgsBin, nil
+		}
+		if m.Args == nil {
+			return gozstd.Decompress(nil, m.ArgsBin)
+		}
 	}
 
 	b, err := msgpack.Marshal(m.Args)
 	if err != nil {
 		return nil, err
 	}
-
 	m.ArgsBin = b
 	return b, nil
 }
 
 func (m *Message) MarshalBinary() ([]byte, error) {
-	if m.TaskName == "" {
-		return nil, internal.ErrTaskNameRequired
-	}
-	if m.bin != nil {
-		return m.bin, nil
+	if m.marshalBinaryCache != nil {
+		return m.marshalBinaryCache, nil
 	}
 
 	_, err := m.MarshalArgs()
@@ -94,7 +99,7 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if len(m.ArgsBin) > 512 {
+	if !m.ArgsCompressed && len(m.ArgsBin) > 512 {
 		compressed := gozstd.Compress(nil, m.ArgsBin)
 		if len(compressed) < len(m.ArgsBin) {
 			m.ArgsCompressed = true
@@ -107,7 +112,7 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	m.bin = b
+	m.marshalBinaryCache = b
 	return b, nil
 }
 
@@ -143,7 +148,7 @@ func hashArgs(args []interface{}) []byte {
 	_ = enc.EncodeMulti(args...)
 	b := buf.Bytes()
 
-	if len(b) <= 64 {
+	if len(b) <= 128 {
 		return b
 	}
 

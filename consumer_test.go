@@ -641,7 +641,7 @@ func testBatchConsumer(
 		Handler: func(s string) {
 			defer wg.Done()
 			if s != string(payload) {
-				t.Fatalf("s != largeStr")
+				t.Fatalf("s != payload")
 			}
 		},
 	})

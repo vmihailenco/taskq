@@ -397,7 +397,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
-			internal.Logf("azsqs: MarshalBinary failed: %s", err)
+			internal.Logf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}
 
@@ -475,7 +475,7 @@ func (q *Queue) batchSize(batch []*taskq.Message) int {
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
-			internal.Logf("azsqs: Message.EncodeBody failed: %s", err)
+			internal.Logf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}
 
