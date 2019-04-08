@@ -66,34 +66,9 @@ func NewHandler(fn interface{}) Handler {
 }
 
 func (h *reflectFunc) HandleMessage(msg *Message) error {
-	b, err := msg.MarshalArgs()
+	in, err := h.fnArgs(msg)
 	if err != nil {
 		return err
-	}
-
-	dec := msgpack.NewDecoder(bytes.NewBuffer(b))
-	n, err := dec.DecodeArrayLen()
-	if err != nil {
-		return err
-	}
-
-	if n == -1 {
-		n = 0
-	}
-	if n != h.ft.NumIn() {
-		return fmt.Errorf("taskq: got %d args, wanted %d", n, h.ft.NumIn())
-	}
-
-	in := make([]reflect.Value, h.ft.NumIn())
-	for i := 0; i < h.ft.NumIn(); i++ {
-		arg := reflect.New(h.ft.In(i)).Elem()
-		err = dec.DecodeValue(arg)
-		if err != nil {
-			err = fmt.Errorf(
-				"taskq: decoding arg=%d failed (data=%.100x): %s", i, b, err)
-			return err
-		}
-		in[i] = arg
 	}
 
 	out := h.fv.Call(in)
@@ -105,6 +80,56 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	}
 
 	return nil
+}
+
+func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
+	in := make([]reflect.Value, h.ft.NumIn())
+
+	if len(msg.Args) == len(in) {
+		var hasWrongType bool
+		for i, arg := range msg.Args {
+			v := reflect.ValueOf(arg)
+			if v.Type() != h.ft.In(i) {
+				hasWrongType = true
+				break
+			}
+			in[i] = v
+		}
+		if !hasWrongType {
+			return in, nil
+		}
+	}
+
+	b, err := msg.MarshalArgs()
+	if err != nil {
+		return nil, err
+	}
+
+	dec := msgpack.NewDecoder(bytes.NewBuffer(b))
+	n, err := dec.DecodeArrayLen()
+	if err != nil {
+		return nil, err
+	}
+
+	if n == -1 {
+		n = 0
+	}
+	if n != len(in) {
+		return nil, fmt.Errorf("taskq: got %d args, wanted %d", n, len(in))
+	}
+
+	for i := 0; i < len(in); i++ {
+		arg := reflect.New(h.ft.In(i)).Elem()
+		err = dec.DecodeValue(arg)
+		if err != nil {
+			err = fmt.Errorf(
+				"taskq: decoding arg=%d failed (data=%.100x): %s", i, b, err)
+			return nil, err
+		}
+		in[i] = arg
+	}
+
+	return in, nil
 }
 
 func acceptsMessage(typ reflect.Type) bool {
