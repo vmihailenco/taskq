@@ -18,6 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+const msgSizeLimit = 262144
+
 const delayUntilAttr = "TaskqDelayUntil"
 
 type factory struct {
@@ -401,14 +403,19 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 			continue
 		}
 
-		body := internal.EncodeToString(b)
-		if body == "" {
-			body = "_" // SQS requires body.
+		str := internal.EncodeToString(b)
+		if str == "" {
+			str = "_" // SQS requires body.
+		}
+
+		if len(str) > msgSizeLimit {
+			internal.Logf("azsqs: str=%d bytes=%d is larger than %d",
+				len(str), len(b), msgSizeLimit)
 		}
 
 		entry := &sqs.SendMessageBatchRequestEntry{
 			Id:          aws.String(strconv.Itoa(i)),
-			MessageBody: aws.String(body),
+			MessageBody: aws.String(str),
 		}
 		if msg.Delay <= maxDelay {
 			entry.DelaySeconds = aws.Int64(int64(msg.Delay / time.Second))
