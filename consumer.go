@@ -725,11 +725,11 @@ func (p *Consumer) release(msg *Message, msgErr error) {
 		}
 
 		internal.Logf("%s handler failed (will retry=%d in dur=%s): %s",
-			p.q, msg.ReservedCount, msg.Delay, msgErr)
+			msg.Task, msg.ReservedCount, msg.Delay, msgErr)
 	}
 
 	if err := p.q.Release(msg); err != nil {
-		internal.Logf("%s Release failed: %s", p.q, err)
+		internal.Logf("%s Release failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
@@ -737,16 +737,16 @@ func (p *Consumer) release(msg *Message, msgErr error) {
 func (p *Consumer) delete(msg *Message, err error) {
 	if err != nil {
 		internal.Logf("%s handler failed after retry=%d: %s",
-			p.q, msg.ReservedCount, err)
+			msg.Task, msg.ReservedCount, err)
 
 		msg.StickyErr = err
 		if err := p.q.HandleMessage(msg); err != nil {
-			internal.Logf("%s fallback handler failed: %s", p.q, err)
+			internal.Logf("%s fallback handler failed: %s", msg.Task, err)
 		}
 	}
 
 	if err := p.q.Delete(msg); err != nil {
-		internal.Logf("%s Delete failed: %s", p.q, err)
+		internal.Logf("%s Delete failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }

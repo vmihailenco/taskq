@@ -8,7 +8,9 @@ import (
 var unknownTaskOpt *TaskOptions
 
 func init() {
-	SetUnknownTaskOptions(&TaskOptions{})
+	SetUnknownTaskOptions(&TaskOptions{
+		Name: "unknown",
+	})
 }
 
 func SetUnknownTaskOptions(opt *TaskOptions) {

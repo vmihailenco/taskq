@@ -409,8 +409,8 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 		}
 
 		if len(str) > msgSizeLimit {
-			internal.Logf("azsqs: str=%d bytes=%d is larger than %d",
-				len(str), len(b), msgSizeLimit)
+			internal.Logf("%s: str=%d bytes=%d is larger than %d",
+				msg.Task, len(str), len(b), msgSizeLimit)
 		}
 
 		entry := &sqs.SendMessageBatchRequestEntry{
