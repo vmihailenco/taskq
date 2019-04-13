@@ -5,22 +5,21 @@ import (
 	"sync"
 )
 
-const redisQueuesKey = "queues:sqs"
-
 var (
-	queuesMu sync.Mutex
+	queuesMu sync.RWMutex
 	queues   []*Queue
 )
 
 func Queues() []*Queue {
-	defer queuesMu.Unlock()
-	queuesMu.Lock()
+	queuesMu.RLock()
+	defer queuesMu.RUnlock()
+
 	return queues
 }
 
 func registerQueue(queue *Queue) {
-	defer queuesMu.Unlock()
 	queuesMu.Lock()
+	defer queuesMu.Unlock()
 
 	if queue.Name() == "" {
 		return
@@ -33,8 +32,4 @@ func registerQueue(queue *Queue) {
 	}
 
 	queues = append(queues, queue)
-	if queue.opt.Redis != nil {
-		queue.opt.Redis.SAdd(redisQueuesKey, queue.Name())
-		queue.opt.Redis.Publish(redisQueuesKey, queue.Name())
-	}
 }

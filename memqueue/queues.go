@@ -6,13 +6,13 @@ import (
 )
 
 var (
-	queuesMu sync.Mutex
-	queues   = make(map[string]*Queue)
+	queuesMu sync.RWMutex
+	queues   map[string]*Queue
 )
 
 func Queues() []*Queue {
-	defer queuesMu.Unlock()
-	queuesMu.Lock()
+	queuesMu.RLock()
+	defer queuesMu.RUnlock()
 
 	qs := make([]*Queue, 0, len(queues))
 	for _, q := range queues {
@@ -27,6 +27,10 @@ func registerQueue(queue *Queue) {
 
 	if queue.Name() == "" {
 		return
+	}
+
+	if queues == nil {
+		queues = make(map[string]*Queue)
 	}
 
 	if _, ok := queues[queue.Name()]; ok {
