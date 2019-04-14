@@ -23,7 +23,7 @@ type Queue interface {
 
 	Len() (int, error)
 	Add(msg *Message) error
-	ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*Message, error)
+	ReserveN(n int, waitTimeout time.Duration) ([]Message, error)
 	Release(*Message) error
 	Delete(msg *Message) error
 	Purge() error
@@ -41,14 +41,13 @@ type Factory interface {
 type Redis interface {
 	Del(keys ...string) *redis.IntCmd
 	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
-	SAdd(key string, members ...interface{}) *redis.IntCmd
-	SMembers(key string) *redis.StringSliceCmd
 	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
+
+	// Required by redlock
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
 	EvalSha(sha1 string, keys []string, args ...interface{}) *redis.Cmd
 	ScriptExists(scripts ...string) *redis.BoolSliceCmd
 	ScriptLoad(script string) *redis.StringCmd
-	Publish(channel string, message interface{}) *redis.IntCmd
 }
 
 type Storage interface {
@@ -86,9 +85,10 @@ type RateLimiter interface {
 type QueueOptions struct {
 	// Queue name.
 	Name string
-	// Queue group name.
-	GroupName string
 
+	// Minimum number of goroutines processing messages.
+	// Default is 1.
+	MinWorkers int
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
 	MaxWorkers int
@@ -138,12 +138,11 @@ func (opt *QueueOptions) Init() {
 	}
 	opt.inited = true
 
-	if opt.GroupName == "" {
-		opt.GroupName = opt.Name
-	}
-
 	if opt.WorkerLimit > 0 {
 		opt.MaxWorkers = opt.WorkerLimit
+	}
+	if opt.MinWorkers == 0 {
+		opt.MinWorkers = 1
 	}
 	if opt.MaxWorkers == 0 {
 		opt.MaxWorkers = 32 * runtime.NumCPU()

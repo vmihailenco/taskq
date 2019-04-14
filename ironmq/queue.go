@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/iron-io/iron_go3/api"
-	iron_config "github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 
 	"github.com/vmihailenco/taskq"
@@ -17,36 +16,11 @@ import (
 	"github.com/vmihailenco/taskq/memqueue"
 )
 
-type factory struct {
-	cfg *iron_config.Settings
-}
-
-var _ taskq.Factory = (*factory)(nil)
-
-func (m *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
-	q := mq.ConfigNew(opt.Name, m.cfg)
-	return NewQueue(q, opt)
-}
-
-func (factory) Queues() []taskq.Queue {
-	var queues []taskq.Queue
-	for _, q := range Queues() {
-		queues = append(queues, q)
-	}
-	return queues
-}
-
-func NewFactory(cfg *iron_config.Settings) taskq.Factory {
-	return &factory{
-		cfg: cfg,
-	}
-}
-
 type Queue struct {
 	base base.Queue
+	opt  *taskq.QueueOptions
 
-	q   mq.Queue
-	opt *taskq.QueueOptions
+	q mq.Queue
 
 	addQueue *memqueue.Queue
 	addTask  *taskq.Task
@@ -66,7 +40,7 @@ func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 	}
 	opt.Init()
 
-	q := Queue{
+	q := &Queue{
 		q:   mqueue,
 		opt: opt,
 	}
@@ -74,15 +48,12 @@ func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 	q.initAddQueue()
 	q.initDelQueue()
 
-	registerQueue(&q)
-	return &q
+	return q
 }
 
 func (q *Queue) initAddQueue() {
 	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:      "ironmq:" + q.opt.Name + ":add",
-		GroupName: q.opt.GroupName,
-
+		Name:       "ironmq:" + q.opt.Name + ":add",
 		BufferSize: 1000,
 		Redis:      q.opt.Redis,
 	})
@@ -97,9 +68,7 @@ func (q *Queue) initAddQueue() {
 
 func (q *Queue) initDelQueue() {
 	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:      "ironmq:" + q.opt.Name + ":delete",
-		GroupName: q.opt.GroupName,
-
+		Name:       "ironmq:" + q.opt.Name + ":delete",
 		BufferSize: 1000,
 		Redis:      q.opt.Redis,
 	})
@@ -172,12 +141,12 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	return q.addTask.AddMessage(msg)
 }
 
-func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*taskq.Message, error) {
+func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
 	if n > 100 {
 		n = 100
 	}
 
-	reservationSecs := int(reservationTimeout / time.Second)
+	reservationSecs := int(q.opt.ReservationTimeout / time.Second)
 	waitSecs := int(waitTimeout / time.Second)
 
 	mqMsgs, err := q.q.LongPoll(n, reservationSecs, waitSecs, false)
@@ -193,12 +162,9 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 		return nil, err
 	}
 
-	msgs := make([]*taskq.Message, 0, len(mqMsgs))
-	for _, mqMsg := range mqMsgs {
-		msg := new(taskq.Message)
-		msg.ID = mqMsg.Id
-		msg.ReservationID = mqMsg.ReservationId
-		msg.ReservedCount = mqMsg.ReservedCount
+	msgs := make([]taskq.Message, len(mqMsgs))
+	for i, mqMsg := range mqMsgs {
+		msg := &msgs[i]
 
 		b, err := internal.DecodeString(mqMsg.Body)
 		if err != nil {
@@ -210,7 +176,9 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 			}
 		}
 
-		msgs = append(msgs, msg)
+		msg.ID = mqMsg.Id
+		msg.ReservationID = mqMsg.ReservationId
+		msg.ReservedCount = mqMsg.ReservedCount
 	}
 
 	return msgs, nil
@@ -319,7 +287,7 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 		return q.q.DeleteReservedMessages(mqMsgs)
 	})
 	if err != nil {
-		internal.Logf("ironmq: DeleteReservedMessages failed: %s", err)
+		internal.Logger.Printf("ironmq: DeleteReservedMessages failed: %s", err)
 		return err
 	}
 

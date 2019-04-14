@@ -11,26 +11,6 @@ import (
 	"github.com/vmihailenco/taskq/internal/base"
 )
 
-type factory struct{}
-
-var _ taskq.Factory = (*factory)(nil)
-
-func (factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
-	return NewQueue(opt)
-}
-
-func (factory) Queues() []taskq.Queue {
-	var queues []taskq.Queue
-	for _, q := range Queues() {
-		queues = append(queues, q)
-	}
-	return queues
-}
-
-func NewFactory() taskq.Factory {
-	return factory{}
-}
-
 type Queue struct {
 	base base.Queue
 
@@ -48,16 +28,15 @@ var _ taskq.Queue = (*Queue)(nil)
 func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
-	q := Queue{
+	q := &Queue{
 		opt: opt,
 	}
-	q.consumer = taskq.NewConsumer(&q)
+	q.consumer = taskq.NewConsumer(q)
 	if err := q.consumer.Start(); err != nil {
 		panic(err)
 	}
 
-	registerQueue(&q)
-	return &q
+	return q
 }
 
 func (q *Queue) Name() string {
@@ -107,8 +86,6 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	defer unregisterQueue(q)
-
 	done := make(chan struct{}, 1)
 	timeoutCh := time.After(timeout)
 
@@ -135,9 +112,6 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if !q.isUniqueName(msg.Name) {
-		return taskq.ErrDuplicate
-	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
@@ -154,19 +128,7 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	return q.consumer.Add(msg)
 }
 
-func (q *Queue) isUniqueName(name string) bool {
-	const redisPrefix = "memqueue"
-
-	if name == "" {
-		return true
-	}
-
-	key := fmt.Sprintf("%s:%s:%s", redisPrefix, q.opt.GroupName, name)
-	exists := q.opt.Storage.Exists(key)
-	return !exists
-}
-
-func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*taskq.Message, error) {
+func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 

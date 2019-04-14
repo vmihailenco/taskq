@@ -76,7 +76,7 @@ func TestIronmqErrorDelay(t *testing.T) {
 
 func TestIronmqWorkerLimit(t *testing.T) {
 	testWorkerLimit(t, ironmqFactory(), &taskq.QueueOptions{
-		Name: queueName("worker-limit"),
+		Name: queueName("ironmq-worker-limit"),
 	})
 }
 
@@ -86,6 +86,6 @@ func TestIronmqInvalidCredentials(t *testing.T) {
 	}
 	factory := ironmq.NewFactory(settings)
 	testInvalidCredentials(t, factory, &taskq.QueueOptions{
-		Name: queueName("invalid-credentials"),
+		Name: queueName("ironmq-invalid-credentials"),
 	})
 }
