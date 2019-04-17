@@ -61,6 +61,9 @@ type Task struct {
 	queue Queue
 	opt   *TaskOptions
 
+	storage    Storage
+	namePrefix string
+
 	handler         Handler
 	fallbackHandler Handler
 }
@@ -68,9 +71,13 @@ type Task struct {
 func NewTask(queue Queue, opt *TaskOptions) *Task {
 	opt.init()
 
+	qopt := queue.Options()
 	t := &Task{
 		queue: queue,
 		opt:   opt,
+
+		storage:    queue.Options().Storage,
+		namePrefix: fmt.Sprintf("taskq:%s:%s:", qopt.Name, opt.Name),
 	}
 
 	t.handler = NewHandler(opt.Handler)
@@ -101,6 +108,10 @@ func (t *Task) HandleMessage(msg *Message) error {
 
 // AddMessage adds message to the queue.
 func (t *Task) AddMessage(msg *Message) error {
+	if !t.isUniqueName(msg.Name) {
+		return ErrDuplicate
+	}
+
 	msg.TaskName = t.opt.Name
 	msg.Task = t
 	return t.queue.Add(msg)
@@ -118,4 +129,12 @@ func (t *Task) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := NewMessage(args...)
 	msg.SetDelayName(period, args...)
 	return t.AddMessage(msg)
+}
+
+func (t *Task) isUniqueName(name string) bool {
+	if name == "" {
+		return true
+	}
+	exists := t.storage.Exists(t.namePrefix + name)
+	return !exists
 }

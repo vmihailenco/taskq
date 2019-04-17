@@ -19,7 +19,7 @@ var ErrDuplicate = errors.New("taskq: message with such name already exists")
 // Message is used to create and retrieve messages from a queue.
 type Message struct {
 	// SQS/IronMQ message id.
-	ID string `msgpack:"-"`
+	ID string `msgpack:",omitempty"`
 
 	// Optional name for the message. Messages with the same name
 	// are processed only once.
@@ -40,7 +40,7 @@ type Message struct {
 	ReservationID string `msgpack:"-"`
 
 	// The number of times the message has been reserved or released.
-	ReservedCount int `msgpack:"-"`
+	ReservedCount int
 
 	TaskName  string
 	Task      *Task `msgpack:"-"`

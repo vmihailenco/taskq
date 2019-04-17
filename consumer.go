@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	lock "github.com/bsm/redis-lock"
+	redlock "github.com/bsm/redis-lock"
 	"golang.org/x/time/rate"
 
 	"github.com/vmihailenco/taskq/internal"
@@ -108,13 +108,13 @@ type Consumer struct {
 	q   Queue
 	opt *QueueOptions
 
+	rand    *rand.Rand
 	buffer  chan *Message
 	limiter *limiter
 
 	stopCh chan struct{}
 
 	workerNumber  int32 // atomic
-	workerLocks   []*lock.Locker
 	fetcherNumber int32 // atomic
 
 	jobsWG sync.WaitGroup
@@ -145,6 +145,7 @@ func NewConsumer(q Queue) *Consumer {
 		q:   q,
 		opt: opt,
 
+		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
 		buffer: make(chan *Message, opt.BufferSize),
 		limiter: &limiter{
 			bucket:  q.Name(),
@@ -218,7 +219,7 @@ func (p *Consumer) add(msg *Message) {
 // Start starts consuming messages in the queue.
 func (p *Consumer) Start() error {
 	if p.stopCh != nil {
-		return errors.New("Consumer is already started")
+		return errors.New("taskq: Consumer is already started")
 	}
 
 	stop := make(chan struct{})
@@ -227,36 +228,34 @@ func (p *Consumer) Start() error {
 	atomic.StoreInt32(&p.fetcherNumber, 0)
 	atomic.StoreInt32(&p.workerNumber, 0)
 
-	p.addWorker(stop)
+	for i := 0; i < p.opt.MinWorkers; i++ {
+		p.addWorker(stop)
+	}
 
 	p.jobsWG.Add(1)
-	go p.autotune(stop)
+	go func() {
+		defer p.jobsWG.Done()
+		p.autotune(stop)
+	}()
 
 	return nil
 }
 
 func (p *Consumer) addWorker(stop <-chan struct{}) int32 {
+	// TODO: compare and swap
 	id := atomic.AddInt32(&p.workerNumber, 1) - 1
 	if id >= int32(p.opt.MaxWorkers) {
 		atomic.AddInt32(&p.workerNumber, -1)
 		return -1
 	}
 
-	if p.opt.WorkerLimit > 0 {
-		key := fmt.Sprintf("%s:worker:%d:lock", p.q.Name(), id)
-		workerLock := lock.New(p.opt.Redis, key, &lock.Options{
-			LockTimeout: p.opt.ReservationTimeout,
-		})
-		p.workerLocks = append(p.workerLocks, workerLock)
-	}
-	p.startWorker(id, stop)
+	p.jobsWG.Add(1)
+	go func() {
+		defer p.jobsWG.Done()
+		p.worker(id, stop)
+	}()
 
 	return id
-}
-
-func (p *Consumer) startWorker(id int32, stop <-chan struct{}) {
-	p.jobsWG.Add(1)
-	go p.worker(id, stop)
 }
 
 func (p *Consumer) removeWorker() {
@@ -277,7 +276,10 @@ func (p *Consumer) addFetcher(stop <-chan struct{}) int32 {
 
 func (p *Consumer) startFetcher(id int32, stop <-chan struct{}) {
 	p.jobsWG.Add(1)
-	go p.fetcher(id, stop)
+	go func() {
+		defer p.jobsWG.Done()
+		p.fetcher(id, stop)
+	}()
 }
 
 func (p *Consumer) removeFetcher() {
@@ -285,8 +287,6 @@ func (p *Consumer) removeFetcher() {
 }
 
 func (p *Consumer) autotune(stop <-chan struct{}) {
-	defer p.jobsWG.Done()
-
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -303,7 +303,7 @@ func (p *Consumer) autotune(stop <-chan struct{}) {
 func (p *Consumer) _autotune(stop <-chan struct{}) {
 	queueLen, err := p.q.Len()
 	if err != nil {
-		internal.Logf("%s Len failed: %s", p.q, err)
+		internal.Logger.Printf("%s Len failed: %s", p.q, err)
 	}
 
 	var queueing bool
@@ -447,7 +447,7 @@ func (p *Consumer) reserveOne() (*Message, error) {
 	default:
 	}
 
-	msgs, err := p.q.ReserveN(1, p.opt.ReservationTimeout, p.opt.WaitTimeout)
+	msgs, err := p.q.ReserveN(1, p.opt.WaitTimeout)
 	if err != nil && err != internal.ErrNotSupported {
 		return nil, err
 	}
@@ -459,14 +459,15 @@ func (p *Consumer) reserveOne() (*Message, error) {
 		return nil, fmt.Errorf("taskq: queue returned %d messages", len(msgs))
 	}
 
-	return msgs[0], nil
+	return &msgs[0], nil
 }
 
 func (p *Consumer) fetcher(id int32, stop <-chan struct{}) {
-	defer p.jobsWG.Done()
-
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
+
+	fetchTimeout := p.opt.ReservationTimeout
+	fetchTimeout -= fetchTimeout / 10
 
 	for {
 		if closed(stop) {
@@ -479,23 +480,24 @@ func (p *Consumer) fetcher(id int32, stop <-chan struct{}) {
 
 		if pauseTime := p.paused(); pauseTime > 0 {
 			p.resetPause()
-			internal.Logf("%s is automatically paused for dur=%s", p.q, pauseTime)
+			internal.Logger.Printf("%s is automatically paused for dur=%s", p.q, pauseTime)
 			time.Sleep(pauseTime)
 			continue
 		}
 
-		timer.Reset(p.opt.ReservationTimeout * 4 / 5)
+		timer.Reset(fetchTimeout)
 		timeout, err := p.fetchMessages(id, timer.C)
 		if err != nil {
 			if err == internal.ErrNotSupported {
 				break
 			}
 
-			internal.Logf(
+			const backoff = time.Second
+			internal.Logger.Printf(
 				"%s fetchMessages failed: %s (sleeping for dur=%s)",
-				p.q, err, p.opt.WaitTimeout,
+				p.q, err, backoff,
 			)
-			time.Sleep(p.opt.WaitTimeout)
+			time.Sleep(backoff)
 		}
 		if timeout {
 			break
@@ -511,7 +513,7 @@ func (p *Consumer) fetchMessages(
 	id int32, timeoutC <-chan time.Time,
 ) (timeout bool, err error) {
 	size := p.limiter.Reserve(p.opt.ReservationSize)
-	msgs, err := p.q.ReserveN(size, p.opt.ReservationTimeout, p.opt.WaitTimeout)
+	msgs, err := p.q.ReserveN(size, p.opt.WaitTimeout)
 	if err != nil {
 		return false, err
 	}
@@ -528,12 +530,14 @@ func (p *Consumer) fetchMessages(
 		}
 	}
 
-	for i, msg := range msgs {
+	for i := range msgs {
+		msg := &msgs[i]
+
 		select {
 		case p.buffer <- msg:
 		case <-timeoutC:
-			for _, msg := range msgs[i:] {
-				p.release(msg, nil)
+			for i := range msgs[i:] {
+				p.release(&msgs[i], nil)
 			}
 			return true, nil
 		}
@@ -553,8 +557,6 @@ func (p *Consumer) releaseBuffer() {
 }
 
 func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
-	defer p.jobsWG.Done()
-
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if workerID > 0 {
@@ -563,19 +565,23 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		timeout = timer.C
 	}
 
-	var unlockDeferred bool
+	var lock *redlock.Locker
+	if p.opt.WorkerLimit > 0 {
+		key := fmt.Sprintf("%s:worker:lock:%d", p.q.Name(), workerID)
+		lock = redlock.New(p.opt.Redis, key, &redlock.Options{
+			LockTimeout: p.opt.ReservationTimeout + 10*time.Second,
+		})
+		defer p.unlockWorker(lock)
+	}
+
 	for {
 		if workerID >= atomic.LoadInt32(&p.workerNumber) {
 			return
 		}
 
-		if p.opt.WorkerLimit > 0 {
-			if !p.lockWorker(workerID, stop) {
+		if lock != nil {
+			if !p.lockWorkerOrExit(lock, stop) {
 				return
-			}
-			if !unlockDeferred {
-				defer p.unlockWorker(workerID)
-				unlockDeferred = true
 			}
 		}
 
@@ -724,29 +730,29 @@ func (p *Consumer) release(msg *Message, msgErr error) {
 			}
 		}
 
-		internal.Logf("%s handler failed (will retry=%d in dur=%s): %s",
+		internal.Logger.Printf("%s handler failed (will retry=%d in dur=%s): %s",
 			msg.Task, msg.ReservedCount, msg.Delay, msgErr)
 	}
 
 	if err := p.q.Release(msg); err != nil {
-		internal.Logf("%s Release failed: %s", msg.Task, err)
+		internal.Logger.Printf("%s Release failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
 
 func (p *Consumer) delete(msg *Message, err error) {
 	if err != nil {
-		internal.Logf("%s handler failed after retry=%d: %s",
+		internal.Logger.Printf("%s handler failed after retry=%d: %s",
 			msg.Task, msg.ReservedCount, err)
 
 		msg.StickyErr = err
 		if err := p.q.HandleMessage(msg); err != nil {
-			internal.Logf("%s fallback handler failed: %s", msg.Task, err)
+			internal.Logger.Printf("%s fallback handler failed: %s", msg.Task, err)
 		}
 	}
 
 	if err := p.q.Delete(msg); err != nil {
-		internal.Logf("%s Delete failed: %s", msg.Task, err)
+		internal.Logger.Printf("%s Delete failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&p.inFlight, ^uint32(0))
 }
@@ -805,37 +811,35 @@ func (p *Consumer) resetPause() {
 	atomic.StoreUint32(&p.errCount, 0)
 }
 
-func (p *Consumer) lockWorker(id int32, stop <-chan struct{}) bool {
+func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) bool {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
-	lock := p.workerLocks[id]
 	for {
 		ok, err := lock.Lock()
 		if err != nil {
-			internal.Logf("redlock.Lock failed: %s", err)
+			internal.Logger.Printf("redlock.Lock failed: %s", err)
 		}
 		if ok {
 			return true
 		}
 
-		timeout := time.Duration(500+rand.Intn(1000)) * time.Millisecond
+		timeout := time.Duration(500+p.rand.Intn(500)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
 		case <-stop:
-			timer.Stop()
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return false
 		case <-timer.C:
 		}
 	}
 }
 
-func (p *Consumer) unlockWorker(id int32) {
-	lock := p.workerLocks[id]
-	if err := lock.Unlock(); err != nil {
-		internal.Logf("redlock.Unlock failed: %s", err)
-	}
+func (p *Consumer) unlockWorker(lock *redlock.Locker) {
+	_ = lock.Unlock()
 }
 
 func closed(ch <-chan struct{}) bool {
@@ -848,9 +852,15 @@ func closed(ch <-chan struct{}) bool {
 }
 
 func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
-	dur := min << uint(retry-1)
-	if dur >= min && dur < max {
-		return dur
+	var d time.Duration
+	if retry > 0 {
+		d = min << uint(retry-1)
 	}
-	return max
+	if d < min {
+		return min
+	}
+	if d > max {
+		return max
+	}
+	return d
 }

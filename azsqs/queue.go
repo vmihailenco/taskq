@@ -8,52 +8,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sqs"
+
 	"github.com/vmihailenco/taskq"
 	"github.com/vmihailenco/taskq/internal"
 	"github.com/vmihailenco/taskq/internal/base"
 	"github.com/vmihailenco/taskq/internal/msgutil"
 	"github.com/vmihailenco/taskq/memqueue"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
 const msgSizeLimit = 262144
 
 const delayUntilAttr = "TaskqDelayUntil"
 
-type factory struct {
-	sqs       *sqs.SQS
-	accountID string
-}
-
-var _ taskq.Factory = (*factory)(nil)
-
-func (m *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
-	return NewQueue(m.sqs, m.accountID, opt)
-}
-
-func (factory) Queues() []taskq.Queue {
-	var queues []taskq.Queue
-	for _, q := range Queues() {
-		queues = append(queues, q)
-	}
-	return queues
-}
-
-func NewFactory(sqs *sqs.SQS, accountID string) taskq.Factory {
-	return &factory{
-		sqs:       sqs,
-		accountID: accountID,
-	}
-}
-
 type Queue struct {
 	base base.Queue
+	opt  *taskq.QueueOptions
 
 	sqs       *sqs.SQS
 	accountID string
-	opt       *taskq.QueueOptions
 
 	addQueue   *memqueue.Queue
 	addTask    *taskq.Task
@@ -74,7 +48,7 @@ var _ taskq.Queue = (*Queue)(nil)
 func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
-	q := Queue{
+	q := &Queue{
 		sqs:       sqs,
 		accountID: accountID,
 		opt:       opt,
@@ -83,15 +57,12 @@ func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	q.initAddQueue()
 	q.initDelQueue()
 
-	registerQueue(&q)
-	return &q
+	return q
 }
 
 func (q *Queue) initAddQueue() {
 	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:      "azsqs:" + q.opt.Name + ":add",
-		GroupName: q.opt.GroupName,
-
+		Name:       "azsqs:" + q.opt.Name + ":add",
 		BufferSize: 1000,
 		Redis:      q.opt.Redis,
 	})
@@ -110,9 +81,7 @@ func (q *Queue) initAddQueue() {
 
 func (q *Queue) initDelQueue() {
 	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:      "azsqs:" + q.opt.Name + ":delete",
-		GroupName: q.opt.GroupName,
-
+		Name:       "azsqs:" + q.opt.Name + ":delete",
 		BufferSize: 1000,
 		Redis:      q.opt.Redis,
 	})
@@ -154,14 +123,6 @@ func (q *Queue) GetTask(name string) *taskq.Task {
 
 func (q *Queue) RemoveTask(name string) {
 	q.base.RemoveTask(name)
-}
-
-func (q *Queue) GetAddQueue() *memqueue.Queue {
-	return q.addQueue
-}
-
-func (q *Queue) GetDeleteQueue() *memqueue.Queue {
-	return q.delQueue
 }
 
 func (q *Queue) Consumer() *taskq.Consumer {
@@ -241,7 +202,7 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout time.Duration) ([]*taskq.Message, error) {
+func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
 	if n > 10 {
 		n = 10
 	}
@@ -257,30 +218,9 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 		return nil, err
 	}
 
-	msgs := make([]*taskq.Message, 0, len(out.Messages))
-	for _, sqsMsg := range out.Messages {
-		msg := new(taskq.Message)
-		msg.ReservationID = *sqsMsg.ReceiptHandle
-
-		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
-			var err error
-			msg.ReservedCount, err = strconv.Atoi(*v)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if v, ok := sqsMsg.MessageAttributes[delayUntilAttr]; ok {
-			until, err := time.Parse(time.RFC3339, *v.StringValue)
-			if err != nil {
-				return nil, err
-			}
-
-			msg.Delay = until.Sub(time.Now())
-			if msg.Delay < 0 {
-				msg.Delay = 0
-			}
-		}
+	msgs := make([]taskq.Message, len(out.Messages))
+	for i, sqsMsg := range out.Messages {
+		msg := &msgs[i]
 
 		if *sqsMsg.Body != "_" {
 			b, err := internal.DecodeString(*sqsMsg.Body)
@@ -294,7 +234,27 @@ func (q *Queue) ReserveN(n int, reservationTimeout time.Duration, waitTimeout ti
 			}
 		}
 
-		msgs = append(msgs, msg)
+		msg.ReservationID = *sqsMsg.ReceiptHandle
+
+		if v, ok := sqsMsg.Attributes["ApproximateReceiveCount"]; ok {
+			var err error
+			msg.ReservedCount, err = strconv.Atoi(*v)
+			if err != nil {
+				msg.StickyErr = err
+			}
+		}
+
+		if v, ok := sqsMsg.MessageAttributes[delayUntilAttr]; ok {
+			until, err := time.Parse(time.RFC3339, *v.StringValue)
+			if err != nil {
+				msg.StickyErr = err
+			} else {
+				msg.Delay = until.Sub(time.Now())
+				if msg.Delay < 0 {
+					msg.Delay = 0
+				}
+			}
+		}
 	}
 
 	return msgs, nil
@@ -399,7 +359,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
-			internal.Logf("azsqs: Message.MarshalBinary failed: %s", err)
+			internal.Logger.Printf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}
 
@@ -409,7 +369,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 		}
 
 		if len(str) > msgSizeLimit {
-			internal.Logf("%s: str=%d bytes=%d is larger than %d",
+			internal.Logger.Printf("%s: str=%d bytes=%d is larger than %d",
 				msg.Task, len(str), len(b), msgSizeLimit)
 		}
 
@@ -435,14 +395,14 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 	out, err := q.sqs.SendMessageBatch(in)
 	if err != nil {
-		internal.Logf("azsqs: SendMessageBatch msgs=%d size=%d failed: %s",
+		internal.Logger.Printf("azsqs: SendMessageBatch msgs=%d size=%d failed: %s",
 			len(msgs), q.batchSize(msgs), err)
 		return err
 	}
 
 	for _, entry := range out.Failed {
 		if entry.SenderFault != nil && *entry.SenderFault {
-			internal.Logf(
+			internal.Logger.Printf(
 				"azsqs: SendMessageBatch failed with code=%s message=%q",
 				tos(entry.Code), tos(entry.Message))
 			continue
@@ -452,7 +412,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 		if msg != nil {
 			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
-			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
+			internal.Logger.Printf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
 	}
 
@@ -476,13 +436,13 @@ func (q *Queue) batchSize(batch []*taskq.Message) int {
 	for _, msg := range batch {
 		msg, err := msgutil.UnwrapMessage(msg)
 		if err != nil {
-			internal.Logf("azsqs: UnwrapMessage failed: %s", err)
+			internal.Logger.Printf("azsqs: UnwrapMessage failed: %s", err)
 			continue
 		}
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
-			internal.Logf("azsqs: Message.MarshalBinary failed: %s", err)
+			internal.Logger.Printf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}
 
@@ -519,13 +479,13 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 	}
 	out, err := q.sqs.DeleteMessageBatch(in)
 	if err != nil {
-		internal.Logf("azsqs: DeleteMessageBatch failed: %s", err)
+		internal.Logger.Printf("azsqs: DeleteMessageBatch failed: %s", err)
 		return err
 	}
 
 	for _, entry := range out.Failed {
 		if entry.SenderFault != nil && *entry.SenderFault {
-			internal.Logf(
+			internal.Logger.Printf(
 				"azsqs: DeleteMessageBatch failed with code=%s message=%q",
 				tos(entry.Code), tos(entry.Message),
 			)
@@ -536,7 +496,7 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 		if msg != nil {
 			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
-			internal.Logf("azsqs: can't find message with id=%s", tos(entry.Id))
+			internal.Logger.Printf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
 	}
 	return nil
@@ -545,6 +505,14 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 func (q *Queue) shouldBatchDelete(batch []*taskq.Message, msg *taskq.Message) bool {
 	const messagesLimit = 10
 	return len(batch)+1 < messagesLimit
+}
+
+func (q *Queue) GetAddQueue() *memqueue.Queue {
+	return q.addQueue
+}
+
+func (q *Queue) GetDeleteQueue() *memqueue.Queue {
+	return q.delQueue
 }
 
 func findMessageById(msgs []*taskq.Message, id string) *taskq.Message {
