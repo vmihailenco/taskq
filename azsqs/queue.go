@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
 	"github.com/vmihailenco/taskq"
@@ -395,8 +396,14 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 	out, err := q.sqs.SendMessageBatch(in)
 	if err != nil {
-		internal.Logger.Printf("azsqs: SendMessageBatch msgs=%d size=%d failed: %s",
-			len(msgs), q.batchSize(msgs), err)
+		awsErr, ok := err.(awserr.Error)
+		if ok && awsErr.Code() == "ErrCodeBatchRequestTooLong" && len(msgs) == 1 {
+			msgs[0].StickyErr = err
+			msgs[0].ReservedCount = 9999 // don't retry
+			return err
+		}
+		internal.Logger.Printf("azsqs: SendMessageBatch msgs=%d failed: %s",
+			len(msgs), err)
 		return err
 	}
 
