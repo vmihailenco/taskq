@@ -1,11 +1,11 @@
-# Golang task/job queue with in-memory, SQS, IronMQ backends
+# Golang task/job queue with in-memory, Redis, SQS, and IronMQ backends
 
-[![Build Status](https://travis-ci.org/go-msgqueue/msgqueue.svg)](https://travis-ci.org/go-msgqueue/msgqueue)
+[![Build Status](https://travis-ci.org/vmihailenco/taskq.svg)](https://travis-ci.org/vmihailenco/taskq)
 
 ## Installation
 
 ```bash
-go get -u github.com/go-msgqueue/msgqueue
+go get -u github.com/vmihailenco/taskq
 ```
 
 ## Features
