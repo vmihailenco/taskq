@@ -131,8 +131,7 @@ func (t *Task) Call(args ...interface{}) error {
 // with such args was already added in a period.
 func (t *Task) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := NewMessage(args...)
-	msg.Name = fmt.Sprintf("%s-%s-%d", hashArgs(args), period, timeSlot(period))
-	msg.Delay = period + 5*time.Second
+	msg.OnceWithArgs(period, args...)
 	return t.AddMessage(msg)
 }
 

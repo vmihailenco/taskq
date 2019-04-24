@@ -58,6 +58,11 @@ func (m *Message) String() string {
 		m.ID, m.Name, m.ReservedCount)
 }
 
+func (m *Message) OnceWithArgs(period time.Duration, args ...interface{}) {
+	m.Name = fmt.Sprintf("%s-%s-%d", hashArgs(args), period, timeSlot(period))
+	m.Delay = period + 5*time.Second
+}
+
 func (m *Message) MarshalArgs() ([]byte, error) {
 	if m.TaskName == "" {
 		return nil, internal.ErrTaskNameRequired
