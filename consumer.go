@@ -119,11 +119,11 @@ type Consumer struct {
 
 	jobsWG sync.WaitGroup
 
-	queueLen    int
-	queueing    int
-	bufferEmpty int
-	fetcherIdle uint32 // atomic
-	workerIdle  uint32 // atomic
+	queueLen     int
+	queueGrowing int
+	bufferEmpty  int
+	fetcherIdle  uint32 // atomic
+	workerIdle   uint32 // atomic
 
 	errCount uint32
 	delaySec uint32
@@ -242,11 +242,15 @@ func (p *Consumer) Start() error {
 }
 
 func (p *Consumer) addWorker(stop <-chan struct{}) int32 {
-	// TODO: compare and swap
-	id := atomic.AddInt32(&p.workerNumber, 1) - 1
-	if id >= int32(p.opt.MaxWorkers) {
-		atomic.AddInt32(&p.workerNumber, -1)
-		return -1
+	var id int32
+	for {
+		id = atomic.LoadInt32(&p.workerNumber)
+		if id >= int32(p.opt.MaxWorkers) {
+			return -1
+		}
+		if atomic.CompareAndSwapInt32(&p.workerNumber, id, id+1) {
+			break
+		}
 	}
 
 	p.jobsWG.Add(1)
@@ -263,14 +267,18 @@ func (p *Consumer) removeWorker() {
 }
 
 func (p *Consumer) addFetcher(stop <-chan struct{}) int32 {
-	id := atomic.AddInt32(&p.fetcherNumber, 1) - 1
-	if id >= int32(p.opt.MaxFetchers) {
-		atomic.AddInt32(&p.fetcherNumber, -1)
-		return -1
+	var id int32
+	for {
+		id = atomic.LoadInt32(&p.fetcherNumber)
+		if id >= int32(p.opt.MaxFetchers) {
+			return -1
+		}
+		if atomic.CompareAndSwapInt32(&p.fetcherNumber, id, id+1) {
+			break
+		}
 	}
 
 	p.startFetcher(id, stop)
-
 	return id
 }
 
@@ -306,12 +314,12 @@ func (p *Consumer) _autotune(stop <-chan struct{}) {
 		internal.Logger.Printf("%s Len failed: %s", p.q, err)
 	}
 
-	var queueing bool
-	if queueLen > 256 && queueLen > p.queueLen {
-		p.queueing++
-		queueing = p.queueing >= 3
+	var queueGrowing bool
+	if queueLen > 256 && queueLen >= p.queueLen {
+		p.queueGrowing++
+		queueGrowing = p.queueGrowing >= 3
 	} else {
-		p.queueing = 0
+		p.queueGrowing = 0
 	}
 	p.queueLen = queueLen
 
@@ -320,9 +328,12 @@ func (p *Consumer) _autotune(stop <-chan struct{}) {
 
 	if buffered == 0 {
 		p.bufferEmpty++
-		if queueing && !rateLimited && p.bufferEmpty >= 2 && p.hasFetcher() {
+		starving := p.bufferEmpty >= 3
+
+		if queueGrowing && !rateLimited && starving && p.hasFetcher() {
+			internal.Logger.Printf("%s: adding a fetcher", p.q)
 			p.addFetcher(stop)
-			p.queueing = 0
+			p.queueGrowing = 0
 			p.bufferEmpty = 0
 			return
 		}
@@ -330,20 +341,24 @@ func (p *Consumer) _autotune(stop <-chan struct{}) {
 		p.bufferEmpty = 0
 	}
 
-	if !queueing && atomic.LoadUint32(&p.fetcherIdle) >= 3 {
+	fetcherIdle := atomic.LoadUint32(&p.fetcherIdle) >= 3
+	if !queueGrowing && fetcherIdle {
+		internal.Logger.Printf("%s: removing idle fetcher", p.q)
 		p.removeFetcher()
 		atomic.StoreUint32(&p.fetcherIdle, 0)
 	}
 
-	if (queueing && !rateLimited) || buffered > cap(p.buffer)/2 {
+	if (queueGrowing && !rateLimited) || buffered > cap(p.buffer)/2 {
+		internal.Logger.Printf("%s: adding 3 workers", p.q)
 		for i := 0; i < 3; i++ {
 			p.addWorker(stop)
 		}
-		p.queueing = 0
+		p.queueGrowing = 0
 		return
 	}
 
-	if !queueing && atomic.LoadUint32(&p.workerIdle) >= 3 {
+	if !queueGrowing && atomic.LoadUint32(&p.workerIdle) >= 3 {
+		internal.Logger.Printf("%s: removing idle worker", p.q)
 		p.removeWorker()
 		atomic.StoreUint32(&p.workerIdle, 0)
 	}

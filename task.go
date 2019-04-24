@@ -1,8 +1,12 @@
 package taskq
 
 import (
+	"bytes"
 	"fmt"
+	"hash/fnv"
 	"time"
+
+	"github.com/vmihailenco/msgpack"
 )
 
 var unknownTaskOpt *TaskOptions
@@ -127,7 +131,8 @@ func (t *Task) Call(args ...interface{}) error {
 // with such args was already added in a period.
 func (t *Task) CallOnce(period time.Duration, args ...interface{}) error {
 	msg := NewMessage(args...)
-	msg.SetDelayName(period, args...)
+	msg.Name = fmt.Sprintf("%s-%s-%d", hashArgs(args), period, timeSlot(period))
+	msg.Delay = period + 5*time.Second
 	return t.AddMessage(msg)
 }
 
@@ -137,4 +142,26 @@ func (t *Task) isUniqueName(name string) bool {
 	}
 	exists := t.storage.Exists(t.namePrefix + name)
 	return !exists
+}
+
+func timeSlot(period time.Duration) int64 {
+	if period <= 0 {
+		return 0
+	}
+	return time.Now().UnixNano() / int64(period)
+}
+
+func hashArgs(args []interface{}) []byte {
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf)
+	_ = enc.EncodeMulti(args...)
+	b := buf.Bytes()
+
+	if len(b) <= 64 {
+		return b
+	}
+
+	h := fnv.New128a()
+	_, _ = h.Write(b)
+	return h.Sum(nil)
 }

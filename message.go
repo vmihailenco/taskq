@@ -1,10 +1,8 @@
 package taskq
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"time"
 
 	"github.com/valyala/gozstd"
@@ -58,13 +56,6 @@ func NewMessage(args ...interface{}) *Message {
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q ReservedCount=%d>",
 		m.ID, m.Name, m.ReservedCount)
-}
-
-// SetDelayName sets delay and generates message name from the args.
-func (m *Message) SetDelayName(delay time.Duration, args ...interface{}) {
-	h := hashArgs(append(args, delay, timeSlot(delay)))
-	m.Name = string(h)
-	m.Delay = delay + 5*time.Second
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
@@ -133,26 +124,4 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	}
 
 	return nil
-}
-
-func timeSlot(period time.Duration) int64 {
-	if period <= 0 {
-		return 0
-	}
-	return time.Now().UnixNano() / int64(period)
-}
-
-func hashArgs(args []interface{}) []byte {
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
-	_ = enc.EncodeMulti(args...)
-	b := buf.Bytes()
-
-	if len(b) <= 128 {
-		return b
-	}
-
-	h := fnv.New128a()
-	_, _ = h.Write(b)
-	return h.Sum(nil)
 }
