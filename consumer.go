@@ -119,14 +119,17 @@ type Consumer struct {
 
 	jobsWG sync.WaitGroup
 
-	queueLen     int
-	queueGrowing int
-	bufferEmpty  int
-	fetcherIdle  uint32 // atomic
-	workerIdle   uint32 // atomic
-
 	errCount uint32
 	delaySec uint32
+
+	queueLen     int
+	queueGrowing int
+
+	starving  int
+	buffering int
+
+	fetcherIdle uint32 // atomic
+	workerIdle  uint32 // atomic
 
 	inFlight    uint32
 	deleting    uint32
@@ -172,10 +175,6 @@ func (p *Consumer) Queue() Queue {
 
 func (p *Consumer) Options() *QueueOptions {
 	return p.opt
-}
-
-func (p *Consumer) String() string {
-	return fmt.Sprintf("Consumer<%s>", p.q.Name())
 }
 
 // Stats returns processor stats.
@@ -295,7 +294,7 @@ func (p *Consumer) removeFetcher() {
 }
 
 func (p *Consumer) autotune(stop <-chan struct{}) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -308,59 +307,34 @@ func (p *Consumer) autotune(stop <-chan struct{}) {
 	}
 }
 
-func (p *Consumer) _autotune(stop <-chan struct{}) {
-	queueLen, err := p.q.Len()
-	if err != nil {
-		internal.Logger.Printf("%s Len failed: %s", p.q, err)
-	}
+func (c *Consumer) _autotune(stop <-chan struct{}) {
+	c.updateQueueLen()
+	c.updateBuffered()
 
-	var queueGrowing bool
-	if queueLen > 256 && queueLen >= p.queueLen {
-		p.queueGrowing++
-		queueGrowing = p.queueGrowing >= 3
-	} else {
-		p.queueGrowing = 0
-	}
-	p.queueLen = queueLen
-
-	buffered := len(p.buffer)
-	rateLimited := p.limiter.Limited()
-
-	if buffered == 0 {
-		p.bufferEmpty++
-		starving := p.bufferEmpty >= 3
-
-		if queueGrowing && !rateLimited && starving && p.hasFetcher() {
-			internal.Logger.Printf("%s: adding a fetcher", p.q)
-			p.addFetcher(stop)
-			p.queueGrowing = 0
-			p.bufferEmpty = 0
-			return
-		}
-	} else {
-		p.bufferEmpty = 0
-	}
-
-	fetcherIdle := atomic.LoadUint32(&p.fetcherIdle) >= 3
-	if !queueGrowing && fetcherIdle {
-		internal.Logger.Printf("%s: removing idle fetcher", p.q)
-		p.removeFetcher()
-		atomic.StoreUint32(&p.fetcherIdle, 0)
-	}
-
-	if (queueGrowing && !rateLimited) || buffered > cap(p.buffer)/2 {
-		internal.Logger.Printf("%s: adding 3 workers", p.q)
-		for i := 0; i < 3; i++ {
-			p.addWorker(stop)
-		}
-		p.queueGrowing = 0
+	if c.isQueueGrowing() && c.isStarving() && c.hasFetcher() {
+		internal.Logger.Printf("%s: adding a fetcher", c)
+		c.addFetcher(stop)
+		c.resetAutotuner()
 		return
 	}
 
-	if !queueGrowing && atomic.LoadUint32(&p.workerIdle) >= 3 {
-		internal.Logger.Printf("%s: removing idle worker", p.q)
-		p.removeWorker()
-		atomic.StoreUint32(&p.workerIdle, 0)
+	if !c.isQueueGrowing() && c.hasIdleFetcher() {
+		internal.Logger.Printf("%s: removing idle fetcher", c)
+		c.removeFetcher()
+		c.resetAutotuner()
+	}
+
+	if c.isQueueGrowing() || c.isBuffering() {
+		internal.Logger.Printf("%s: adding a worker", c)
+		c.addWorker(stop)
+		c.resetAutotuner()
+		return
+	}
+
+	if !c.isQueueGrowing() && c.hasIdleWorker() {
+		internal.Logger.Printf("%s: removing idle worker", c)
+		c.removeWorker()
+		c.resetAutotuner()
 	}
 }
 
@@ -855,6 +829,92 @@ func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) 
 
 func (p *Consumer) unlockWorker(lock *redlock.Locker) {
 	_ = lock.Unlock()
+}
+
+func (c *Consumer) String() string {
+	fnum := atomic.LoadInt32(&c.fetcherNumber)
+	wnum := atomic.LoadInt32(&c.workerNumber)
+
+	var extra string
+	if c.isQueueGrowing() {
+		extra += " growing"
+	}
+	if c.isStarving() {
+		extra += " starving"
+	}
+	if c.isBuffering() {
+		extra += " buffering"
+	}
+	if c.isRateLimited() {
+		extra += " limited"
+	}
+	if c.hasIdleFetcher() {
+		extra += " idle-fetcher"
+	}
+	if c.hasIdleWorker() {
+		extra += " idle-worker"
+	}
+
+	return fmt.Sprintf(
+		"Consumer<%s %d/%d/%d%s>",
+		c.q.Name(), fnum, wnum, c.queueLen, extra)
+}
+
+func (c *Consumer) isRateLimited() bool {
+	return c.limiter.Limited()
+}
+
+func (c *Consumer) updateQueueLen() {
+	queueLen, err := c.q.Len()
+	if err != nil {
+		internal.Logger.Printf("%s Len failed: %s", c.q, err)
+		return
+	}
+	if queueLen > 32 && queueLen >= c.queueLen {
+		c.queueGrowing++
+	} else {
+		c.queueGrowing = 0
+	}
+	c.queueLen = queueLen
+}
+
+func (c *Consumer) isQueueGrowing() bool {
+	return c.queueGrowing >= 3 && !c.isRateLimited()
+}
+
+func (c *Consumer) updateBuffered() {
+	buffered := len(c.buffer)
+	if buffered == 0 {
+		c.starving++
+		c.buffering = 0
+	} else if buffered > cap(c.buffer)/5*4 {
+		c.starving = 0
+		c.buffering++
+	}
+}
+
+func (c *Consumer) isStarving() bool {
+	return c.starving >= 3
+}
+
+func (c *Consumer) isBuffering() bool {
+	return c.buffering >= 3
+}
+
+func (c *Consumer) hasIdleFetcher() bool {
+	return atomic.LoadUint32(&c.fetcherIdle) >= 3
+}
+
+func (c *Consumer) hasIdleWorker() bool {
+	return atomic.LoadUint32(&c.workerIdle) >= 3
+}
+
+func (c *Consumer) resetAutotuner() {
+	c.queueGrowing = 0
+	c.starving = 0
+	c.buffering = 0
+	atomic.StoreUint32(&c.fetcherIdle, 0)
+	atomic.StoreUint32(&c.workerIdle, 0)
 }
 
 func closed(ch <-chan struct{}) bool {
