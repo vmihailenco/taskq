@@ -128,11 +128,12 @@ type Consumer struct {
 	starving  int
 	buffering int
 
-	lastIdleBusyReset time.Time
-	fetcherIdle       uint32 // atomic
-	fetcherBusy       uint32 // atomic
-	workerIdle        uint32 // atomic
-	workerBusy        uint32 // atomic
+	fetcherIdle uint32 // atomic
+	fetcherBusy uint32 // atomic
+	workerIdle  uint32 // atomic
+	workerBusy  uint32 // atomic
+
+	lastAutotunerReset time.Time
 
 	inFlight    uint32
 	deleting    uint32
@@ -311,13 +312,11 @@ func (c *Consumer) autotune(stop <-chan struct{}) {
 			}
 			return
 		case <-timer.C:
-			c._autotune(stop)
-			if time.Since(c.lastIdleBusyReset) > time.Minute {
-				atomic.StoreUint32(&c.fetcherIdle, 0)
-				atomic.StoreUint32(&c.fetcherBusy, 0)
-				atomic.StoreUint32(&c.workerIdle, 0)
-				atomic.StoreUint32(&c.workerBusy, 0)
+			if time.Since(c.lastAutotunerReset) > time.Minute {
+				c.resetAutotuner()
+				c.lastAutotunerReset = time.Now()
 			}
+			c._autotune(stop)
 		}
 	}
 }
@@ -922,20 +921,24 @@ func (c *Consumer) hasIdleFetcher() bool {
 	idle := atomic.LoadUint32(&c.fetcherIdle)
 	busy := atomic.LoadUint32(&c.fetcherBusy)
 	num := atomic.LoadInt32(&c.fetcherNumber)
-	return float64(idle) > float64(busy)/float64(num)
+	return busy > 10 && float64(idle) > float64(busy)/float64(num)
 }
 
 func (c *Consumer) hasIdleWorker() bool {
 	idle := atomic.LoadUint32(&c.workerIdle)
 	busy := atomic.LoadUint32(&c.workerBusy)
 	num := atomic.LoadInt32(&c.workerNumber)
-	return float64(idle) > float64(busy)/float64(num)
+	return busy > 10 && float64(idle) > float64(busy)/float64(num)
 }
 
 func (c *Consumer) resetAutotuner() {
 	c.queueGrowing = 0
 	c.starving = 0
 	c.buffering = 0
+	atomic.StoreUint32(&c.fetcherIdle, 0)
+	atomic.StoreUint32(&c.fetcherBusy, 0)
+	atomic.StoreUint32(&c.workerIdle, 0)
+	atomic.StoreUint32(&c.workerBusy, 0)
 }
 
 func closed(ch <-chan struct{}) bool {
