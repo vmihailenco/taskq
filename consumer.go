@@ -293,16 +293,22 @@ func (p *Consumer) removeFetcher() {
 	atomic.AddInt32(&p.fetcherNumber, -1)
 }
 
-func (p *Consumer) autotune(stop <-chan struct{}) {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
+func (c *Consumer) autotune(stop <-chan struct{}) {
+	timer := time.NewTimer(time.Minute)
+	timer.Stop()
 
 	for {
+		timeout := time.Duration(2000+c.rand.Intn(2000)) * time.Millisecond
+		timer.Reset(timeout)
+
 		select {
 		case <-stop:
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return
-		case <-ticker.C:
-			p._autotune(stop)
+		case <-timer.C:
+			c._autotune(stop)
 		}
 	}
 }
@@ -894,19 +900,19 @@ func (c *Consumer) updateBuffered() {
 }
 
 func (c *Consumer) isStarving() bool {
-	return c.starving >= 3
+	return c.starving >= 5
 }
 
 func (c *Consumer) isBuffering() bool {
-	return c.buffering >= 3
+	return c.buffering >= 5
 }
 
 func (c *Consumer) hasIdleFetcher() bool {
-	return atomic.LoadUint32(&c.fetcherIdle) >= 3
+	return atomic.LoadUint32(&c.fetcherIdle) >= 5
 }
 
 func (c *Consumer) hasIdleWorker() bool {
-	return atomic.LoadUint32(&c.workerIdle) >= 3
+	return atomic.LoadUint32(&c.workerIdle) >= 5
 }
 
 func (c *Consumer) resetAutotuner() {
