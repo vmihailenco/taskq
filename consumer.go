@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -836,9 +837,9 @@ func (c *Consumer) String() string {
 	var p50, p90, p99 float64
 	c.tdMu.Lock()
 	if c.td != nil {
-		p50 = round(c.td.Quantile(0.5))
-		p90 = round(c.td.Quantile(0.9))
-		p99 = round(c.td.Quantile(0.99))
+		p50 = c.td.Quantile(0.5)
+		p90 = c.td.Quantile(0.9)
+		p99 = c.td.Quantile(0.99)
 	}
 	c.tdMu.Unlock()
 
@@ -857,8 +858,8 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d %d/%d %f/%f/%f%s>",
-		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, p50, p90, p99, extra)
+		"Consumer<%s %d/%d %d/%d %s/%s/%s%s>",
+		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, ff(p50), ff(p90), ff(p99), extra)
 }
 
 func (c *Consumer) updateBuffered() {
@@ -937,12 +938,16 @@ func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 	return d
 }
 
+func ff(f float64) string {
+	return strconv.FormatFloat(round(f), 'E', -1, 64)
+}
+
 func round(f float64) float64 {
 	if f >= 10 {
 		return math.Round(f)
 	}
 	if f < 1 {
-		return math.Round(f*10) / 10
+		return math.Round(f*100) / 100
 	}
-	return math.Round(f*100) / 100
+	return math.Round(f*10) / 10
 }
