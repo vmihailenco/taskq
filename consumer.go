@@ -939,7 +939,7 @@ func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 }
 
 func ff(f float64) string {
-	return strconv.FormatFloat(round(f), 'E', -1, 64)
+	return strconv.FormatFloat(round(f), 'f', -1, 64)
 }
 
 func round(f float64) float64 {
