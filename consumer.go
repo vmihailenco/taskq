@@ -17,6 +17,7 @@ import (
 const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
 const workerIdleTimeout = 3 * time.Second
+const autotuneResetPeriod = 5 * time.Minute
 
 var ErrAsyncTask = errors.New("taskq: async task")
 
@@ -122,18 +123,15 @@ type Consumer struct {
 	errCount uint32
 	delaySec uint32
 
-	queueLen     int
-	queueGrowing int
-
-	starving  int
-	buffering int
+	starving int
+	loaded   int
 
 	fetcherIdle uint32 // atomic
 	fetcherBusy uint32 // atomic
 	workerIdle  uint32 // atomic
 	workerBusy  uint32 // atomic
 
-	lastAutotunerReset time.Time
+	lastAutotuneReset time.Time
 
 	inFlight    uint32
 	deleting    uint32
@@ -166,19 +164,19 @@ func NewConsumer(q Queue) *Consumer {
 
 // Starts creates new Consumer and starts it.
 func StartConsumer(q Queue) *Consumer {
-	p := NewConsumer(q)
-	if err := p.Start(); err != nil {
+	c := NewConsumer(q)
+	if err := c.Start(); err != nil {
 		panic(err)
 	}
-	return p
+	return c
 }
 
-func (p *Consumer) Queue() Queue {
-	return p.q
+func (c *Consumer) Queue() Queue {
+	return c.q
 }
 
-func (p *Consumer) Options() *QueueOptions {
-	return p.opt
+func (c *Consumer) Options() *QueueOptions {
+	return c.opt
 }
 
 // Stats returns processor stats.
@@ -198,25 +196,25 @@ func (p *Consumer) Stats() *ConsumerStats {
 	}
 }
 
-func (p *Consumer) Add(msg *Message) error {
+func (c *Consumer) Add(msg *Message) error {
 	if msg.Delay > 0 {
 		time.AfterFunc(msg.Delay, func() {
 			msg.Delay = 0
-			p.add(msg)
+			c.add(msg)
 		})
 	} else {
-		p.add(msg)
+		c.add(msg)
 	}
 	return nil
 }
 
-func (p *Consumer) Len() int {
-	return len(p.buffer)
+func (c *Consumer) Len() int {
+	return len(c.buffer)
 }
 
-func (p *Consumer) add(msg *Message) {
-	_ = p.limiter.Reserve(1)
-	p.buffer <- msg
+func (c *Consumer) add(msg *Message) {
+	_ = c.limiter.Reserve(1)
+	c.buffer <- msg
 }
 
 // Start starts consuming messages in the queue.
@@ -244,57 +242,69 @@ func (p *Consumer) Start() error {
 	return nil
 }
 
-func (p *Consumer) addWorker(stop <-chan struct{}) int32 {
-	var id int32
+func (c *Consumer) addWorker(stop <-chan struct{}) int32 {
 	for {
-		id = atomic.LoadInt32(&p.workerNumber)
-		if id >= int32(p.opt.MaxWorkers) {
+		id := atomic.LoadInt32(&c.workerNumber)
+		if id >= int32(c.opt.MaxWorkers) {
 			return -1
 		}
-		if atomic.CompareAndSwapInt32(&p.workerNumber, id, id+1) {
-			break
+		if atomic.CompareAndSwapInt32(&c.workerNumber, id, id+1) {
+			c.jobsWG.Add(1)
+			go func() {
+				defer c.jobsWG.Done()
+				c.worker(id, stop)
+			}()
+			return id
 		}
 	}
-
-	p.jobsWG.Add(1)
-	go func() {
-		defer p.jobsWG.Done()
-		p.worker(id, stop)
-	}()
-
-	return id
 }
 
-func (p *Consumer) removeWorker() {
-	atomic.AddInt32(&p.workerNumber, -1)
-}
-
-func (p *Consumer) addFetcher(stop <-chan struct{}) int32 {
-	var id int32
+func (c *Consumer) removeWorker() int32 {
 	for {
-		id = atomic.LoadInt32(&p.fetcherNumber)
-		if id >= int32(p.opt.MaxFetchers) {
+		id := atomic.LoadInt32(&c.workerNumber)
+		if id == 0 {
 			return -1
 		}
-		if atomic.CompareAndSwapInt32(&p.fetcherNumber, id, id+1) {
-			break
+		if atomic.CompareAndSwapInt32(&c.workerNumber, id, id-1) {
+			return id
 		}
 	}
-
-	p.startFetcher(id, stop)
-	return id
 }
 
-func (p *Consumer) startFetcher(id int32, stop <-chan struct{}) {
-	p.jobsWG.Add(1)
-	go func() {
-		defer p.jobsWG.Done()
-		p.fetcher(id, stop)
-	}()
+func (c *Consumer) addFetcher(stop <-chan struct{}) int32 {
+	for {
+		id := atomic.LoadInt32(&c.fetcherNumber)
+		if id >= int32(c.opt.MaxFetchers) {
+			return -1
+		}
+		if c.tryStartFetcher(id, stop) {
+			return id
+		}
+	}
 }
 
-func (p *Consumer) removeFetcher() {
-	atomic.AddInt32(&p.fetcherNumber, -1)
+func (c *Consumer) tryStartFetcher(id int32, stop <-chan struct{}) bool {
+	if atomic.CompareAndSwapInt32(&c.fetcherNumber, id, id+1) {
+		c.jobsWG.Add(1)
+		go func() {
+			defer c.jobsWG.Done()
+			c.fetcher(id, stop)
+		}()
+		return true
+	}
+	return false
+}
+
+func (c *Consumer) removeFetcher() int32 {
+	for {
+		id := atomic.LoadInt32(&c.fetcherNumber)
+		if id == 0 {
+			return -1
+		}
+		if atomic.CompareAndSwapInt32(&c.fetcherNumber, id, id-1) {
+			return id
+		}
+	}
 }
 
 func (c *Consumer) autotune(stop <-chan struct{}) {
@@ -312,43 +322,43 @@ func (c *Consumer) autotune(stop <-chan struct{}) {
 			}
 			return
 		case <-timer.C:
-			if time.Since(c.lastAutotunerReset) > time.Minute {
-				c.resetAutotuner()
-				c.lastAutotunerReset = time.Now()
-			}
 			c._autotune(stop)
 		}
 	}
 }
 
 func (c *Consumer) _autotune(stop <-chan struct{}) {
-	c.updateQueueLen()
+	if time.Since(c.lastAutotuneReset) > autotuneResetPeriod {
+		c.resetAutotune()
+		c.lastAutotuneReset = time.Now()
+	}
+
 	c.updateBuffered()
 
-	if c.isQueueGrowing() && c.isStarving() && c.hasFetcher() {
+	if c.isStarving() {
 		internal.Logger.Printf("%s: adding a fetcher", c)
 		c.addFetcher(stop)
-		c.resetAutotuner()
+		c.resetAutotune()
 		return
 	}
 
-	if !c.isQueueGrowing() && c.hasIdleFetcher() {
+	if c.hasIdleFetcher() {
 		internal.Logger.Printf("%s: removing idle fetcher", c)
 		c.removeFetcher()
-		c.resetAutotuner()
+		c.resetAutotune()
 	}
 
-	if c.isQueueGrowing() || c.isBuffering() {
+	if c.isLoaded() {
 		internal.Logger.Printf("%s: adding a worker", c)
 		c.addWorker(stop)
-		c.resetAutotuner()
+		c.resetAutotune()
 		return
 	}
 
-	if !c.isQueueGrowing() && c.hasIdleWorker() {
+	if c.hasIdleWorker() {
 		internal.Logger.Printf("%s: removing idle worker", c)
 		c.removeWorker()
-		c.resetAutotuner()
+		c.resetAutotune()
 	}
 }
 
@@ -620,34 +630,29 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 	}
 }
 
-func (p *Consumer) waitMessage(
+func (c *Consumer) waitMessage(
 	stop <-chan struct{}, timeoutC <-chan time.Time,
 ) (msg *Message, timeout bool) {
-	msg = p.dequeueMessage()
+	msg = c.dequeueMessage()
 	if msg != nil {
 		return msg, false
 	}
 
-	if !p.hasFetcher() {
-		fetcherID := p.addFetcher(stop)
-		if fetcherID > 0 {
-			p.removeFetcher()
-		}
-	}
+	c.tryStartFetcher(0, stop)
 
 	select {
-	case msg := <-p.buffer:
+	case msg := <-c.buffer:
 		return msg, false
 	case <-stop:
-		return p.dequeueMessage(), false
+		return c.dequeueMessage(), false
 	case <-timeoutC:
 		return nil, true
 	}
 }
 
-func (p *Consumer) dequeueMessage() *Message {
+func (c *Consumer) dequeueMessage() *Message {
 	select {
-	case msg := <-p.buffer:
+	case msg := <-c.buffer:
 		return msg
 	default:
 		return nil
@@ -852,17 +857,11 @@ func (c *Consumer) String() string {
 	wnum := atomic.LoadInt32(&c.workerNumber)
 
 	var extra string
-	if c.isQueueGrowing() {
-		extra += " growing"
-	}
 	if c.isStarving() {
 		extra += " starving"
 	}
-	if c.isBuffering() {
-		extra += " buffering"
-	}
-	if c.isRateLimited() {
-		extra += " limited"
+	if c.isLoaded() {
+		extra += " loaded"
 	}
 	if c.hasIdleFetcher() {
 		extra += " idle-fetcher"
@@ -873,68 +872,56 @@ func (c *Consumer) String() string {
 
 	return fmt.Sprintf(
 		"Consumer<%s %d/%d/%d%s>",
-		c.q.Name(), fnum, wnum, c.queueLen, extra)
-}
-
-func (c *Consumer) isRateLimited() bool {
-	return c.limiter.Limited()
-}
-
-func (c *Consumer) updateQueueLen() {
-	queueLen, err := c.q.Len()
-	if err != nil {
-		internal.Logger.Printf("%s Len failed: %s", c.q, err)
-		return
-	}
-	if queueLen > 32 && queueLen >= c.queueLen {
-		c.queueGrowing++
-	} else {
-		c.queueGrowing = 0
-	}
-	c.queueLen = queueLen
-}
-
-func (c *Consumer) isQueueGrowing() bool {
-	return c.queueGrowing >= 3 && !c.isRateLimited()
+		c.q.Name(), fnum, wnum, len(c.buffer), extra)
 }
 
 func (c *Consumer) updateBuffered() {
 	buffered := len(c.buffer)
 	if buffered == 0 {
 		c.starving++
-		c.buffering = 0
+		c.loaded = 0
 	} else if buffered > cap(c.buffer)/5*4 {
 		c.starving = 0
-		c.buffering++
+		c.loaded++
 	}
 }
 
 func (c *Consumer) isStarving() bool {
-	return c.starving >= 5
+	if c.starving < 5 {
+		return false
+	}
+	idle := atomic.LoadUint32(&c.fetcherIdle)
+	busy := atomic.LoadUint32(&c.fetcherBusy)
+	return busy > 10 && idle < busy
 }
 
-func (c *Consumer) isBuffering() bool {
-	return c.buffering >= 5
+func (c *Consumer) isLoaded() bool {
+	return c.loaded >= 5
 }
 
 func (c *Consumer) hasIdleFetcher() bool {
+	num := atomic.LoadInt32(&c.fetcherNumber)
+	if num <= 1 {
+		return false
+	}
 	idle := atomic.LoadUint32(&c.fetcherIdle)
 	busy := atomic.LoadUint32(&c.fetcherBusy)
-	num := atomic.LoadInt32(&c.fetcherNumber)
 	return busy > 10 && float64(idle) > float64(busy)/float64(num)
 }
 
 func (c *Consumer) hasIdleWorker() bool {
+	num := atomic.LoadInt32(&c.workerNumber)
+	if num <= 1 {
+		return false
+	}
 	idle := atomic.LoadUint32(&c.workerIdle)
 	busy := atomic.LoadUint32(&c.workerBusy)
-	num := atomic.LoadInt32(&c.workerNumber)
 	return busy > 10 && float64(idle) > float64(busy)/float64(num)
 }
 
-func (c *Consumer) resetAutotuner() {
-	c.queueGrowing = 0
+func (c *Consumer) resetAutotune() {
 	c.starving = 0
-	c.buffering = 0
+	c.loaded = 0
 	atomic.StoreUint32(&c.fetcherIdle, 0)
 	atomic.StoreUint32(&c.fetcherBusy, 0)
 	atomic.StoreUint32(&c.workerIdle, 0)
