@@ -833,6 +833,8 @@ func (c *Consumer) String() string {
 	fnum := atomic.LoadInt32(&c.fetcherNumber)
 	wnum := atomic.LoadInt32(&c.workerNumber)
 	inFlight := atomic.LoadUint32(&c.inFlight)
+	processed := atomic.LoadUint32(&c.processed)
+	fails := atomic.LoadUint32(&c.fails)
 
 	var p50, p90, p99 float64
 	c.tdMu.Lock()
@@ -858,8 +860,12 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d %d/%d %s/%s/%s%s>",
-		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, ff(p50), ff(p90), ff(p99), extra)
+		"Consumer<%s %d/%d %d/%d %d/%d %s/%s/%sms %s>", c.q.Name(),
+		fnum, len(c.buffer),
+		inFlight, wnum,
+		processed, fails,
+		ff(p50), ff(p90), ff(p99),
+		extra)
 }
 
 func (c *Consumer) updateBuffered() {
