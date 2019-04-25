@@ -477,45 +477,46 @@ func (p *Consumer) reserveOne() (*Message, error) {
 	return &msgs[0], nil
 }
 
-func (p *Consumer) fetcher(id int32, stop <-chan struct{}) {
+func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
-	fetchTimeout := p.opt.ReservationTimeout
+	fetchTimeout := c.opt.ReservationTimeout
 	fetchTimeout -= fetchTimeout / 10
 
 	for {
 		if closed(stop) {
-			break
+			return
 		}
 
-		if id >= atomic.LoadInt32(&p.fetcherNumber) {
-			break
+		if fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
+			internal.Logger.Printf("%s: fetcher=%d is stopped", c.q, fetcherID)
+			return
 		}
 
-		if pauseTime := p.paused(); pauseTime > 0 {
-			p.resetPause()
-			internal.Logger.Printf("%s is automatically paused for dur=%s", p.q, pauseTime)
+		if pauseTime := c.paused(); pauseTime > 0 {
+			c.resetPause()
+			internal.Logger.Printf("%s is automatically paused for dur=%s", c.q, pauseTime)
 			time.Sleep(pauseTime)
 			continue
 		}
 
 		timer.Reset(fetchTimeout)
-		timeout, err := p.fetchMessages(id, timer.C)
+		timeout, err := c.fetchMessages(fetcherID, timer.C)
 		if err != nil {
 			if err == internal.ErrNotSupported {
-				break
+				return
 			}
 
 			const backoff = time.Second
 			internal.Logger.Printf(
 				"%s fetchMessages failed: %s (sleeping for dur=%s)",
-				p.q, err, backoff,
+				c.q, err, backoff,
 			)
 			time.Sleep(backoff)
 		}
 		if timeout {
-			break
+			return
 		}
 
 		if !timer.Stop() {
@@ -591,6 +592,7 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 
 	for {
 		if workerID >= atomic.LoadInt32(&c.workerNumber) {
+			internal.Logger.Printf("%s: worker=%d is stopped", c.q, workerID)
 			return
 		}
 
@@ -860,8 +862,9 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d %d/%d %d/%d %s/%s/%sms %s>", c.q.Name(),
-		fnum, len(c.buffer),
+		"Consumer<%s %d/%d/%d %d/%d %d/%d %s/%s/%sms%s>",
+		c.q.Name(),
+		fnum, len(c.buffer), cap(c.buffer),
 		inFlight, wnum,
 		processed, fails,
 		ff(p50), ff(p90), ff(p99),
