@@ -3,12 +3,14 @@ package taskq
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	redlock "github.com/bsm/redis-lock"
+	tdigest "github.com/caio/go-tdigest"
 	"golang.org/x/time/rate"
 
 	"github.com/vmihailenco/taskq/internal"
@@ -34,9 +36,7 @@ type ConsumerStats struct {
 	Processed     uint32
 	Retries       uint32
 	Fails         uint32
-	AvgDuration   time.Duration
-	MinDuration   time.Duration
-	MaxDuration   time.Duration
+	TDigest       *tdigest.TDigest
 }
 
 type limiter struct {
@@ -133,14 +133,14 @@ type Consumer struct {
 
 	lastAutotuneReset time.Time
 
-	inFlight    uint32
-	deleting    uint32
-	processed   uint32
-	fails       uint32
-	retries     uint32
-	avgDuration uint32
-	minDuration uint32
-	maxDuration uint32
+	tdMu sync.Mutex
+	td   *tdigest.TDigest
+
+	inFlight  uint32
+	deleting  uint32
+	processed uint32
+	fails     uint32
+	retries   uint32
 }
 
 // New creates new Consumer for the queue using provided processing options.
@@ -180,19 +180,20 @@ func (c *Consumer) Options() *QueueOptions {
 }
 
 // Stats returns processor stats.
-func (p *Consumer) Stats() *ConsumerStats {
+func (c *Consumer) Stats() *ConsumerStats {
+	c.tdMu.Lock()
+	td := c.td.Clone()
+	c.tdMu.Unlock()
 	return &ConsumerStats{
-		WorkerNumber:  uint32(atomic.LoadInt32(&p.workerNumber)),
-		FetcherNumber: uint32(atomic.LoadInt32(&p.fetcherNumber)),
-		BufferSize:    uint32(cap(p.buffer)),
-		Buffered:      uint32(len(p.buffer)),
-		InFlight:      atomic.LoadUint32(&p.inFlight),
-		Processed:     atomic.LoadUint32(&p.processed),
-		Retries:       atomic.LoadUint32(&p.retries),
-		Fails:         atomic.LoadUint32(&p.fails),
-		AvgDuration:   time.Duration(atomic.LoadUint32(&p.avgDuration)) * timePrecision,
-		MinDuration:   time.Duration(atomic.LoadUint32(&p.minDuration)) * timePrecision,
-		MaxDuration:   time.Duration(atomic.LoadUint32(&p.maxDuration)) * timePrecision,
+		WorkerNumber:  uint32(atomic.LoadInt32(&c.workerNumber)),
+		FetcherNumber: uint32(atomic.LoadInt32(&c.fetcherNumber)),
+		BufferSize:    uint32(cap(c.buffer)),
+		Buffered:      uint32(len(c.buffer)),
+		InFlight:      atomic.LoadUint32(&c.inFlight),
+		Processed:     atomic.LoadUint32(&c.processed),
+		Retries:       atomic.LoadUint32(&c.retries),
+		Fails:         atomic.LoadUint32(&c.fails),
+		TDigest:       td,
 	}
 }
 
@@ -559,17 +560,17 @@ func (p *Consumer) fetchMessages(
 	return false, nil
 }
 
-func (p *Consumer) releaseBuffer() {
+func (c *Consumer) releaseBuffer() {
 	for {
-		msg := p.dequeueMessage()
+		msg := c.dequeueMessage()
 		if msg == nil {
 			break
 		}
-		p.release(msg, nil)
+		c.release(msg, nil)
 	}
 }
 
-func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
+func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if workerID > 0 {
@@ -579,21 +580,21 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 	}
 
 	var lock *redlock.Locker
-	if p.opt.WorkerLimit > 0 {
-		key := fmt.Sprintf("%s:worker:lock:%d", p.q.Name(), workerID)
-		lock = redlock.New(p.opt.Redis, key, &redlock.Options{
-			LockTimeout: p.opt.ReservationTimeout + 10*time.Second,
+	if c.opt.WorkerLimit > 0 {
+		key := fmt.Sprintf("%s:worker:lock:%d", c.q.Name(), workerID)
+		lock = redlock.New(c.opt.Redis, key, &redlock.Options{
+			LockTimeout: c.opt.ReservationTimeout + 10*time.Second,
 		})
-		defer p.unlockWorker(lock)
+		defer c.unlockWorker(lock)
 	}
 
 	for {
-		if workerID >= atomic.LoadInt32(&p.workerNumber) {
+		if workerID >= atomic.LoadInt32(&c.workerNumber) {
 			return
 		}
 
 		if lock != nil {
-			if !p.lockWorkerOrExit(lock, stop) {
+			if !c.lockWorkerOrExit(lock, stop) {
 				return
 			}
 		}
@@ -602,12 +603,12 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 			timer.Reset(workerIdleTimeout)
 		}
 
-		msg, timeout := p.waitMessage(stop, timeout)
+		msg, timeout := c.waitMessage(stop, timeout)
 		if timeout {
-			atomic.AddUint32(&p.workerIdle, 1)
+			atomic.AddUint32(&c.workerIdle, 1)
 			continue
 		}
-		atomic.AddUint32(&p.workerBusy, 1)
+		atomic.AddUint32(&c.workerBusy, 1)
 
 		if timer != nil {
 			if !timer.Stop() {
@@ -621,9 +622,9 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 
 		select {
 		case <-stop:
-			p.release(msg, nil)
+			c.release(msg, nil)
 		default:
-			_ = p.process(msg)
+			_ = c.process(msg)
 		}
 	}
 }
@@ -679,25 +680,29 @@ func (c *Consumer) process(msg *Message) error {
 		return msg.StickyErr
 	}
 
+	start := time.Now()
 	err := c.q.HandleMessage(msg)
+	c.updateTiming(time.Since(start))
+
 	if err == nil {
 		c.resetPause()
 	}
 	if err != ErrAsyncTask {
 		c.Put(msg, err)
 	}
+
 	return err
 }
 
-func (p *Consumer) Put(msg *Message, msgErr error) {
+func (c *Consumer) Put(msg *Message, msgErr error) {
 	if msgErr == nil {
-		atomic.AddUint32(&p.processed, 1)
-		p.delete(msg, msgErr)
+		atomic.AddUint32(&c.processed, 1)
+		c.delete(msg, msgErr)
 		return
 	}
 
 	if msg.Task == nil {
-		msg.Task = p.q.GetTask(msg.TaskName)
+		msg.Task = c.q.GetTask(msg.TaskName)
 	}
 
 	var opt *TaskOptions
@@ -707,7 +712,7 @@ func (p *Consumer) Put(msg *Message, msgErr error) {
 		opt = unknownTaskOpt
 	}
 
-	atomic.AddUint32(&p.errCount, 1)
+	atomic.AddUint32(&c.errCount, 1)
 	if msg.ReservedCount < opt.RetryLimit {
 		msg.Delay = exponentialBackoff(
 			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
@@ -717,23 +722,23 @@ func (p *Consumer) Put(msg *Message, msgErr error) {
 			}
 		}
 
-		atomic.AddUint32(&p.retries, 1)
-		p.release(msg, msgErr)
+		atomic.AddUint32(&c.retries, 1)
+		c.release(msg, msgErr)
 	} else {
-		atomic.AddUint32(&p.fails, 1)
-		p.delete(msg, msgErr)
+		atomic.AddUint32(&c.fails, 1)
+		c.delete(msg, msgErr)
 	}
 }
 
-func (p *Consumer) release(msg *Message, msgErr error) {
+func (c *Consumer) release(msg *Message, msgErr error) {
 	if msgErr != nil {
 		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
-			old := atomic.LoadUint32(&p.delaySec)
+			old := atomic.LoadUint32(&c.delaySec)
 			if new > old {
 				break
 			}
-			if atomic.CompareAndSwapUint32(&p.delaySec, old, new) {
+			if atomic.CompareAndSwapUint32(&c.delaySec, old, new) {
 				break
 			}
 		}
@@ -742,81 +747,54 @@ func (p *Consumer) release(msg *Message, msgErr error) {
 			msg.Task, msg.ReservedCount, msg.Delay, msgErr)
 	}
 
-	if err := p.q.Release(msg); err != nil {
+	if err := c.q.Release(msg); err != nil {
 		internal.Logger.Printf("%s Release failed: %s", msg.Task, err)
 	}
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
-func (p *Consumer) delete(msg *Message, err error) {
+func (c *Consumer) delete(msg *Message, err error) {
 	if err != nil {
 		internal.Logger.Printf("%s handler failed after retry=%d: %s",
 			msg.Task, msg.ReservedCount, err)
 
 		msg.StickyErr = err
-		if err := p.q.HandleMessage(msg); err != nil {
+		if err := c.q.HandleMessage(msg); err != nil {
 			internal.Logger.Printf("%s fallback handler failed: %s", msg.Task, err)
 		}
 	}
 
-	if err := p.q.Delete(msg); err != nil {
+	if err := c.q.Delete(msg); err != nil {
 		internal.Logger.Printf("%s Delete failed: %s", msg.Task, err)
 	}
-	atomic.AddUint32(&p.inFlight, ^uint32(0))
+	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
 // Purge discards messages from the internal queue.
-func (p *Consumer) Purge() error {
+func (c *Consumer) Purge() error {
 	for {
 		select {
-		case msg := <-p.buffer:
-			p.delete(msg, nil)
+		case msg := <-c.buffer:
+			c.delete(msg, nil)
 		default:
 			return nil
 		}
 	}
 }
 
-func (p *Consumer) updateAvgDuration(dur time.Duration) {
-	const decay = float32(1) / 30
-
-	us := uint32(dur / timePrecision)
-	if us == 0 {
-		return
+func (c *Consumer) updateTiming(dur time.Duration) {
+	ms := float64(dur) / float64(time.Millisecond)
+	c.tdMu.Lock()
+	if c.td == nil {
+		c.td, _ = tdigest.New(tdigest.Compression(20))
 	}
-
-	for {
-		min := atomic.LoadUint32(&p.minDuration)
-		if (min != 0 && us >= min) ||
-			atomic.CompareAndSwapUint32(&p.minDuration, min, us) {
-			break
-		}
-	}
-
-	for {
-		max := atomic.LoadUint32(&p.maxDuration)
-		if us <= max || atomic.CompareAndSwapUint32(&p.maxDuration, max, us) {
-			break
-		}
-	}
-
-	for {
-		avg := atomic.LoadUint32(&p.avgDuration)
-		var newAvg uint32
-		if avg > 0 {
-			newAvg = uint32((1-decay)*float32(avg) + decay*float32(us))
-		} else {
-			newAvg = us
-		}
-		if atomic.CompareAndSwapUint32(&p.avgDuration, avg, newAvg) {
-			break
-		}
-	}
+	c.td.Add(ms)
+	c.tdMu.Unlock()
 }
 
-func (p *Consumer) resetPause() {
-	atomic.StoreUint32(&p.delaySec, 0)
-	atomic.StoreUint32(&p.errCount, 0)
+func (c *Consumer) resetPause() {
+	atomic.StoreUint32(&c.delaySec, 0)
+	atomic.StoreUint32(&c.errCount, 0)
 }
 
 func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) bool {
@@ -846,7 +824,7 @@ func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) 
 	}
 }
 
-func (p *Consumer) unlockWorker(lock *redlock.Locker) {
+func (c *Consumer) unlockWorker(lock *redlock.Locker) {
 	_ = lock.Unlock()
 }
 
@@ -854,6 +832,15 @@ func (c *Consumer) String() string {
 	fnum := atomic.LoadInt32(&c.fetcherNumber)
 	wnum := atomic.LoadInt32(&c.workerNumber)
 	inFlight := atomic.LoadUint32(&c.inFlight)
+
+	var p50, p90, p99 float64
+	c.tdMu.Lock()
+	if c.td != nil {
+		p50 = round(c.td.Quantile(0.5))
+		p90 = round(c.td.Quantile(0.9))
+		p99 = round(c.td.Quantile(0.99))
+	}
+	c.tdMu.Unlock()
 
 	var extra string
 	if c.isStarving() {
@@ -870,8 +857,8 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d %d/%d%s>",
-		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, extra)
+		"Consumer<%s %d/%d %d/%d %f/%f/%f%s>",
+		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, p50, p90, p99, extra)
 }
 
 func (c *Consumer) updateBuffered() {
@@ -948,4 +935,14 @@ func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 		return max
 	}
 	return d
+}
+
+func round(f float64) float64 {
+	if f >= 10 {
+		return math.Round(f)
+	}
+	if f < 1 {
+		return math.Round(f*10) / 10
+	}
+	return math.Round(f*100) / 100
 }

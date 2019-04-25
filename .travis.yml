@@ -23,5 +23,6 @@ install:
   - go get github.com/valyala/gozstd
   - go get github.com/hashicorp/golang-lru/simplelru
   - go get github.com/satori/go.uuid
+  - go get github.com/caio/go-tdigest
   - go get github.com/onsi/ginkgo
   - go get github.com/onsi/gomega
