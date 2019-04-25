@@ -606,9 +606,8 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		if timeout {
 			atomic.AddUint32(&p.workerIdle, 1)
 			continue
-		} else {
-			atomic.AddUint32(&p.workerBusy, 1)
 		}
+		atomic.AddUint32(&p.workerBusy, 1)
 
 		if timer != nil {
 			if !timer.Stop() {
@@ -623,7 +622,6 @@ func (p *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		select {
 		case <-stop:
 			p.release(msg, nil)
-			return
 		default:
 			_ = p.process(msg)
 		}
@@ -660,33 +658,33 @@ func (c *Consumer) dequeueMessage() *Message {
 }
 
 // Process is low-level API to process message bypassing the internal queue.
-func (p *Consumer) Process(msg *Message) error {
-	return p.process(msg)
+func (c *Consumer) Process(msg *Message) error {
+	return c.process(msg)
 }
 
-func (p *Consumer) process(msg *Message) error {
-	atomic.AddUint32(&p.inFlight, 1)
+func (c *Consumer) process(msg *Message) error {
+	atomic.AddUint32(&c.inFlight, 1)
 
 	if msg.Delay > 0 {
-		err := p.q.Add(msg)
+		err := c.q.Add(msg)
 		if err != nil {
 			return err
 		}
-		p.delete(msg, nil)
+		c.delete(msg, nil)
 		return nil
 	}
 
 	if msg.StickyErr != nil {
-		p.Put(msg, msg.StickyErr)
+		c.Put(msg, msg.StickyErr)
 		return msg.StickyErr
 	}
 
-	err := p.q.HandleMessage(msg)
+	err := c.q.HandleMessage(msg)
 	if err == nil {
-		p.resetPause()
+		c.resetPause()
 	}
 	if err != ErrAsyncTask {
-		p.Put(msg, err)
+		c.Put(msg, err)
 	}
 	return err
 }
@@ -855,6 +853,7 @@ func (p *Consumer) unlockWorker(lock *redlock.Locker) {
 func (c *Consumer) String() string {
 	fnum := atomic.LoadInt32(&c.fetcherNumber)
 	wnum := atomic.LoadInt32(&c.workerNumber)
+	inFlight := atomic.LoadUint32(&c.inFlight)
 
 	var extra string
 	if c.isStarving() {
@@ -871,8 +870,8 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d/%d%s>",
-		c.q.Name(), fnum, wnum, len(c.buffer), extra)
+		"Consumer<%s %d/%d %d/%d%s>",
+		c.q.Name(), fnum, len(c.buffer), inFlight, wnum, extra)
 }
 
 func (c *Consumer) updateBuffered() {
