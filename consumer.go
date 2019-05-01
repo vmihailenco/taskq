@@ -220,25 +220,25 @@ func (c *Consumer) add(msg *Message) {
 }
 
 // Start starts consuming messages in the queue.
-func (p *Consumer) Start() error {
-	if p.stopCh != nil {
+func (c *Consumer) Start() error {
+	if c.stopCh != nil {
 		return errors.New("taskq: Consumer is already started")
 	}
 
 	stop := make(chan struct{})
-	p.stopCh = stop
+	c.stopCh = stop
 
-	atomic.StoreInt32(&p.fetcherNumber, 0)
-	atomic.StoreInt32(&p.workerNumber, 0)
+	atomic.StoreInt32(&c.fetcherNumber, 0)
+	atomic.StoreInt32(&c.workerNumber, 0)
 
-	for i := 0; i < p.opt.MinWorkers; i++ {
-		p.addWorker(stop)
+	for i := 0; i < c.opt.MinWorkers; i++ {
+		c.addWorker(stop)
 	}
 
-	p.jobsWG.Add(1)
+	c.jobsWG.Add(1)
 	go func() {
-		defer p.jobsWG.Done()
-		p.autotune(stop)
+		defer c.jobsWG.Done()
+		c.autotune(stop)
 	}()
 
 	return nil
@@ -338,9 +338,10 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 	c.updateBuffered()
 
 	if c.isStarving() {
-		internal.Logger.Printf("%s: adding a fetcher", c)
-		c.addFetcher(stop)
-		c.resetAutotune()
+		if c.addFetcher(stop) != -1 {
+			internal.Logger.Printf("%s: adding a fetcher", c)
+			c.resetAutotune()
+		}
 		return
 	}
 
@@ -351,9 +352,10 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 	}
 
 	if c.isLoaded() {
-		internal.Logger.Printf("%s: adding a worker", c)
-		c.addWorker(stop)
-		c.resetAutotune()
+		if c.addWorker(stop) != -1 {
+			internal.Logger.Printf("%s: adding a worker", c)
+			c.resetAutotune()
+		}
 		return
 	}
 
@@ -364,27 +366,27 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 	}
 }
 
-func (p *Consumer) hasFetcher() bool {
-	return atomic.LoadInt32(&p.fetcherNumber) > 0
+func (c *Consumer) hasFetcher() bool {
+	return atomic.LoadInt32(&c.fetcherNumber) > 0
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
-func (p *Consumer) Stop() error {
-	return p.StopTimeout(stopTimeout)
+func (c *Consumer) Stop() error {
+	return c.StopTimeout(stopTimeout)
 }
 
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
-func (p *Consumer) StopTimeout(timeout time.Duration) error {
-	if p.stopCh == nil || closed(p.stopCh) {
+func (c *Consumer) StopTimeout(timeout time.Duration) error {
+	if c.stopCh == nil || closed(c.stopCh) {
 		return nil
 	}
-	close(p.stopCh)
-	p.stopCh = nil
+	close(c.stopCh)
+	c.stopCh = nil
 
 	done := make(chan struct{}, 1)
 	go func() {
-		p.jobsWG.Wait()
+		c.jobsWG.Wait()
 		done <- struct{}{}
 	}()
 
@@ -398,15 +400,15 @@ func (p *Consumer) StopTimeout(timeout time.Duration) error {
 	}
 }
 
-func (p *Consumer) paused() time.Duration {
+func (c *Consumer) paused() time.Duration {
 	const threshold = 100
 
-	if p.opt.PauseErrorsThreshold == 0 ||
-		atomic.LoadUint32(&p.errCount) < uint32(p.opt.PauseErrorsThreshold) {
+	if c.opt.PauseErrorsThreshold == 0 ||
+		atomic.LoadUint32(&c.errCount) < uint32(c.opt.PauseErrorsThreshold) {
 		return 0
 	}
 
-	sec := atomic.LoadUint32(&p.delaySec)
+	sec := atomic.LoadUint32(&c.delaySec)
 	if sec == 0 {
 		return time.Minute
 	}
@@ -415,15 +417,15 @@ func (p *Consumer) paused() time.Duration {
 
 // ProcessAll starts workers to process messages in the queue and then stops
 // them when all messages are processed.
-func (p *Consumer) ProcessAll() error {
-	if err := p.Start(); err != nil {
+func (c *Consumer) ProcessAll() error {
+	if err := c.Start(); err != nil {
 		return err
 	}
 
 	var prev *ConsumerStats
 	var noWork int
 	for {
-		st := p.Stats()
+		st := c.Stats()
 		if prev != nil &&
 			st.Buffered == 0 &&
 			st.InFlight == 0 &&
@@ -439,28 +441,28 @@ func (p *Consumer) ProcessAll() error {
 		time.Sleep(time.Second)
 	}
 
-	return p.Stop()
+	return c.Stop()
 }
 
 // ProcessOne processes at most one message in the queue.
-func (p *Consumer) ProcessOne() error {
-	msg, err := p.reserveOne()
+func (c *Consumer) ProcessOne() error {
+	msg, err := c.reserveOne()
 	if err != nil {
 		return err
 	}
 
 	// TODO: wait
-	return p.Process(msg)
+	return c.Process(msg)
 }
 
-func (p *Consumer) reserveOne() (*Message, error) {
+func (c *Consumer) reserveOne() (*Message, error) {
 	select {
-	case msg := <-p.buffer:
+	case msg := <-c.buffer:
 		return msg, nil
 	default:
 	}
 
-	msgs, err := p.q.ReserveN(1, p.opt.WaitTimeout)
+	msgs, err := c.q.ReserveN(1, c.opt.WaitTimeout)
 	if err != nil && err != internal.ErrNotSupported {
 		return nil, err
 	}
@@ -488,7 +490,6 @@ func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
 		}
 
 		if fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
-			internal.Logger.Printf("%s: fetcher=%d is stopped", c.q, fetcherID)
 			return
 		}
 
@@ -589,7 +590,6 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 
 	for {
 		if workerID >= atomic.LoadInt32(&c.workerNumber) {
-			internal.Logger.Printf("%s: worker=%d is stopped", c.q, workerID)
 			return
 		}
 
@@ -798,7 +798,7 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.errCount, 0)
 }
 
-func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) bool {
+func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) bool {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
@@ -811,7 +811,7 @@ func (p *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) 
 			return true
 		}
 
-		timeout := time.Duration(500+p.rand.Intn(500)) * time.Millisecond
+		timeout := time.Duration(500+c.rand.Intn(500)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
