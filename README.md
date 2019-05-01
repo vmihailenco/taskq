@@ -4,24 +4,31 @@
 
 ## Installation
 
-```bash
+``` bash
 go get -u github.com/vmihailenco/taskq
 ```
 
 ## Features
 
- - SQS, IronMQ, and in-memory backends.
- - Queue processor can be run on separate server.
+ - Redis, SQS, IronMQ, and in-memory backends.
  - Automatically scaling number of goroutines used to fetch and process messages.
  - Rate limiting.
  - Global limit of workers.
- - Call once.
+ - Call once - deduplicating messages.
  - Automatic retries with exponential backoffs.
  - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
  - Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
- - Automatic message compression using Snappy.
- - Statistics.
+ - Automatic message compression using zstd.
+ - TDigest statistics.
+
+## Quickstart
+
+API/client that adds messages to queues:
+
+``` go
+
+```
 
 ## Design overview
 

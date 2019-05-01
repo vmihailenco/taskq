@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,8 +84,6 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 		schedulerLockPrefix: opt.Name + ":scheduler-lock:",
 	}
 
-	q.initStream()
-
 	q.wg.Add(1)
 	go func() {
 		defer q.wg.Done()
@@ -98,13 +97,6 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	}()
 
 	return q
-}
-
-func (q *Queue) initStream() {
-	err := q.redis.XGroupCreateMkStream(q.stream, q.streamGroup, "0").Err()
-	if err != nil {
-		internal.Logger.Printf("XGroupCreateMkStream %q failed: %s", q.stream, err)
-	}
 }
 
 func consumer() string {
@@ -196,6 +188,10 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 		if err == redis.Nil { // timeout
 			return nil, nil
 		}
+		if strings.HasPrefix(err.Error(), "NOGROUP") {
+			q.createStreamGroup()
+			return q.ReserveN(n, waitTimeout)
+		}
 		return nil, err
 	}
 
@@ -212,6 +208,10 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 	}
 
 	return msgs, nil
+}
+
+func (q *Queue) createStreamGroup() {
+	_ = q.redis.XGroupCreateMkStream(q.stream, q.streamGroup, "0").Err()
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
@@ -341,6 +341,9 @@ func (q *Queue) schedulePending() (int, error) {
 		Count:  batchSize,
 	}).Result()
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "NOGROUP") {
+			q.createStreamGroup()
+		}
 		return 0, err
 	}
 

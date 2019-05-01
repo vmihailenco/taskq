@@ -477,7 +477,7 @@ func (c *Consumer) reserveOne() (*Message, error) {
 	return &msgs[0], nil
 }
 
-func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
+func (c *Consumer) fetcher(fetcherID int32, stopCh <-chan struct{}) {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
@@ -485,7 +485,7 @@ func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
 	fetchTimeout -= fetchTimeout / 10
 
 	for {
-		if closed(stop) {
+		if closed(stopCh) {
 			return
 		}
 
@@ -570,7 +570,7 @@ func (c *Consumer) releaseBuffer() {
 	}
 }
 
-func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
+func (c *Consumer) worker(workerID int32, stopCh <-chan struct{}) {
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	if workerID > 0 {
@@ -594,7 +594,7 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		}
 
 		if lock != nil {
-			if !c.lockWorkerOrExit(lock, stop) {
+			if !c.lockWorkerOrExit(lock, stopCh) {
 				return
 			}
 		}
@@ -603,7 +603,7 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 			timer.Reset(workerIdleTimeout)
 		}
 
-		msg, timeout := c.waitMessage(stop, timeout)
+		msg, timeout := c.waitMessage(stopCh, timeout)
 		if timeout {
 			atomic.AddUint32(&c.workerIdle, 1)
 			continue
@@ -621,7 +621,7 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 		}
 
 		select {
-		case <-stop:
+		case <-stopCh:
 			_ = c.q.Release(msg)
 		default:
 			_ = c.Process(msg)
@@ -630,19 +630,19 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 }
 
 func (c *Consumer) waitMessage(
-	stop <-chan struct{}, timeoutC <-chan time.Time,
+	stopCh <-chan struct{}, timeoutC <-chan time.Time,
 ) (msg *Message, timeout bool) {
 	msg = c.dequeueMessage()
 	if msg != nil {
 		return msg, false
 	}
 
-	c.tryStartFetcher(0, stop)
+	c.tryStartFetcher(0, stopCh)
 
 	select {
 	case msg := <-c.buffer:
 		return msg, false
-	case <-stop:
+	case <-stopCh:
 		return c.dequeueMessage(), false
 	case <-timeoutC:
 		return nil, true
@@ -798,7 +798,7 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.errCount, 0)
 }
 
-func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) bool {
+func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker, stopCh <-chan struct{}) bool {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
@@ -815,7 +815,7 @@ func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker, stop <-chan struct{}) 
 		timer.Reset(timeout)
 
 		select {
-		case <-stop:
+		case <-stopCh:
 			if !timer.Stop() {
 				<-timer.C
 			}
@@ -910,7 +910,7 @@ func (c *Consumer) hasIdleWorker() bool {
 	}
 	idle := atomic.LoadUint32(&c.workerIdle)
 	busy := atomic.LoadUint32(&c.workerBusy)
-	return busy > 10 && float64(idle) > float64(busy)/float64(num)
+	return busy+idle > 10 && float64(idle) > float64(busy)/float64(num)
 }
 
 func (c *Consumer) resetAutotune() {

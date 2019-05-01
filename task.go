@@ -50,6 +50,9 @@ func (opt *TaskOptions) init() {
 	}
 	opt.inited = true
 
+	if opt.Name == "" {
+		panic("TaskOptions.Name is required")
+	}
 	if opt.RetryLimit == 0 {
 		opt.RetryLimit = 64
 	}
