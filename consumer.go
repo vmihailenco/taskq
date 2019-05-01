@@ -389,15 +389,13 @@ func (p *Consumer) StopTimeout(timeout time.Duration) error {
 	}()
 
 	timer := time.NewTimer(timeout)
-	var err error
 	select {
 	case <-done:
 		timer.Stop()
+		return nil
 	case <-timer.C:
-		err = fmt.Errorf("workers are not stopped after %s", timeout)
+		return fmt.Errorf("workers are not stopped after %s", timeout)
 	}
-
-	return err
 }
 
 func (p *Consumer) paused() time.Duration {
@@ -452,7 +450,7 @@ func (p *Consumer) ProcessOne() error {
 	}
 
 	// TODO: wait
-	return p.process(msg)
+	return p.Process(msg)
 }
 
 func (p *Consumer) reserveOne() (*Message, error) {
@@ -511,8 +509,7 @@ func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
 			const backoff = time.Second
 			internal.Logger.Printf(
 				"%s fetchMessages failed: %s (sleeping for dur=%s)",
-				c.q, err, backoff,
-			)
+				c.q, err, backoff)
 			time.Sleep(backoff)
 		}
 		if timeout {
@@ -525,24 +522,24 @@ func (c *Consumer) fetcher(fetcherID int32, stop <-chan struct{}) {
 	}
 }
 
-func (p *Consumer) fetchMessages(
+func (c *Consumer) fetchMessages(
 	id int32, timeoutC <-chan time.Time,
 ) (timeout bool, err error) {
-	size := p.limiter.Reserve(p.opt.ReservationSize)
-	msgs, err := p.q.ReserveN(size, p.opt.WaitTimeout)
+	size := c.limiter.Reserve(c.opt.ReservationSize)
+	msgs, err := c.q.ReserveN(size, c.opt.WaitTimeout)
 	if err != nil {
 		return false, err
 	}
 
 	if d := size - len(msgs); d > 0 {
-		p.limiter.Cancel(d)
+		c.limiter.Cancel(d)
 	}
 
 	if id > 0 {
 		if len(msgs) < size {
-			atomic.AddUint32(&p.fetcherIdle, 1)
+			atomic.AddUint32(&c.fetcherIdle, 1)
 		} else {
-			atomic.AddUint32(&p.fetcherBusy, 1)
+			atomic.AddUint32(&c.fetcherBusy, 1)
 		}
 	}
 
@@ -550,10 +547,10 @@ func (p *Consumer) fetchMessages(
 		msg := &msgs[i]
 
 		select {
-		case p.buffer <- msg:
+		case c.buffer <- msg:
 		case <-timeoutC:
 			for i := range msgs[i:] {
-				p.release(&msgs[i])
+				_ = c.q.Release(&msgs[i])
 			}
 			return true, nil
 		}
@@ -568,7 +565,7 @@ func (c *Consumer) releaseBuffer() {
 		if msg == nil {
 			break
 		}
-		c.release(msg)
+		_ = c.q.Release(msg)
 	}
 }
 
@@ -625,9 +622,9 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 
 		select {
 		case <-stop:
-			c.release(msg)
+			_ = c.q.Release(msg)
 		default:
-			_ = c.process(msg)
+			_ = c.Process(msg)
 		}
 	}
 }
@@ -663,10 +660,6 @@ func (c *Consumer) dequeueMessage() *Message {
 
 // Process is low-level API to process message bypassing the internal queue.
 func (c *Consumer) Process(msg *Message) error {
-	return c.process(msg)
-}
-
-func (c *Consumer) process(msg *Message) error {
 	atomic.AddUint32(&c.inFlight, 1)
 
 	if msg.Delay > 0 {
