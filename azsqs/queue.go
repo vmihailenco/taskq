@@ -360,6 +360,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
+			msg.StickyErr = err
 			internal.Logger.Printf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}

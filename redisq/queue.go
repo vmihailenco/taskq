@@ -160,11 +160,7 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	}
 
 	if msg.ID == "" {
-		id, err := uuid.NewV4()
-		if err != nil {
-			return err
-		}
-		msg.ID = id.String()
+		msg.ID = uuid.NewV4().String()
 	}
 
 	body, err := msg.MarshalBinary()

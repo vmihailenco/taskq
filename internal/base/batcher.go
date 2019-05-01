@@ -95,7 +95,10 @@ func (b *Batcher) stopTimer() {
 func (b *Batcher) process(batch []*taskq.Message) {
 	err := b.opt.Handler(batch)
 	for _, msg := range batch {
-		b.consumer.Put(msg, err)
+		if msg.StickyErr == nil {
+			msg.StickyErr = err
+		}
+		b.consumer.Put(msg)
 	}
 }
 

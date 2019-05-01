@@ -553,7 +553,7 @@ func (p *Consumer) fetchMessages(
 		case p.buffer <- msg:
 		case <-timeoutC:
 			for i := range msgs[i:] {
-				p.release(&msgs[i], nil)
+				p.release(&msgs[i])
 			}
 			return true, nil
 		}
@@ -568,7 +568,7 @@ func (c *Consumer) releaseBuffer() {
 		if msg == nil {
 			break
 		}
-		c.release(msg, nil)
+		c.release(msg)
 	}
 }
 
@@ -625,7 +625,7 @@ func (c *Consumer) worker(workerID int32, stop <-chan struct{}) {
 
 		select {
 		case <-stop:
-			c.release(msg, nil)
+			c.release(msg)
 		default:
 			_ = c.process(msg)
 		}
@@ -674,12 +674,12 @@ func (c *Consumer) process(msg *Message) error {
 		if err != nil {
 			return err
 		}
-		c.delete(msg, nil)
+		c.delete(msg)
 		return nil
 	}
 
 	if msg.StickyErr != nil {
-		c.Put(msg, msg.StickyErr)
+		c.Put(msg)
 		return msg.StickyErr
 	}
 
@@ -691,16 +691,17 @@ func (c *Consumer) process(msg *Message) error {
 		c.resetPause()
 	}
 	if err != ErrAsyncTask {
-		c.Put(msg, err)
+		msg.StickyErr = err
+		c.Put(msg)
 	}
 
 	return err
 }
 
-func (c *Consumer) Put(msg *Message, msgErr error) {
-	if msgErr == nil {
+func (c *Consumer) Put(msg *Message) {
+	if msg.StickyErr == nil {
 		atomic.AddUint32(&c.processed, 1)
-		c.delete(msg, msgErr)
+		c.delete(msg)
 		return
 	}
 
@@ -719,22 +720,22 @@ func (c *Consumer) Put(msg *Message, msgErr error) {
 	if msg.ReservedCount < opt.RetryLimit {
 		msg.Delay = exponentialBackoff(
 			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
-		if msgErr != nil {
-			if delayer, ok := msgErr.(Delayer); ok {
+		if msg.StickyErr != nil {
+			if delayer, ok := msg.StickyErr.(Delayer); ok {
 				msg.Delay = delayer.Delay()
 			}
 		}
 
 		atomic.AddUint32(&c.retries, 1)
-		c.release(msg, msgErr)
+		c.release(msg)
 	} else {
 		atomic.AddUint32(&c.fails, 1)
-		c.delete(msg, msgErr)
+		c.delete(msg)
 	}
 }
 
-func (c *Consumer) release(msg *Message, msgErr error) {
-	if msgErr != nil {
+func (c *Consumer) release(msg *Message) {
+	if msg.StickyErr != nil {
 		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
 			old := atomic.LoadUint32(&c.delaySec)
@@ -747,27 +748,31 @@ func (c *Consumer) release(msg *Message, msgErr error) {
 		}
 
 		internal.Logger.Printf("%s handler failed (will retry=%d in dur=%s): %s",
-			msg.Task, msg.ReservedCount, msg.Delay, msgErr)
+			msg.Task, msg.ReservedCount, msg.Delay, msg.StickyErr)
 	}
 
-	if err := c.q.Release(msg); err != nil {
+	msg.StickyErr = nil
+	err := c.q.Release(msg)
+	if err != nil {
 		internal.Logger.Printf("%s Release failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
-func (c *Consumer) delete(msg *Message, err error) {
-	if err != nil {
+func (c *Consumer) delete(msg *Message) {
+	if msg.StickyErr != nil {
 		internal.Logger.Printf("%s handler failed after retry=%d: %s",
-			msg.Task, msg.ReservedCount, err)
+			msg.Task, msg.ReservedCount, msg.StickyErr)
 
-		msg.StickyErr = err
-		if err := c.q.HandleMessage(msg); err != nil {
+		err := c.q.HandleMessage(msg)
+		if err != nil {
 			internal.Logger.Printf("%s fallback handler failed: %s", msg.Task, err)
 		}
 	}
 
-	if err := c.q.Delete(msg); err != nil {
+	msg.StickyErr = nil
+	err := c.q.Delete(msg)
+	if err != nil {
 		internal.Logger.Printf("%s Delete failed: %s", msg.Task, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
@@ -778,7 +783,7 @@ func (c *Consumer) Purge() error {
 	for {
 		select {
 		case msg := <-c.buffer:
-			c.delete(msg, nil)
+			c.delete(msg)
 		default:
 			return nil
 		}
