@@ -138,7 +138,7 @@ type Consumer struct {
 	fails     uint32
 	retries   uint32
 
-	hooks []MessageHook
+	hooks []ConsumerHook
 }
 
 // New creates new Consumer for the queue using provided processing options.
@@ -168,8 +168,8 @@ func StartConsumer(q Queue) *Consumer {
 	return c
 }
 
-// AddMessageHook adds a hook into message processing.
-func (c *Consumer) AddMessageHook(hook MessageHook) {
+// AddHook adds a hook into message processing.
+func (c *Consumer) AddHook(hook ConsumerHook) {
 	c.hooks = append(c.hooks, hook)
 }
 
@@ -673,9 +673,9 @@ func (c *Consumer) Process(msg *Message) error {
 		return msg.StickyErr
 	}
 
-	evt := c.messageStarted(msg)
+	evt := c.beforeProcessMessage(msg)
 	err := c.q.HandleMessage(msg)
-	c.messageProcessed(evt, err)
+	c.afterProcessMessage(evt, err)
 
 	if err == nil {
 		c.resetPause()
@@ -780,7 +780,7 @@ func (c *Consumer) Purge() error {
 	}
 }
 
-type MessageEvent struct {
+type ProcessMessageEvent struct {
 	Message *Message
 	Start   time.Time
 	Error   error
@@ -788,32 +788,32 @@ type MessageEvent struct {
 	Data map[interface{}]interface{}
 }
 
-type MessageHook interface {
-	BeforeMessage(*MessageEvent)
-	AfterMessage(*MessageEvent)
+type ConsumerHook interface {
+	BeforeProcessMessage(*ProcessMessageEvent)
+	AfterProcessMessage(*ProcessMessageEvent)
 }
 
-func (c *Consumer) messageStarted(msg *Message) *MessageEvent {
+func (c *Consumer) beforeProcessMessage(msg *Message) *ProcessMessageEvent {
 	if len(c.hooks) == 0 {
 		return nil
 	}
-	evt := &MessageEvent{
+	evt := &ProcessMessageEvent{
 		Message: msg,
 		Start:   time.Now(),
 	}
 	for _, hook := range c.hooks {
-		hook.BeforeMessage(evt)
+		hook.BeforeProcessMessage(evt)
 	}
 	return evt
 }
 
-func (c *Consumer) messageProcessed(evt *MessageEvent, err error) {
+func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) {
 	if evt == nil {
 		return
 	}
 	evt.Error = err
 	for _, hook := range c.hooks {
-		hook.AfterMessage(evt)
+		hook.AfterProcessMessage(evt)
 	}
 }
 
