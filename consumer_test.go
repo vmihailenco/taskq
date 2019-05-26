@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vmihailenco/taskq"
-
 	"github.com/go-redis/redis"
 	"golang.org/x/time/rate"
+
+	"github.com/vmihailenco/taskq"
 )
 
 const waitTimeout = time.Second
@@ -108,6 +108,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	})
 
 	taskq.SetUnknownTaskOptions(&taskq.TaskOptions{
+		Name:       "unknown",
 		RetryLimit: 1,
 	})
 

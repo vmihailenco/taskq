@@ -11,7 +11,6 @@ import (
 	"time"
 
 	redlock "github.com/bsm/redis-lock"
-	tdigest "github.com/caio/go-tdigest"
 	"golang.org/x/time/rate"
 
 	"github.com/vmihailenco/taskq/internal"
@@ -37,7 +36,6 @@ type ConsumerStats struct {
 	Processed     uint32
 	Retries       uint32
 	Fails         uint32
-	TDigest       *tdigest.TDigest
 }
 
 type limiter struct {
@@ -134,14 +132,13 @@ type Consumer struct {
 
 	lastAutotuneReset time.Time
 
-	tdMu sync.Mutex
-	td   *tdigest.TDigest
-
 	inFlight  uint32
 	deleting  uint32
 	processed uint32
 	fails     uint32
 	retries   uint32
+
+	hooks []MessageHook
 }
 
 // New creates new Consumer for the queue using provided processing options.
@@ -159,7 +156,6 @@ func NewConsumer(q Queue) *Consumer {
 			limit:   opt.RateLimit,
 		},
 	}
-
 	return p
 }
 
@@ -172,6 +168,11 @@ func StartConsumer(q Queue) *Consumer {
 	return c
 }
 
+// AddMessageHook adds a hook into message processing.
+func (c *Consumer) AddMessageHook(hook MessageHook) {
+	c.hooks = append(c.hooks, hook)
+}
+
 func (c *Consumer) Queue() Queue {
 	return c.q
 }
@@ -182,9 +183,6 @@ func (c *Consumer) Options() *QueueOptions {
 
 // Stats returns processor stats.
 func (c *Consumer) Stats() *ConsumerStats {
-	c.tdMu.Lock()
-	td := c.td.Clone()
-	c.tdMu.Unlock()
 	return &ConsumerStats{
 		WorkerNumber:  uint32(atomic.LoadInt32(&c.workerNumber)),
 		FetcherNumber: uint32(atomic.LoadInt32(&c.fetcherNumber)),
@@ -194,7 +192,6 @@ func (c *Consumer) Stats() *ConsumerStats {
 		Processed:     atomic.LoadUint32(&c.processed),
 		Retries:       atomic.LoadUint32(&c.retries),
 		Fails:         atomic.LoadUint32(&c.fails),
-		TDigest:       td,
 	}
 }
 
@@ -676,9 +673,9 @@ func (c *Consumer) Process(msg *Message) error {
 		return msg.StickyErr
 	}
 
-	start := time.Now()
+	evt := c.messageStarted(msg)
 	err := c.q.HandleMessage(msg)
-	c.updateTiming(time.Since(start))
+	c.messageProcessed(evt, err)
 
 	if err == nil {
 		c.resetPause()
@@ -783,14 +780,41 @@ func (c *Consumer) Purge() error {
 	}
 }
 
-func (c *Consumer) updateTiming(dur time.Duration) {
-	ms := float64(dur) / float64(time.Millisecond)
-	c.tdMu.Lock()
-	if c.td == nil {
-		c.td, _ = tdigest.New(tdigest.Compression(20))
+type MessageEvent struct {
+	Message *Message
+	Start   time.Time
+	Error   error
+
+	Data map[interface{}]interface{}
+}
+
+type MessageHook interface {
+	BeforeMessage(*MessageEvent)
+	AfterMessage(*MessageEvent)
+}
+
+func (c *Consumer) messageStarted(msg *Message) *MessageEvent {
+	if len(c.hooks) == 0 {
+		return nil
 	}
-	c.td.Add(ms)
-	c.tdMu.Unlock()
+	evt := &MessageEvent{
+		Message: msg,
+		Start:   time.Now(),
+	}
+	for _, hook := range c.hooks {
+		hook.BeforeMessage(evt)
+	}
+	return evt
+}
+
+func (c *Consumer) messageProcessed(evt *MessageEvent, err error) {
+	if evt == nil {
+		return
+	}
+	evt.Error = err
+	for _, hook := range c.hooks {
+		hook.AfterMessage(evt)
+	}
 }
 
 func (c *Consumer) resetPause() {
@@ -836,15 +860,6 @@ func (c *Consumer) String() string {
 	processed := atomic.LoadUint32(&c.processed)
 	fails := atomic.LoadUint32(&c.fails)
 
-	var p50, p90, p99 float64
-	c.tdMu.Lock()
-	if c.td != nil {
-		p50 = c.td.Quantile(0.5)
-		p90 = c.td.Quantile(0.9)
-		p99 = c.td.Quantile(0.99)
-	}
-	c.tdMu.Unlock()
-
 	var extra string
 	if c.isStarving() {
 		extra += " starving"
@@ -860,12 +875,11 @@ func (c *Consumer) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d/%d %d/%d %d/%d %s/%s/%sms%s>",
+		"Consumer<%s %d/%d/%d %d/%d %d/%d %s>",
 		c.q.Name(),
 		fnum, len(c.buffer), cap(c.buffer),
 		inFlight, wnum,
 		processed, fails,
-		ff(p50), ff(p90), ff(p99),
 		extra)
 }
 

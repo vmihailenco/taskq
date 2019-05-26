@@ -62,6 +62,9 @@ type Queue struct {
 var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
+	if opt.WaitTimeout == 0 {
+		opt.WaitTimeout = time.Second
+	}
 	opt.Init()
 	if opt.Redis == nil {
 		panic(fmt.Errorf("redisq: Redis client is required"))
