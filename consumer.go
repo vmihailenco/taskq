@@ -785,7 +785,7 @@ type ProcessMessageEvent struct {
 	Start   time.Time
 	Error   error
 
-	Data map[interface{}]interface{}
+	Stash map[interface{}]interface{}
 }
 
 type ConsumerHook interface {
