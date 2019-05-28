@@ -104,7 +104,12 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 		var hasWrongType bool
 		for i, arg := range msg.Args {
 			v := reflect.ValueOf(arg)
-			if v.Type() != h.ft.In(i) {
+			if h.ft.Kind() == reflect.Interface {
+				if !v.Type().Implements(h.ft) {
+					hasWrongType = true
+					break
+				}
+			} else if v.Type() != h.ft.In(i) {
 				hasWrongType = true
 				break
 			}
