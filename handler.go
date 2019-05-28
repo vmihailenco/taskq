@@ -88,7 +88,7 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 
 func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 	in := make([]reflect.Value, h.ft.NumIn())
-	savedIn := in
+	inSaved := in
 
 	var inStart int
 	if h.acceptsContext {
@@ -104,19 +104,22 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 		var hasWrongType bool
 		for i, arg := range msg.Args {
 			v := reflect.ValueOf(arg)
-			if h.ft.Kind() == reflect.Interface {
-				if !v.Type().Implements(h.ft) {
+			inType := h.ft.In(inStart + i)
+
+			if inType.Kind() == reflect.Interface {
+				if !v.Type().Implements(inType) {
 					hasWrongType = true
 					break
 				}
-			} else if v.Type() != h.ft.In(i) {
+			} else if v.Type() != inType {
 				hasWrongType = true
 				break
 			}
+
 			in[i] = v
 		}
 		if !hasWrongType {
-			return in, nil
+			return inSaved, nil
 		}
 	}
 
@@ -149,7 +152,7 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 		in[i] = arg
 	}
 
-	return savedIn, nil
+	return inSaved, nil
 }
 
 func acceptsMessage(typ reflect.Type) bool {
