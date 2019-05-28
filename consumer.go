@@ -673,10 +673,22 @@ func (c *Consumer) Process(msg *Message) error {
 		return msg.StickyErr
 	}
 
-	evt := c.beforeProcessMessage(msg)
-	err := c.q.HandleMessage(msg)
-	c.afterProcessMessage(evt, err)
+	evt, err := c.beforeProcessMessage(msg)
+	if err != nil {
+		return c.handleError(msg, err)
+	}
 
+	msgErr := c.q.HandleMessage(msg)
+
+	err = c.afterProcessMessage(evt, err)
+	if err != nil {
+		return c.handleError(msg, err)
+	}
+
+	return c.handleError(msg, msgErr)
+}
+
+func (c *Consumer) handleError(msg *Message, err error) error {
 	if err == nil {
 		c.resetPause()
 	}
@@ -684,7 +696,6 @@ func (c *Consumer) Process(msg *Message) error {
 		msg.StickyErr = err
 		c.Put(msg)
 	}
-
 	return err
 }
 
@@ -781,40 +792,47 @@ func (c *Consumer) Purge() error {
 }
 
 type ProcessMessageEvent struct {
-	Message *Message
-	Start   time.Time
-	Error   error
+	Message   *Message
+	StartTime time.Time
+	Error     error
 
 	Stash map[interface{}]interface{}
 }
 
 type ConsumerHook interface {
-	BeforeProcessMessage(*ProcessMessageEvent)
-	AfterProcessMessage(*ProcessMessageEvent)
+	BeforeProcessMessage(*ProcessMessageEvent) error
+	AfterProcessMessage(*ProcessMessageEvent) error
 }
 
-func (c *Consumer) beforeProcessMessage(msg *Message) *ProcessMessageEvent {
+func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, error) {
 	if len(c.hooks) == 0 {
-		return nil
+		return nil, nil
 	}
 	evt := &ProcessMessageEvent{
-		Message: msg,
-		Start:   time.Now(),
+		Message:   msg,
+		StartTime: time.Now(),
 	}
 	for _, hook := range c.hooks {
-		hook.BeforeProcessMessage(evt)
+		err := hook.BeforeProcessMessage(evt)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return evt
+	return evt, nil
 }
 
-func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) {
+func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) error {
 	if evt == nil {
-		return
+		return nil
 	}
 	evt.Error = err
 	for _, hook := range c.hooks {
-		hook.AfterProcessMessage(evt)
+		err := hook.AfterProcessMessage(evt)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (c *Consumer) resetPause() {

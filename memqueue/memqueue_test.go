@@ -1,18 +1,19 @@
 package memqueue_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-redis/redis"
-	"github.com/go-redis/redis_rate"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"golang.org/x/time/rate"
 
 	"github.com/vmihailenco/taskq"
 	"github.com/vmihailenco/taskq/memqueue"
@@ -24,24 +25,52 @@ func TestMemqueue(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	taskq.SetLogger(nil)
+	taskq.SetLogger(log.New(ioutil.Discard, "", 0))
 })
 
 var _ = Describe("message with args", func() {
 	ch := make(chan bool, 10)
-	handler := func(s string, i int) {
-		Expect(s).To(Equal("string"))
-		Expect(i).To(Equal(42))
-		ch <- true
-	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.Options{
-			Handler: handler,
+		q := memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(s string, i int) {
+				Expect(s).To(Equal("string"))
+				Expect(i).To(Equal(42))
+				ch <- true
+			},
 		})
-		q.Call("string", 42)
+		err := task.Call("string", 42)
+		Expect(err).NotTo(HaveOccurred())
 
-		err := q.Close()
+		err = q.Close()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("handler is called with args", func() {
+		Expect(ch).To(Receive())
+		Expect(ch).NotTo(Receive())
+	})
+})
+
+var _ = Describe("context.Context", func() {
+	ch := make(chan bool, 10)
+
+	BeforeEach(func() {
+		q := memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(c context.Context, s string, i int) {
+				Expect(s).To(Equal("string"))
+				Expect(i).To(Equal(42))
+				ch <- true
+			},
+		})
+		err := task.Call("string", 42)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -53,24 +82,25 @@ var _ = Describe("message with args", func() {
 
 var _ = Describe("message with invalid number of args", func() {
 	ch := make(chan bool, 10)
-	handler := func(s string) {
-		ch <- true
-	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.Options{
-			Handler:    handler,
+		q := memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(s string) {
+				ch <- true
+			},
 			RetryLimit: 1,
 		})
-		q.Processor().Stop()
+		q.Consumer().Stop()
 
-		err := q.Call()
+		err := task.Call()
 		Expect(err).NotTo(HaveOccurred())
 
-		err = q.Processor().ProcessOne()
-		Expect(err).To(MatchError("taskq: decoding arg=0 failed (data=): EOF"))
+		err = q.Consumer().ProcessOne()
+		Expect(err).To(MatchError("taskq: got 0 args, wanted 1"))
 
-		err = q.Processor().ProcessAll()
+		err = q.Consumer().ProcessAll()
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -84,18 +114,18 @@ var _ = Describe("message with invalid number of args", func() {
 
 var _ = Describe("HandlerFunc", func() {
 	ch := make(chan bool, 10)
-	handler := func(msg *taskq.Message) error {
-		Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
-		Expect(msg.Body).To(BeEmpty())
-		ch <- true
-		return nil
-	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.Options{
-			Handler: taskq.HandlerFunc(handler),
+		q := memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(msg *taskq.Message) error {
+				Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
+				ch <- true
+				return nil
+			},
 		})
-		q.Call("string", 42)
+		task.Call("string", 42)
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -109,21 +139,22 @@ var _ = Describe("HandlerFunc", func() {
 
 var _ = Describe("message retry timing", func() {
 	var q *memqueue.Queue
+	var task *taskq.Task
 	backoff := 100 * time.Millisecond
-
 	var count int
 	var ch chan time.Time
-	handler := func() error {
-		ch <- time.Now()
-		count++
-		return fmt.Errorf("fake error #%d", count)
-	}
 
 	BeforeEach(func() {
 		count = 0
 		ch = make(chan time.Time, 10)
-		q = memqueue.NewQueue(&taskq.Options{
-			Handler:    handler,
+		q = memqueue.NewQueue(&taskq.QueueOptions{})
+		task = q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func() error {
+				ch <- time.Now()
+				count++
+				return fmt.Errorf("fake error #%d", count)
+			},
 			RetryLimit: 3,
 			MinBackoff: backoff,
 		})
@@ -134,7 +165,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			q.Call()
+			task.Call()
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -156,7 +187,7 @@ var _ = Describe("message retry timing", func() {
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			q.Add(msg)
+			task.AddMessage(msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -169,58 +200,25 @@ var _ = Describe("message retry timing", func() {
 			Expect(ch).NotTo(Receive())
 		})
 	})
-
-	Context("with NoDelay=true", func() {
-		BeforeEach(func() {
-			err := q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			q = memqueue.NewQueue(&taskq.Options{
-				Handler:    handler,
-				RetryLimit: 3,
-				MinBackoff: backoff,
-			})
-			q.SetNoDelay(true)
-		})
-
-		It("is processed immediately", func() {
-			now := time.Now()
-
-			msg := taskq.NewMessage()
-			msg.Delay = time.Hour
-			err := q.Add(msg)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = q.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).To(Receive(BeTemporally("~", now, backoff/10)))
-			Expect(ch).NotTo(Receive())
-		})
-	})
 })
 
 var _ = Describe("failing queue with error handler", func() {
 	var q *memqueue.Queue
-
-	handler := func() error {
-		return errors.New("fake error")
-	}
-
 	ch := make(chan bool, 10)
-	fallbackHandler := func() {
-		ch <- true
-	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&taskq.Options{
-			Handler:         handler,
-			FallbackHandler: fallbackHandler,
-			RetryLimit:      1,
+		q = memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func() error {
+				return errors.New("fake error")
+			},
+			FallbackHandler: func() {
+				ch <- true
+			},
+			RetryLimit: 1,
 		})
-		q.Call()
+		task.Call()
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -234,14 +232,16 @@ var _ = Describe("failing queue with error handler", func() {
 
 var _ = Describe("named message", func() {
 	var count int64
-	handler := func() {
-		atomic.AddInt64(&count, 1)
-	}
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.Options{
-			Redis:   redisRing(),
-			Handler: handler,
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Redis: redisRing(),
+		})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func() {
+				atomic.AddInt64(&count, 1)
+			},
 		})
 
 		var wg sync.WaitGroup
@@ -252,7 +252,7 @@ var _ = Describe("named message", func() {
 				defer wg.Done()
 				msg := taskq.NewMessage()
 				msg.Name = "myname"
-				q.Add(msg)
+				task.AddMessage(msg)
 			}()
 		}
 		wg.Wait()
@@ -270,19 +270,20 @@ var _ = Describe("named message", func() {
 var _ = Describe("CallOnce", func() {
 	var now time.Time
 	delay := 3 * time.Second
-
 	ch := make(chan time.Time, 10)
-	handler := func(slot int64) error {
-		ch <- time.Now()
-		return nil
-	}
 
 	BeforeEach(func() {
 		now = time.Now()
 
-		q := memqueue.NewQueue(&taskq.Options{
-			Redis:   redisRing(),
-			Handler: handler,
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Redis: redisRing(),
+		})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(slot int64) error {
+				ch <- time.Now()
+				return nil
+			},
 		})
 
 		var wg sync.WaitGroup
@@ -292,7 +293,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				q.CallOnce(delay, slot(delay))
+				task.CallOnce(delay, slot(delay))
 			}()
 		}
 		wg.Wait()
@@ -308,21 +309,20 @@ var _ = Describe("CallOnce", func() {
 })
 
 var _ = Describe("stress testing", func() {
-	var q *memqueue.Queue
 	const n = 10000
-
 	var count int64
-	handler := func() {
-		atomic.AddInt64(&count, 1)
-	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&taskq.Options{
-			Handler: handler,
+		q := memqueue.NewQueue(&taskq.QueueOptions{})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func() {
+				atomic.AddInt64(&count, 1)
+			},
 		})
 
 		for i := 0; i < n; i++ {
-			q.Call()
+			task.Call()
 		}
 
 		err := q.Close()
@@ -336,28 +336,26 @@ var _ = Describe("stress testing", func() {
 })
 
 var _ = Describe("stress testing failing queue", func() {
-	var q *memqueue.Queue
 	const n = 100000
-
-	handler := func() error {
-		return errors.New("fake error")
-	}
-
 	var errorCount int64
-	fallbackHandler := func() {
-		atomic.AddInt64(&errorCount, 1)
-	}
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&taskq.Options{
-			Handler:              handler,
-			FallbackHandler:      fallbackHandler,
-			RetryLimit:           1,
+		q := memqueue.NewQueue(&taskq.QueueOptions{
 			PauseErrorsThreshold: -1,
+		})
+		task := q.NewTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func() error {
+				return errors.New("fake error")
+			},
+			FallbackHandler: func() {
+				atomic.AddInt64(&errorCount, 1)
+			},
+			RetryLimit: 1,
 		})
 
 		for i := 0; i < n; i++ {
-			q.Call()
+			task.Call()
 		}
 
 		err := q.Close()
@@ -372,12 +370,16 @@ var _ = Describe("stress testing failing queue", func() {
 
 var _ = Describe("empty queue", func() {
 	var q *memqueue.Queue
+	var task *taskq.Task
 	var processed uint32
 
 	BeforeEach(func() {
 		processed = 0
-		q = memqueue.NewQueue(&taskq.Options{
+		q = memqueue.NewQueue(&taskq.QueueOptions{
 			Redis: redisRing(),
+		})
+		task = q.NewTask(&taskq.TaskOptions{
+			Name: "test",
 			Handler: func() {
 				atomic.AddUint32(&processed, 1)
 			},
@@ -394,28 +396,28 @@ var _ = Describe("empty queue", func() {
 	})
 
 	It("stops processor", func() {
-		err := q.Processor().Stop()
+		err := q.Consumer().Stop()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	testEmptyQueue := func() {
 		It("processes all messages", func() {
-			err := q.Processor().ProcessAll()
+			err := q.Consumer().ProcessAll()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("processes one message", func() {
-			err := q.Processor().ProcessOne()
+			err := q.Consumer().ProcessOne()
 			Expect(err).To(MatchError("taskq: queue is empty"))
 
-			err = q.Processor().ProcessAll()
+			err = q.Consumer().ProcessAll()
 			Expect(err).NotTo(HaveOccurred())
 		})
 	}
 
 	Context("when processor is stopped", func() {
 		BeforeEach(func() {
-			err := q.Processor().Stop()
+			err := q.Consumer().Stop()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -424,13 +426,13 @@ var _ = Describe("empty queue", func() {
 		Context("when there are messages in the queue", func() {
 			BeforeEach(func() {
 				for i := 0; i < 3; i++ {
-					err := q.Call()
+					err := task.Call()
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})
 
 			It("processes all messages", func() {
-				p := q.Processor()
+				p := q.Consumer()
 
 				err := p.ProcessAll()
 				Expect(err).NotTo(HaveOccurred())
@@ -440,7 +442,7 @@ var _ = Describe("empty queue", func() {
 			})
 
 			It("processes one message", func() {
-				p := q.Processor()
+				p := q.Consumer()
 
 				err := p.ProcessOne()
 				Expect(err).NotTo(HaveOccurred())
@@ -469,14 +471,6 @@ func slot(period time.Duration) int64 {
 	return tm.Unix() / periodSec
 }
 
-type memqueueStorage struct {
-	*redis.Ring
-}
-
-func (c memqueueStorage) Exists(key string) bool {
-	return !c.SetNX(key, "", 12*time.Hour).Val()
-}
-
 func redisRing() *redis.Ring {
 	ring := redis.NewRing(&redis.RingOptions{
 		Addrs:    map[string]string{"0": ":6379"},
@@ -487,10 +481,4 @@ func redisRing() *redis.Ring {
 		panic(err)
 	}
 	return ring
-}
-
-func rateLimiter() *redis_rate.Limiter {
-	l := redis_rate.NewLimiter(redisRing())
-	l.Fallback = rate.NewLimiter(rate.Every(time.Millisecond), 100)
-	return l
 }

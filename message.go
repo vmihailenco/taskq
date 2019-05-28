@@ -1,6 +1,7 @@
 package taskq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -16,6 +17,8 @@ var ErrDuplicate = errors.New("taskq: message with such name already exists")
 
 // Message is used to create and retrieve messages from a queue.
 type Message struct {
+	Ctx context.Context
+
 	// SQS/IronMQ message id.
 	ID string `msgpack:",omitempty"`
 

@@ -2,6 +2,7 @@ package taskq
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,8 +10,9 @@ import (
 	"github.com/vmihailenco/msgpack"
 )
 
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
+var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 var messageType = reflect.TypeOf((*Message)(nil))
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // Handler is an interface for processing messages.
 type Handler interface {
@@ -27,7 +29,8 @@ type reflectFunc struct {
 	fv reflect.Value // Kind() == reflect.Func
 	ft reflect.Type
 
-	returnsError bool
+	acceptsContext bool
+	returnsError   bool
 }
 
 var _ Handler = (*reflectFunc)(nil)
@@ -62,6 +65,7 @@ func NewHandler(fn interface{}) Handler {
 		}
 	}
 
+	h.acceptsContext = acceptsContext(h.ft)
 	return &h
 }
 
@@ -84,6 +88,17 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 
 func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 	in := make([]reflect.Value, h.ft.NumIn())
+	savedIn := in
+
+	var inStart int
+	if h.acceptsContext {
+		if msg.Ctx == nil {
+			msg.Ctx = context.Background()
+		}
+		inStart = 1
+		in[0] = reflect.ValueOf(msg.Ctx)
+		in = in[1:]
+	}
 
 	if len(msg.Args) == len(in) {
 		var hasWrongType bool
@@ -119,7 +134,7 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 	}
 
 	for i := 0; i < len(in); i++ {
-		arg := reflect.New(h.ft.In(i)).Elem()
+		arg := reflect.New(h.ft.In(inStart + i)).Elem()
 		err = dec.DecodeValue(arg)
 		if err != nil {
 			err = fmt.Errorf(
@@ -129,11 +144,15 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 		in[i] = arg
 	}
 
-	return in, nil
+	return savedIn, nil
 }
 
 func acceptsMessage(typ reflect.Type) bool {
 	return typ.NumIn() == 1 && typ.In(0) == messageType
+}
+
+func acceptsContext(typ reflect.Type) bool {
+	return typ.NumIn() > 0 && typ.In(0).Implements(contextType)
 }
 
 func returnsError(typ reflect.Type) bool {

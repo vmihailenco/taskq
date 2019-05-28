@@ -64,7 +64,6 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 			ch <- time.Now()
 			return nil
 		},
-		RetryLimit: 1,
 	})
 
 	msg := taskq.NewMessage("hello", "world")

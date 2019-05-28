@@ -11,8 +11,8 @@ require (
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/iron-io/iron_go3 v0.0.0-20171208104426-f14ff828153c
 	github.com/leesper/go_rng v0.0.0-20171009123644-5344a9259b21 // indirect
-	github.com/onsi/ginkgo v1.8.0 // indirect
-	github.com/onsi/gomega v1.5.0 // indirect
+	github.com/onsi/ginkgo v1.8.0
+	github.com/onsi/gomega v1.5.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/valyala/gozstd v1.4.1
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
