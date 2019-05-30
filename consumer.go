@@ -676,7 +676,7 @@ func (c *Consumer) Process(msg *Message) error {
 		return c.handleError(msg, err)
 	}
 
-	msgErr := c.q.HandleMessage(msg)
+	msgErr := c.handleMessage(msg)
 
 	err = c.afterProcessMessage(evt, err)
 	if err != nil {
@@ -684,6 +684,16 @@ func (c *Consumer) Process(msg *Message) error {
 	}
 
 	return c.handleError(msg, msgErr)
+}
+
+func (c *Consumer) handleMessage(msg *Message) error {
+	if msg.Task != nil {
+		opt := msg.Task.Options()
+		if opt.DeferFunc != nil {
+			defer opt.DeferFunc()
+		}
+	}
+	return c.q.HandleMessage(msg)
 }
 
 func (c *Consumer) handleError(msg *Message, err error) error {

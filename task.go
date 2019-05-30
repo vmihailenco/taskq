@@ -30,6 +30,10 @@ type TaskOptions struct {
 	// Function called to process failed message.
 	FallbackHandler interface{}
 
+	// Optional function used by Consumer with defer statement
+	// to recover from panics.
+	DeferFunc func()
+
 	// Number of tries/releases after which the message fails permanently
 	// and is deleted.
 	// Default is 64 retries.
