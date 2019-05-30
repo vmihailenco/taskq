@@ -3,9 +3,7 @@ package taskq
 import (
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -975,18 +973,4 @@ func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 		return max
 	}
 	return d
-}
-
-func ff(f float64) string {
-	return strconv.FormatFloat(round(f), 'f', -1, 64)
-}
-
-func round(f float64) float64 {
-	if f >= 10 {
-		return math.Round(f)
-	}
-	if f < 1 {
-		return math.Round(f*100) / 100
-	}
-	return math.Round(f*10) / 10
 }
