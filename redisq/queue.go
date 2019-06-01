@@ -35,8 +35,8 @@ type redisStreamClient interface {
 	XTrim(key string, maxLen int64) *redis.IntCmd
 	XGroupDelConsumer(stream, group, consumer string) *redis.IntCmd
 
-	ZAdd(key string, members ...redis.Z) *redis.IntCmd
-	ZRangeByScore(key string, opt redis.ZRangeBy) *redis.StringSliceCmd
+	ZAdd(key string, members ...*redis.Z) *redis.IntCmd
+	ZRangeByScore(key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
 	ZRem(key string, members ...interface{}) *redis.IntCmd
 }
 
@@ -165,7 +165,7 @@ func (q *Queue) Add(msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return q.redis.ZAdd(q.zset, redis.Z{
+		return q.redis.ZAdd(q.zset, &redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
@@ -302,7 +302,7 @@ func (q *Queue) schedulerBackoff() time.Duration {
 func (q *Queue) scheduleDelayed() (int, error) {
 	tm := time.Now()
 	max := strconv.FormatInt(unixMs(tm), 10)
-	bodies, err := q.redis.ZRangeByScore(q.zset, redis.ZRangeBy{
+	bodies, err := q.redis.ZRangeByScore(q.zset, &redis.ZRangeBy{
 		Min:   "-inf",
 		Max:   max,
 		Count: batchSize,
@@ -352,7 +352,7 @@ func (q *Queue) schedulePending() (int, error) {
 
 	for i := range pending {
 		xmsgInfo := &pending[i]
-		id := xmsgInfo.Id
+		id := xmsgInfo.ID
 
 		xmsgs, err := q.redis.XRangeN(q.stream, id, id, 1).Result()
 		if err != nil {
