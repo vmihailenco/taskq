@@ -17,7 +17,7 @@ import (
 const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
 const workerIdleTimeout = 3 * time.Second
-const autotuneResetPeriod = 5 * time.Minute
+const autotuneResetPeriod = time.Minute
 
 var ErrAsyncTask = errors.New("taskq: async task")
 
@@ -256,16 +256,8 @@ func (c *Consumer) addWorker(stop <-chan struct{}) int32 {
 	}
 }
 
-func (c *Consumer) removeWorker() int32 {
-	for {
-		id := atomic.LoadInt32(&c.workerNumber)
-		if id == 0 {
-			return -1
-		}
-		if atomic.CompareAndSwapInt32(&c.workerNumber, id, id-1) {
-			return id
-		}
-	}
+func (c *Consumer) removeWorker(num int32) bool {
+	return atomic.CompareAndSwapInt32(&c.workerNumber, num, num-1)
 }
 
 func (c *Consumer) addFetcher(stop <-chan struct{}) int32 {
@@ -292,16 +284,8 @@ func (c *Consumer) tryStartFetcher(id int32, stop <-chan struct{}) bool {
 	return false
 }
 
-func (c *Consumer) removeFetcher() int32 {
-	for {
-		id := atomic.LoadInt32(&c.fetcherNumber)
-		if id == 0 {
-			return -1
-		}
-		if atomic.CompareAndSwapInt32(&c.fetcherNumber, id, id-1) {
-			return id
-		}
-	}
+func (c *Consumer) removeFetcher(num int32) bool {
+	return atomic.CompareAndSwapInt32(&c.fetcherNumber, num, num-1)
 }
 
 func (c *Consumer) autotune(stop <-chan struct{}) {
@@ -330,7 +314,14 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 		c.lastAutotuneReset = time.Now()
 	}
 
-	c.updateBuffered()
+	buffered := len(c.buffer)
+	if buffered == 0 {
+		c.starving++
+		c.loaded = 0
+	} else if buffered > cap(c.buffer)/5*4 {
+		c.starving = 0
+		c.loaded++
+	}
 
 	if c.isStarving() {
 		if c.addFetcher(stop) != -1 {
@@ -340,10 +331,11 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 		return
 	}
 
-	if c.hasIdleFetcher() {
-		internal.Logger.Printf("%s: removing idle fetcher", c)
-		c.removeFetcher()
-		c.resetAutotune()
+	if id := c.idleFetcher(); id != -1 {
+		if c.removeFetcher(id) {
+			internal.Logger.Printf("%s: removing idle fetcher", c)
+			c.resetAutotune()
+		}
 	}
 
 	if c.isLoaded() {
@@ -354,15 +346,12 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 		return
 	}
 
-	if c.hasIdleWorker() {
-		internal.Logger.Printf("%s: removing idle worker", c)
-		c.removeWorker()
-		c.resetAutotune()
+	if id := c.idleWorker(); id != -1 {
+		if c.removeWorker(id) {
+			internal.Logger.Printf("%s: removing idle worker", c)
+			c.resetAutotune()
+		}
 	}
-}
-
-func (c *Consumer) hasFetcher() bool {
-	return atomic.LoadInt32(&c.fetcherNumber) > 0
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
@@ -893,31 +882,20 @@ func (c *Consumer) String() string {
 	if c.isLoaded() {
 		extra += " loaded"
 	}
-	if c.hasIdleFetcher() {
+	if c.idleFetcher() != -1 {
 		extra += " idle-fetcher"
 	}
-	if c.hasIdleWorker() {
+	if c.idleWorker() != -1 {
 		extra += " idle-worker"
 	}
 
 	return fmt.Sprintf(
-		"Consumer<%s %d/%d/%d %d/%d %d/%d %s>",
+		"Consumer<%s %d/%d/%d %d/%d %d/%d%s>",
 		c.q.Name(),
 		fnum, len(c.buffer), cap(c.buffer),
 		inFlight, wnum,
 		processed, fails,
 		extra)
-}
-
-func (c *Consumer) updateBuffered() {
-	buffered := len(c.buffer)
-	if buffered == 0 {
-		c.starving++
-		c.loaded = 0
-	} else if buffered > cap(c.buffer)/5*4 {
-		c.starving = 0
-		c.loaded++
-	}
 }
 
 func (c *Consumer) isStarving() bool {
@@ -933,24 +911,30 @@ func (c *Consumer) isLoaded() bool {
 	return c.loaded >= 5
 }
 
-func (c *Consumer) hasIdleFetcher() bool {
+func (c *Consumer) idleFetcher() int32 {
 	num := atomic.LoadInt32(&c.fetcherNumber)
 	if num <= 1 {
-		return false
+		return -1
 	}
 	idle := atomic.LoadUint32(&c.fetcherIdle)
 	busy := atomic.LoadUint32(&c.fetcherBusy)
-	return busy > 10 && float64(idle) > float64(busy)/float64(num)
+	if busy > 10 && float64(idle) > float64(busy)/float64(num) {
+		return num
+	}
+	return -1
 }
 
-func (c *Consumer) hasIdleWorker() bool {
+func (c *Consumer) idleWorker() int32 {
 	num := atomic.LoadInt32(&c.workerNumber)
-	if num <= 1 {
-		return false
+	if num <= int32(c.opt.MinWorkers) {
+		return -1
 	}
 	idle := atomic.LoadUint32(&c.workerIdle)
 	busy := atomic.LoadUint32(&c.workerBusy)
-	return busy+idle > 10 && float64(idle) > float64(busy)/float64(num)
+	if busy+idle > 10 && float64(idle) > float64(busy)/float64(num) {
+		return num
+	}
+	return -1
 }
 
 func (c *Consumer) resetAutotune() {

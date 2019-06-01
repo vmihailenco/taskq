@@ -272,6 +272,7 @@ func (q *Queue) scheduler(name string, fn func() (int, error)) {
 		ok, err := lock.Lock()
 		if err != nil {
 			internal.Logger.Printf("redlock.Lock failed: %s", err)
+			continue
 		}
 		if !ok {
 			time.Sleep(q.schedulerBackoff())
@@ -346,6 +347,7 @@ func (q *Queue) schedulePending() (int, error) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "NOGROUP") {
 			q.createStreamGroup()
+			return 0, nil
 		}
 		return 0, err
 	}

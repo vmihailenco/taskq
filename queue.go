@@ -36,6 +36,9 @@ type Queue interface {
 type Factory interface {
 	NewQueue(*QueueOptions) Queue
 	Queues() []Queue
+	StartConsumers() error
+	StopConsumers() error
+	Close() error
 }
 
 type Redis interface {

@@ -1,36 +1,41 @@
 package azsqs
 
 import (
-	"sync"
-
 	"github.com/aws/aws-sdk-go/service/sqs"
 
 	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/internal/base"
 )
 
 type factory struct {
+	base base.Factory
+
 	sqs       *sqs.SQS
 	accountID string
-
-	queuesMu sync.RWMutex
-	queues   []taskq.Queue
 }
 
 var _ taskq.Factory = (*factory)(nil)
 
 func (f *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
-	f.queuesMu.Lock()
-	defer f.queuesMu.Unlock()
-
 	q := NewQueue(f.sqs, f.accountID, opt)
-	f.queues = append(f.queues, q)
+	f.base.Add(q)
 	return q
 }
 
 func (f *factory) Queues() []taskq.Queue {
-	f.queuesMu.RLock()
-	defer f.queuesMu.RUnlock()
-	return f.queues
+	return f.base.Queues()
+}
+
+func (f *factory) StartConsumers() error {
+	return f.base.StartConsumers()
+}
+
+func (f *factory) StopConsumers() error {
+	return f.base.StopConsumers()
+}
+
+func (f *factory) Close() error {
+	return f.base.Close()
 }
 
 func NewFactory(sqs *sqs.SQS, accountID string) taskq.Factory {

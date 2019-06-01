@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags))
+	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
 }
 
 func SetLogger(logger *log.Logger) {
