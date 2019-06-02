@@ -46,7 +46,6 @@ type Queue struct {
 
 	consumer *taskq.Consumer
 
-	rand  *rand.Rand
 	redis redisStreamClient
 	wg    sync.WaitGroup
 
@@ -62,6 +61,8 @@ type Queue struct {
 var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
+	const redisPrefix = "taskq:"
+
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = time.Second
 	}
@@ -77,14 +78,13 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	q := &Queue{
 		opt: opt,
 
-		rand:  rand.New(rand.NewSource(time.Now().UnixNano())),
 		redis: red,
 
-		zset:                opt.Name + ":zset",
-		stream:              opt.Name + ":stream",
+		zset:                redisPrefix + opt.Name + ":zset",
+		stream:              redisPrefix + opt.Name + ":stream",
 		streamGroup:         "taskq",
 		streamConsumer:      consumer(),
-		schedulerLockPrefix: opt.Name + ":scheduler-lock:",
+		schedulerLockPrefix: redisPrefix + opt.Name + ":scheduler-lock:",
 	}
 
 	q.wg.Add(1)
@@ -296,7 +296,7 @@ func (q *Queue) scheduler(name string, fn func() (int, error)) {
 }
 
 func (q *Queue) schedulerBackoff() time.Duration {
-	n := 250 + q.rand.Intn(250)
+	n := 250 + rand.Intn(250)
 	return time.Duration(n) * time.Millisecond
 }
 

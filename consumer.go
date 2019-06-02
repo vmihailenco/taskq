@@ -106,7 +106,6 @@ type Consumer struct {
 	q   Queue
 	opt *QueueOptions
 
-	rand    *rand.Rand
 	buffer  chan *Message
 	limiter *limiter
 
@@ -146,7 +145,6 @@ func NewConsumer(q Queue) *Consumer {
 		q:   q,
 		opt: opt,
 
-		rand:   rand.New(rand.NewSource(time.Now().UnixNano())),
 		buffer: make(chan *Message, opt.BufferSize),
 		limiter: &limiter{
 			bucket:  q.Name(),
@@ -293,7 +291,7 @@ func (c *Consumer) autotune(stop <-chan struct{}) {
 	timer.Stop()
 
 	for {
-		timeout := time.Duration(2000+c.rand.Intn(2000)) * time.Millisecond
+		timeout := time.Duration(2000+rand.Intn(2000)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
@@ -315,10 +313,10 @@ func (c *Consumer) _autotune(stop <-chan struct{}) {
 	}
 
 	buffered := len(c.buffer)
-	if buffered == 0 {
+	if buffered < cap(c.buffer)/5 {
 		c.starving++
 		c.loaded = 0
-	} else if buffered > cap(c.buffer)/5*4 {
+	} else if buffered > cap(c.buffer)*4/5 {
 		c.starving = 0
 		c.loaded++
 	}
@@ -520,12 +518,10 @@ func (c *Consumer) fetchMessages(
 		c.limiter.Cancel(d)
 	}
 
-	if id > 0 {
-		if len(msgs) < size {
-			atomic.AddUint32(&c.fetcherIdle, 1)
-		} else {
-			atomic.AddUint32(&c.fetcherBusy, 1)
-		}
+	if len(msgs) > size*4/5 {
+		atomic.AddUint32(&c.fetcherBusy, 1)
+	} else {
+		atomic.AddUint32(&c.fetcherIdle, 1)
 	}
 
 	for i := range msgs {
@@ -850,7 +846,7 @@ func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker, stopCh <-chan struct{}
 			return true
 		}
 
-		timeout := time.Duration(500+c.rand.Intn(500)) * time.Millisecond
+		timeout := time.Duration(500+rand.Intn(500)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
@@ -918,7 +914,7 @@ func (c *Consumer) idleFetcher() int32 {
 	}
 	idle := atomic.LoadUint32(&c.fetcherIdle)
 	busy := atomic.LoadUint32(&c.fetcherBusy)
-	if busy > 10 && float64(idle) > float64(busy)/float64(num) {
+	if idle > 10 && float64(idle) > float64(busy)/float64(num) {
 		return num
 	}
 	return -1

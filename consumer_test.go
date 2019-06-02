@@ -34,10 +34,8 @@ var (
 func redisRing() *redis.Ring {
 	ringOnce.Do(func() {
 		ring = redis.NewRing(&redis.RingOptions{
-			Addrs:    map[string]string{"0": ":6379"},
-			PoolSize: 100,
+			Addrs: map[string]string{"0": ":6379"},
 		})
-		_ = ring.FlushDB().Err()
 	})
 	return ring
 }

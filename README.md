@@ -20,7 +20,7 @@ go get -u github.com/vmihailenco/taskq
  - Automatic pausing when all messages in queue fail.
  - Fallback handler for processing failed messages.
  - Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
- - Automatic message compression using zstd or snappy.
+ - Automatic message compression using zstd.
 
 ## Quickstart
 
