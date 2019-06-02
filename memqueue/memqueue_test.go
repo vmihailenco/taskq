@@ -14,6 +14,7 @@ import (
 	"github.com/go-redis/redis"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/vmihailenco/taskq"
 	"github.com/vmihailenco/taskq/memqueue"
@@ -244,6 +245,8 @@ var _ = Describe("named message", func() {
 			},
 		})
 
+		name := uuid.NewV4().String()
+
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {
 			wg.Add(1)
@@ -251,7 +254,7 @@ var _ = Describe("named message", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 				msg := taskq.NewMessage()
-				msg.Name = "myname"
+				msg.Name = name
 				task.AddMessage(msg)
 			}()
 		}
@@ -471,14 +474,16 @@ func slot(period time.Duration) int64 {
 	return tm.Unix() / periodSec
 }
 
+var (
+	ringOnce sync.Once
+	ring     *redis.Ring
+)
+
 func redisRing() *redis.Ring {
-	ring := redis.NewRing(&redis.RingOptions{
-		Addrs:    map[string]string{"0": ":6379"},
-		PoolSize: 100,
+	ringOnce.Do(func() {
+		ring = redis.NewRing(&redis.RingOptions{
+			Addrs: map[string]string{"0": ":6379"},
+		})
 	})
-	err := ring.FlushDb().Err()
-	if err != nil {
-		panic(err)
-	}
 	return ring
 }
