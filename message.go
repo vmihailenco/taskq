@@ -34,8 +34,9 @@ type Message struct {
 	Args []interface{} `msgpack:"-"`
 
 	// Binary representation of the args.
-	ArgsCompressed bool
-	ArgsBin        []byte
+	ArgsCompressed  bool
+	ArgsCompression string `msgpack:",omitempty"`
+	ArgsBin         []byte
 
 	// SQS/IronMQ reservation id that is used to release/delete the message.
 	ReservationID string `msgpack:"-"`
@@ -85,6 +86,7 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 		return nil, err
 	}
 	m.ArgsBin = b
+
 	return b, nil
 }
 
@@ -98,10 +100,10 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if !m.ArgsCompressed && len(m.ArgsBin) > 512 {
+	if m.ArgsCompression == "" && len(m.ArgsBin) > 512 {
 		compressed := gozstd.Compress(nil, m.ArgsBin)
 		if len(compressed) < len(m.ArgsBin) {
-			m.ArgsCompressed = true
+			m.ArgsCompression = "zstd"
 			m.ArgsBin = compressed
 		}
 	}
@@ -122,6 +124,12 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	}
 
 	if m.ArgsCompressed {
+		m.ArgsCompression = "zstd"
+	}
+
+	switch m.ArgsCompression {
+	case "":
+	case "zstd":
 		b, err = gozstd.Decompress(nil, m.ArgsBin)
 		if err != nil {
 			return err
@@ -129,6 +137,8 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 
 		m.ArgsCompressed = false
 		m.ArgsBin = b
+	default:
+		return fmt.Errorf("taskq: unsupported compression=%s", m.ArgsCompression)
 	}
 
 	return nil

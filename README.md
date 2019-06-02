@@ -1,4 +1,4 @@
-# Golang task/job queue with Redis, SQS, IronMQ, and in-memory backends
+# Golang asynchronous task/job queue with Redis, SQS, IronMQ, and in-memory backends
 
 [![Build Status](https://travis-ci.org/vmihailenco/taskq.svg)](https://travis-ci.org/vmihailenco/taskq)
 [![GoDoc](https://godoc.org/github.com/vmihailenco/taskq?status.svg)](https://godoc.org/github.com/vmihailenco/taskq)
@@ -31,9 +31,9 @@ I recommend to split your app into 2 parts:
 This way you can:
 - isolate API and worker from each other;
 - scale API and worker separately;
-- have different configs (like timeouts).
+- have different configs for API and worker (like timeouts).
 
-There is an [api_worker example](examples/api_worker) that does exactly that and can be run:
+There is an [api_worker example](examples/api_worker) that demonstrates this approach using Redis as backend:
 
 ```bash
 cd examples/api_worker
@@ -41,41 +41,48 @@ go run worker/main.go
 go run api/main.go
 ```
 
-First you need to define queue and task in that queue:
+You start by choosing backend to use - in our case Redis:
 
 ```go
-var (
-	QueueFactory = redisq.NewFactory()
-	MainQueue    = QueueFactory.NewQueue(&taskq.QueueOptions{
-		Name:  "api-worker",
-		Redis: Redis,
-	})
-	CountTask = MainQueue.NewTask(&taskq.TaskOptions{
-		Name: "counter",
-		Handler: func() error {
-			IncrLocalCounter()
-			return nil
-		},
-	})
-)
+var QueueFactory = redisq.NewFactory()
 ```
 
-API that adds tasks:
+Using that factory you create queue that contains task(s):
 
-``` go
+```go
+var MainQueue = QueueFactory.NewQueue(&taskq.QueueOptions{
+	Name:  "api-worker",
+	Redis: Redis, // go-redis client
+})
+```
+
+Using the queue you create task with handler that does some useful work:
+
+```go
+var CountTask = MainQueue.NewTask(&taskq.TaskOptions{
+	Name: "counter",
+	Handler: func() error {
+		IncrLocalCounter()
+		return nil
+	},
+})
+```
+
+Then in API you use the task to add messages/jobs to the queues:
+
+```go
 for {
-	err := api_worker.CountTask.Call()
+	err := api_worker.CountTask.Call() // call task handler without any args
 	if err != nil {
 		log.Fatal(err)
 	}
-	api_worker.IncrLocalCounter()
 }
 ```
 
-Worker that processes tasks:
+And in worker you start processing the queue:
 
-``` go
-err := api_worker.QueueFactory.StartConsumers()
+```go
+err := api_worker.MainQueue.Consumer().Start()
 if err != nil {
 	log.Fatal(err)
 }
@@ -85,7 +92,7 @@ if err != nil {
 
 ```go
 t := myQueue.NewTask(&taskq.TaskOptions{
-	Name: "greeting",
+	Name:    "greeting",
 	Handler: func(name string) error {
 		fmt.Println("Hello", name)
 		return nil
