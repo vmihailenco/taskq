@@ -1025,7 +1025,7 @@ func (c *Consumer) idleFetcher() int32 {
 
 func (c *Consumer) idleWorker() int32 {
 	num := atomic.LoadInt32(&c.workerNumber)
-	if num <= int32(c.opt.MinWorkers) {
+	if num <= 1 {
 		return -1
 	}
 	idle := c.tunerStats.getWorkerIdle()

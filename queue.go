@@ -90,7 +90,7 @@ type QueueOptions struct {
 	Name string
 
 	// Minimum number of goroutines processing messages.
-	// Default is 1.
+	// Default is 3.
 	MinWorkers int
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
@@ -145,7 +145,7 @@ func (opt *QueueOptions) Init() {
 		opt.MaxWorkers = opt.WorkerLimit
 	}
 	if opt.MinWorkers == 0 {
-		opt.MinWorkers = 1
+		opt.MinWorkers = 3
 	}
 	if opt.MaxWorkers == 0 {
 		opt.MaxWorkers = 32 * runtime.NumCPU()
