@@ -99,7 +99,7 @@ type QueueOptions struct {
 	// Overrides MaxWorkers.
 	WorkerLimit int
 	// Maximum number of goroutines fetching messages.
-	// Default is 4 * number of CPUs.
+	// Default is 8 * number of CPUs.
 	MaxFetchers int
 
 	// Number of messages reserved by a fetcher in the queue in one request.
@@ -151,7 +151,7 @@ func (opt *QueueOptions) Init() {
 		opt.MaxWorkers = 32 * runtime.NumCPU()
 	}
 	if opt.MaxFetchers == 0 {
-		opt.MaxFetchers = 4 * runtime.NumCPU()
+		opt.MaxFetchers = 8 * runtime.NumCPU()
 	}
 
 	switch opt.PauseErrorsThreshold {
