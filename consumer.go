@@ -17,7 +17,7 @@ import (
 const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
 const workerIdleTimeout = 3 * time.Second
-const autotuneResetPeriod = time.Minute
+const tunerPeriod = 30 * time.Second
 
 var ErrAsyncTask = errors.New("taskq: async task")
 
@@ -100,6 +100,79 @@ func (l *limiter) Limited() bool {
 	return l.limiter != nil && atomic.LoadUint32(&l.allowedCount) < 3
 }
 
+type tunerStats struct {
+	processed uint32
+
+	starving int
+	loaded   int
+
+	fetcherIdle uint32 // atomic
+	fetcherBusy uint32 // atomic
+	workerIdle  uint32 // atomic
+	workerBusy  uint32 // atomic
+}
+
+func (s *tunerStats) incProcessed() {
+	atomic.AddUint32(&s.processed, 1)
+}
+
+func (s *tunerStats) getProcessed() uint32 {
+	return atomic.LoadUint32(&s.processed)
+}
+
+func (s *tunerStats) incStarving() {
+	s.starving++
+}
+
+func (s *tunerStats) incLoaded() {
+	s.loaded++
+}
+
+func (s *tunerStats) getFetcherIdle() uint32 {
+	return atomic.LoadUint32(&s.fetcherIdle)
+}
+
+func (s *tunerStats) incFetcherIdle() {
+	atomic.AddUint32(&s.fetcherIdle, 1)
+}
+
+func (s *tunerStats) getFetcherBusy() uint32 {
+	return atomic.LoadUint32(&s.fetcherBusy)
+}
+
+func (s *tunerStats) incFetcherBusy() {
+	atomic.AddUint32(&s.fetcherBusy, 1)
+}
+
+func (s *tunerStats) isStarving() bool {
+	if s.starving < 5 {
+		return false
+	}
+	idle := s.getFetcherIdle()
+	busy := s.getFetcherBusy()
+	return busy > 10 && idle < busy
+}
+
+func (s *tunerStats) isLoaded() bool {
+	return s.loaded >= 5
+}
+
+func (s *tunerStats) getWorkerIdle() uint32 {
+	return atomic.LoadUint32(&s.workerIdle)
+}
+
+func (s *tunerStats) incWorkerIdle() {
+	atomic.AddUint32(&s.workerIdle, 1)
+}
+
+func (s *tunerStats) getWorkerBusy() uint32 {
+	return atomic.LoadUint32(&s.workerBusy)
+}
+
+func (s *tunerStats) incWorkerBusy() {
+	atomic.AddUint32(&s.workerBusy, 1)
+}
+
 // Consumer reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Consumer struct {
@@ -119,15 +192,9 @@ type Consumer struct {
 	errCount uint32
 	delaySec uint32
 
-	starving int
-	loaded   int
-
-	fetcherIdle uint32 // atomic
-	fetcherBusy uint32 // atomic
-	workerIdle  uint32 // atomic
-	workerBusy  uint32 // atomic
-
-	lastAutotuneReset time.Time
+	tunerStats, prevTunerStats *tunerStats
+	tunerLastAt                time.Time
+	tunerRollback              func()
 
 	inFlight  uint32
 	deleting  uint32
@@ -228,6 +295,8 @@ func (c *Consumer) Start() error {
 		c.addWorker(stop)
 	}
 
+	c.tunerStats = &tunerStats{}
+	c.tunerLastAt = time.Now()
 	c.jobsWG.Add(1)
 	go func() {
 		defer c.jobsWG.Done()
@@ -255,7 +324,7 @@ func (c *Consumer) addWorker(stop <-chan struct{}) int32 {
 }
 
 func (c *Consumer) removeWorker(num int32) bool {
-	return atomic.CompareAndSwapInt32(&c.workerNumber, num, num-1)
+	return atomic.CompareAndSwapInt32(&c.workerNumber, num+1, num)
 }
 
 func (c *Consumer) addFetcher(stop <-chan struct{}) int32 {
@@ -283,7 +352,7 @@ func (c *Consumer) tryStartFetcher(id int32, stop <-chan struct{}) bool {
 }
 
 func (c *Consumer) removeFetcher(num int32) bool {
-	return atomic.CompareAndSwapInt32(&c.fetcherNumber, num, num-1)
+	return atomic.CompareAndSwapInt32(&c.fetcherNumber, num+1, num)
 }
 
 func (c *Consumer) autotune(stop <-chan struct{}) {
@@ -291,65 +360,108 @@ func (c *Consumer) autotune(stop <-chan struct{}) {
 	timer.Stop()
 
 	for {
-		timeout := time.Duration(2000+rand.Intn(2000)) * time.Millisecond
+		timeout := time.Duration(1000+rand.Intn(1000)) * time.Millisecond
 		timer.Reset(timeout)
 
 		select {
+		case <-timer.C:
+			c.tunerTick(stop)
 		case <-stop:
 			if !timer.Stop() {
 				<-timer.C
 			}
 			return
-		case <-timer.C:
-			c._autotune(stop)
 		}
 	}
 }
 
-func (c *Consumer) _autotune(stop <-chan struct{}) {
-	if time.Since(c.lastAutotuneReset) > autotuneResetPeriod {
-		c.resetAutotune()
-		c.lastAutotuneReset = time.Now()
+func (c *Consumer) tunerTick(stop <-chan struct{}) {
+	if time.Since(c.tunerLastAt) > tunerPeriod {
+		c.tunerLastAt = time.Now()
+		c.tune(stop)
 	}
 
 	buffered := len(c.buffer)
 	if buffered < cap(c.buffer)/5 {
-		c.starving++
-		c.loaded = 0
+		c.tunerStats.incStarving()
 	} else if buffered > cap(c.buffer)*4/5 {
-		c.starving = 0
-		c.loaded++
+		c.tunerStats.incLoaded()
+	}
+}
+
+func (c *Consumer) tune(stop <-chan struct{}) {
+	if c.tunerRollback != nil {
+		rollback := c.tunerRollback
+		c.tunerRollback = nil
+
+		processed := c.tunerStats.getProcessed()
+		prevProcessed := c.prevTunerStats.getProcessed()
+		threshold := processed / 50 // 2%
+		if threshold < 10 {
+			threshold = 10
+		}
+
+		if processed-prevProcessed < threshold {
+			rollback()
+			c.tunerStats = &tunerStats{}
+			return
+		}
 	}
 
-	if c.isStarving() {
-		if c.addFetcher(stop) != -1 {
-			internal.Logger.Printf("%s: adding a fetcher", c)
-			c.resetAutotune()
+	if c.tunerStats.isStarving() {
+		c.tunerAddFetcher(stop)
+		return
+	}
+
+	if c.tunerStats.isLoaded() {
+		if id := c.addWorker(stop); id != -1 {
+			internal.Logger.Printf("%s: adding a worker", c)
+			c.tunerRollback = func() {
+				internal.Logger.Printf("%s: rollback worker addition", c)
+				c.removeWorker(id)
+			}
+			c.resetTuner()
 		}
 		return
 	}
+
+	var hasIdle bool
 
 	if id := c.idleFetcher(); id != -1 {
 		if c.removeFetcher(id) {
+			hasIdle = true
 			internal.Logger.Printf("%s: removing idle fetcher", c)
-			c.resetAutotune()
 		}
-	}
-
-	if c.isLoaded() {
-		if c.addWorker(stop) != -1 {
-			internal.Logger.Printf("%s: adding a worker", c)
-			c.resetAutotune()
-		}
-		return
 	}
 
 	if id := c.idleWorker(); id != -1 {
 		if c.removeWorker(id) {
+			hasIdle = true
 			internal.Logger.Printf("%s: removing idle worker", c)
-			c.resetAutotune()
 		}
 	}
+
+	if hasIdle {
+		c.resetTuner()
+	} else if atomic.LoadInt32(&c.fetcherNumber) > 0 {
+		c.tunerAddFetcher(stop)
+	}
+}
+
+func (c *Consumer) tunerAddFetcher(stop <-chan struct{}) {
+	if id := c.addFetcher(stop); id != -1 {
+		internal.Logger.Printf("%s: adding a fetcher", c)
+		c.tunerRollback = func() {
+			internal.Logger.Printf("%s: rollback fetcher addition", c)
+			c.removeFetcher(id)
+		}
+		c.resetTuner()
+	}
+}
+
+func (c *Consumer) resetTuner() {
+	c.prevTunerStats = c.tunerStats
+	c.tunerStats = &tunerStats{}
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
@@ -486,7 +598,10 @@ func (c *Consumer) fetcher(fetcherID int32, stopCh <-chan struct{}) {
 		timeout, err := c.fetchMessages(fetcherID, timer.C)
 		if err != nil {
 			if err == internal.ErrNotSupported {
-				return
+				if !c.removeFetcher(fetcherID) {
+					panic("not reached")
+				}
+				continue
 			}
 
 			const backoff = time.Second
@@ -519,9 +634,9 @@ func (c *Consumer) fetchMessages(
 	}
 
 	if len(msgs) > size*4/5 {
-		atomic.AddUint32(&c.fetcherBusy, 1)
+		c.tunerStats.incFetcherBusy()
 	} else {
-		atomic.AddUint32(&c.fetcherIdle, 1)
+		c.tunerStats.incFetcherIdle()
 	}
 
 	for i := range msgs {
@@ -585,10 +700,10 @@ func (c *Consumer) worker(workerID int32, stopCh <-chan struct{}) {
 
 		msg, timeout := c.waitMessage(stopCh, timeout)
 		if timeout {
-			atomic.AddUint32(&c.workerIdle, 1)
+			c.tunerStats.incWorkerIdle()
 			continue
 		}
-		atomic.AddUint32(&c.workerBusy, 1)
+		c.tunerStats.incWorkerBusy()
 
 		if timer != nil {
 			if !timer.Stop() {
@@ -695,6 +810,7 @@ func (c *Consumer) handleError(msg *Message, err error) error {
 func (c *Consumer) Put(msg *Message) {
 	if msg.StickyErr == nil {
 		atomic.AddUint32(&c.processed, 1)
+		c.tunerStats.incProcessed()
 		c.delete(msg)
 		return
 	}
@@ -872,10 +988,10 @@ func (c *Consumer) String() string {
 	fails := atomic.LoadUint32(&c.fails)
 
 	var extra string
-	if c.isStarving() {
+	if c.tunerStats.isStarving() {
 		extra += " starving"
 	}
-	if c.isLoaded() {
+	if c.tunerStats.isLoaded() {
 		extra += " loaded"
 	}
 	if c.idleFetcher() != -1 {
@@ -894,26 +1010,13 @@ func (c *Consumer) String() string {
 		extra)
 }
 
-func (c *Consumer) isStarving() bool {
-	if c.starving < 5 {
-		return false
-	}
-	idle := atomic.LoadUint32(&c.fetcherIdle)
-	busy := atomic.LoadUint32(&c.fetcherBusy)
-	return busy > 10 && idle < busy
-}
-
-func (c *Consumer) isLoaded() bool {
-	return c.loaded >= 5
-}
-
 func (c *Consumer) idleFetcher() int32 {
 	num := atomic.LoadInt32(&c.fetcherNumber)
 	if num <= 1 {
 		return -1
 	}
-	idle := atomic.LoadUint32(&c.fetcherIdle)
-	busy := atomic.LoadUint32(&c.fetcherBusy)
+	idle := c.tunerStats.getFetcherIdle()
+	busy := c.tunerStats.getFetcherBusy()
 	if idle > 10 && float64(idle) > float64(busy)/float64(num) {
 		return num
 	}
@@ -925,21 +1028,12 @@ func (c *Consumer) idleWorker() int32 {
 	if num <= int32(c.opt.MinWorkers) {
 		return -1
 	}
-	idle := atomic.LoadUint32(&c.workerIdle)
-	busy := atomic.LoadUint32(&c.workerBusy)
+	idle := c.tunerStats.getWorkerIdle()
+	busy := c.tunerStats.getWorkerBusy()
 	if busy+idle > 10 && float64(idle) > float64(busy)/float64(num) {
 		return num
 	}
 	return -1
-}
-
-func (c *Consumer) resetAutotune() {
-	c.starving = 0
-	c.loaded = 0
-	atomic.StoreUint32(&c.fetcherIdle, 0)
-	atomic.StoreUint32(&c.fetcherBusy, 0)
-	atomic.StoreUint32(&c.workerIdle, 0)
-	atomic.StoreUint32(&c.workerBusy, 0)
 }
 
 func closed(ch <-chan struct{}) bool {
