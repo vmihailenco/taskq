@@ -218,9 +218,10 @@ type Consumer struct {
 	errCount uint32
 	delaySec uint32
 
-	tunerStats, prevTunerStats *tunerStats
-	tunerLastAt                time.Time
-	tunerRollback              func()
+	_tunerStats    atomic.Value
+	prevTunerStats *tunerStats
+	tunerLastAt    time.Time
+	tunerRollback  func()
 
 	inFlight  uint32
 	deleting  uint32
@@ -321,7 +322,7 @@ func (c *Consumer) Start() error {
 		c.addWorker(stop)
 	}
 
-	c.tunerStats = &tunerStats{}
+	c._tunerStats.Store(&tunerStats{})
 	c.tunerLastAt = time.Now()
 	c.jobsWG.Add(1)
 	go func() {
@@ -384,6 +385,10 @@ func (c *Consumer) removeFetcher(num int32) bool {
 	return atomic.CompareAndSwapInt32(&c.fetcherNumber, num+1, num)
 }
 
+func (c *Consumer) tunerStats() *tunerStats {
+	return c._tunerStats.Load().(*tunerStats)
+}
+
 func (c *Consumer) autotune(stop <-chan struct{}) {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
@@ -412,9 +417,9 @@ func (c *Consumer) tunerTick(stop <-chan struct{}) {
 
 	buffered := len(c.buffer)
 	if buffered < cap(c.buffer)/5 {
-		c.tunerStats.incStarving()
+		c.tunerStats().incStarving()
 	} else if buffered > cap(c.buffer)*4/5 {
-		c.tunerStats.incLoaded()
+		c.tunerStats().incLoaded()
 	}
 }
 
@@ -423,7 +428,7 @@ func (c *Consumer) tune(stop <-chan struct{}) {
 		rollback := c.tunerRollback
 		c.tunerRollback = nil
 
-		processed := c.tunerStats.getProcessed()
+		processed := c.tunerStats().getProcessed()
 		prevProcessed := c.prevTunerStats.getProcessed()
 		threshold := processed / 50 // 2%
 		if threshold < 10 {
@@ -432,18 +437,18 @@ func (c *Consumer) tune(stop <-chan struct{}) {
 
 		if processed-prevProcessed < threshold {
 			rollback()
-			c.tunerStats = &tunerStats{}
+			c._tunerStats.Store(&tunerStats{})
 			return
 		}
 	}
 
-	if c.tunerStats.isStarving() {
+	if c.tunerStats().isStarving() {
 		if c.tunerAddFetcher(stop) {
 			return
 		}
 	}
 
-	if c.tunerStats.isLoaded() {
+	if c.tunerStats().isLoaded() {
 		var added int
 		for i := 0; i < c.opt.MinWorkers; i++ {
 			if id := c.addWorker(stop); id != -1 {
@@ -500,9 +505,8 @@ func (c *Consumer) tunerAddFetcher(stop <-chan struct{}) bool {
 }
 
 func (c *Consumer) resetTuner() {
-	// TODO: atomic
-	c.prevTunerStats = c.tunerStats
-	c.tunerStats = &tunerStats{}
+	c.prevTunerStats = c.tunerStats()
+	c._tunerStats.Store(&tunerStats{})
 }
 
 // Stop is StopTimeout with 30 seconds timeout.
@@ -670,9 +674,9 @@ func (c *Consumer) fetchMessages(
 	}
 
 	if d > size/5 {
-		c.tunerStats.incFetcherIdle(d)
+		c.tunerStats().incFetcherIdle(d)
 	} else {
-		c.tunerStats.incFetcherBusy()
+		c.tunerStats().incFetcherBusy()
 	}
 
 	timer.Reset(timeout)
@@ -753,10 +757,10 @@ func (c *Consumer) waitMessage(
 ) (*Message, bool) {
 	msg := c.dequeueMessage()
 	if msg != nil {
-		c.tunerStats.incWorkerBusy()
+		c.tunerStats().incWorkerBusy()
 		return msg, false
 	}
-	c.tunerStats.incWorkerIdle(1)
+	c.tunerStats().incWorkerIdle(1)
 
 	if atomic.LoadInt32(&c.fetcherUnsupported) == 0 {
 		c.tryStartFetcher(0, stopCh)
@@ -769,7 +773,7 @@ func (c *Consumer) waitMessage(
 	case <-stopCh:
 		msg = c.dequeueMessage()
 	case <-timer.C:
-		c.tunerStats.incWorkerIdle(int(timeout / time.Second))
+		c.tunerStats().incWorkerIdle(int(timeout / time.Second))
 		return nil, true
 	}
 
@@ -846,7 +850,7 @@ func (c *Consumer) handleError(msg *Message, err error) error {
 func (c *Consumer) Put(msg *Message) {
 	if msg.StickyErr == nil {
 		atomic.AddUint32(&c.processed, 1)
-		c.tunerStats.incProcessed()
+		c.tunerStats().incProcessed()
 		c.delete(msg)
 		return
 	}
@@ -1033,7 +1037,7 @@ func (c *Consumer) String() string {
 
 func (c *Consumer) idleFetcher() int32 {
 	num := atomic.LoadInt32(&c.fetcherNumber)
-	if c.tunerStats.hasIdleFetcher(num) {
+	if c.tunerStats().hasIdleFetcher(num) {
 		return num - 1
 	}
 	return -1
@@ -1041,7 +1045,7 @@ func (c *Consumer) idleFetcher() int32 {
 
 func (c *Consumer) idleWorker() int32 {
 	num := atomic.LoadInt32(&c.workerNumber)
-	if c.tunerStats.hasIdleWorker(num) {
+	if c.tunerStats().hasIdleWorker(num) {
 		return num - 1
 	}
 	return -1
