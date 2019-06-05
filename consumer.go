@@ -347,7 +347,7 @@ func (c *Consumer) tune(stop <-chan struct{}) {
 
 	if c.tunerStats.isLoaded() {
 		var added int
-		for i := 0; i < c.opt.MinWorkers; i++ {
+		for i := 0; i < 3; i++ {
 			if id := c.addWorker(stop); id != -1 {
 				added++
 			}
