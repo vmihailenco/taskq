@@ -24,32 +24,20 @@ func (f *Factory) Queues() []taskq.Queue {
 }
 
 func (f *Factory) StartConsumers() error {
-	var firstErr error
-	for _, q := range f.Queues() {
-		err := q.Consumer().Start()
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
+	return f.forEachQueue(func(q taskq.Queue) error {
+		return q.Consumer().Start()
+	})
 }
 
-func (f *Factory) StopConsumers() error {
+func (f *Factory) CloseConsumers() error {
 	return f.forEachQueue(func(q taskq.Queue) error {
-		return q.Consumer().Stop()
+		return q.Consumer().Close()
 	})
 }
 
 func (f *Factory) Close() error {
 	return f.forEachQueue(func(q taskq.Queue) error {
-		firstErr := q.Consumer().Stop()
-
-		err := q.Close()
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-
-		return firstErr
+		return q.Close()
 	})
 }
 

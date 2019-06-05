@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/vmihailenco/taskq"
@@ -21,6 +22,8 @@ type Queue struct {
 
 	wg       sync.WaitGroup
 	consumer *taskq.Consumer
+
+	_closed int32
 }
 
 var _ taskq.Queue = (*Queue)(nil)
@@ -86,9 +89,11 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	done := make(chan struct{}, 1)
-	timeoutCh := time.After(timeout)
+	if !atomic.CompareAndSwapInt32(&q._closed, 0, 1) {
+		return fmt.Errorf("taskq: %s is already closed", q)
+	}
 
+	done := make(chan struct{}, 1)
 	go func() {
 		q.wg.Wait()
 		done <- struct{}{}
@@ -96,11 +101,11 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 
 	select {
 	case <-done:
-	case <-timeoutCh:
-		return fmt.Errorf("message are not processed after %s", timeout)
+	case <-time.After(timeout):
+		return fmt.Errorf("taskq: %s: messages are not processed after %s", q.consumer, timeout)
 	}
 
-	return q.consumer.StopTimeout(timeout)
+	return q.consumer.CloseTimeout(timeout)
 }
 
 func (q *Queue) Len() (int, error) {
@@ -109,6 +114,9 @@ func (q *Queue) Len() (int, error) {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *taskq.Message) error {
+	if q.closed() {
+		return fmt.Errorf("taskq: %s is closed", q)
+	}
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
@@ -155,4 +163,8 @@ func (q *Queue) DeleteBatch(msgs []*taskq.Message) error {
 
 func (q *Queue) Purge() error {
 	return q.consumer.Purge()
+}
+
+func (q *Queue) closed() bool {
+	return atomic.LoadInt32(&q._closed) == 1
 }

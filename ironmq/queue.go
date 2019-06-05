@@ -54,7 +54,7 @@ func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 func (q *Queue) initAddQueue() {
 	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
 		Name:       "ironmq:" + q.opt.Name + ":add",
-		BufferSize: 1000,
+		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
 	q.addTask = q.addQueue.NewTask(&taskq.TaskOptions{
@@ -69,7 +69,7 @@ func (q *Queue) initAddQueue() {
 func (q *Queue) initDelQueue() {
 	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
 		Name:       "ironmq:" + q.opt.Name + ":delete",
-		BufferSize: 1000,
+		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
 	q.delTask = q.delQueue.NewTask(&taskq.TaskOptions{
@@ -219,7 +219,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
 
 	if q.consumer != nil {
-		err := q.consumer.StopTimeout(timeout)
+		err := q.consumer.CloseTimeout(timeout)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
