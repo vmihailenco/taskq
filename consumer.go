@@ -1065,7 +1065,7 @@ func hasIdleUnit(idle, busy uint32, num int32) bool {
 }
 
 func (s *tunerStats) isStarving() bool {
-	if s.starving+s.loaded <= 5 || s.starving < s.loaded {
+	if s.starving+s.loaded < 5 || float32(s.starving)/float32(s.loaded) < 2 {
 		return false
 	}
 	idle := s.getFetcherIdle()
@@ -1074,7 +1074,7 @@ func (s *tunerStats) isStarving() bool {
 }
 
 func (s *tunerStats) isLoaded() bool {
-	if s.starving+s.loaded <= 5 || s.loaded < s.starving {
+	if s.starving+s.loaded < 5 || float32(s.loaded)/float32(s.starving) < 2 {
 		return false
 	}
 	idle := s.getWorkerIdle()
