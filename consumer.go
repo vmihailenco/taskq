@@ -541,7 +541,7 @@ func (c *Consumer) Process(msg *Message) error {
 
 	msgErr := c.handleMessage(msg)
 
-	err = c.afterProcessMessage(evt, err)
+	err = c.afterProcessMessage(evt, msgErr)
 	if err != nil {
 		return c.handleError(msg, err)
 	}
