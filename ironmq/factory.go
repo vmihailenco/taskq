@@ -31,8 +31,8 @@ func (f *factory) StartConsumers() error {
 	return f.base.StartConsumers()
 }
 
-func (f *factory) CloseConsumers() error {
-	return f.base.CloseConsumers()
+func (f *factory) StopConsumers() error {
+	return f.base.StopConsumers()
 }
 
 func (f *factory) Close() error {

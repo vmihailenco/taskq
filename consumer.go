@@ -39,9 +39,8 @@ type ConsumerStats struct {
 //------------------------------------------------------------------------------
 
 const (
-	stateDefault = 0
+	stateStopped = 0
 	stateStarted = 1
-	stateClosed  = 2
 )
 
 // Consumer reserves messages from the queue, processes them,
@@ -50,7 +49,7 @@ type Consumer struct {
 	q   Queue
 	opt *QueueOptions
 
-	buffer  chan *Message
+	buffer  chan *Message // never closed
 	limiter *limiter
 
 	state   int32 // atomic
@@ -85,6 +84,8 @@ func NewConsumer(q Queue) *Consumer {
 	p := &Consumer{
 		q:   q,
 		opt: opt,
+
+		buffer: make(chan *Message, opt.BufferSize),
 
 		limiter: &limiter{
 			bucket:  q.Name(),
@@ -132,9 +133,6 @@ func (c *Consumer) Stats() *ConsumerStats {
 }
 
 func (c *Consumer) Add(msg *Message) error {
-	if c.closed() {
-		return fmt.Errorf("taskq: %s is closed", c)
-	}
 	if msg.Delay > 0 {
 		time.AfterFunc(msg.Delay, func() {
 			msg.Delay = 0
@@ -157,12 +155,11 @@ func (c *Consumer) add(msg *Message) {
 
 // Start starts consuming messages in the queue.
 func (c *Consumer) Start() error {
-	if !atomic.CompareAndSwapInt32(&c.state, stateDefault, stateStarted) {
-		return errors.New("taksq: Consumer is not started")
+	if !atomic.CompareAndSwapInt32(&c.state, stateStopped, stateStarted) {
+		return errors.New("taksq: Consumer is already started")
 	}
 
 	c.closeCh = make(chan struct{})
-	c.buffer = make(chan *Message, c.opt.BufferSize)
 
 	for i := 0; i < c.opt.MinWorkers; i++ {
 		c.addWorker()
@@ -178,19 +175,23 @@ func (c *Consumer) Start() error {
 	return nil
 }
 
-// Close is CloseTimeout with 30 seconds timeout.
-func (c *Consumer) Close() error {
-	return c.CloseTimeout(stopTimeout)
+// Stop is StopTimeout with 30 seconds timeout.
+func (c *Consumer) Stop() error {
+	return c.StopTimeout(stopTimeout)
 }
 
-// CloseTimeout waits workers for timeout duration to finish processing current
+// StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
-func (c *Consumer) CloseTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapInt32(&c.state, stateStarted, stateClosed) {
-		return errors.New("taksq: Consumer is not started")
+func (c *Consumer) StopTimeout(timeout time.Duration) error {
+	if !atomic.CompareAndSwapInt32(&c.state, stateStarted, stateStopped) {
+		return errors.New("taksq: Consumer is already stopped")
 	}
 
 	close(c.closeCh)
+	defer func() {
+		atomic.StoreInt32(&c.fetcherNumber, 0)
+		atomic.StoreInt32(&c.workerNumber, 0)
+	}()
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -207,8 +208,6 @@ func (c *Consumer) CloseTimeout(timeout time.Duration) error {
 		return fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
 	}
 
-	close(c.buffer)
-
 	go func() {
 		c.workersWG.Wait()
 		done <- struct{}{}
@@ -223,8 +222,8 @@ func (c *Consumer) CloseTimeout(timeout time.Duration) error {
 	return nil
 }
 
-func (c *Consumer) closed() bool {
-	return atomic.LoadInt32(&c.state) == stateClosed
+func (c *Consumer) stopped() bool {
+	return atomic.LoadInt32(&c.state) == stateStopped
 }
 
 func (c *Consumer) paused() time.Duration {
@@ -320,7 +319,7 @@ func (c *Consumer) ProcessAll() error {
 		time.Sleep(time.Second)
 	}
 
-	return c.Close()
+	return c.Stop()
 }
 
 // ProcessOne processes at most one message in the queue.
@@ -364,7 +363,7 @@ func (c *Consumer) fetcher(fetcherID int32) {
 	fetchTimeout -= fetchTimeout / 10
 
 	for {
-		if c.closed() || fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
+		if c.stopped() || fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
 			return
 		}
 
@@ -465,7 +464,7 @@ func (c *Consumer) worker(workerID int32) {
 		}
 
 		if lock != nil {
-			if !c.lockWorkerOrExit(lock) {
+			if !c.lockWorker(lock) {
 				return
 			}
 		}
@@ -501,6 +500,8 @@ func (c *Consumer) waitMessage(timer *time.Timer, timeout time.Duration) (*Messa
 			<-timer.C
 		}
 		return msg, false
+	case <-c.closeCh:
+		return nil, false
 	case <-timer.C:
 		c.tunerStats.incWorkerIdle(2)
 		return nil, true
@@ -712,7 +713,7 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.errCount, 0)
 }
 
-func (c *Consumer) lockWorkerOrExit(lock *redlock.Locker) bool {
+func (c *Consumer) lockWorker(lock *redlock.Locker) bool {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 

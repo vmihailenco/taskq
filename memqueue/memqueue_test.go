@@ -390,7 +390,7 @@ var _ = Describe("empty queue", func() {
 	})
 
 	AfterEach(func() {
-		Expect(q.Close()).NotTo(HaveOccurred())
+		_ = q.Close()
 	})
 
 	It("can be closed", func() {

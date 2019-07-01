@@ -219,10 +219,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	var firstErr error
 
 	if q.consumer != nil {
-		err := q.consumer.CloseTimeout(timeout)
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
+		_ = q.consumer.StopTimeout(timeout)
 	}
 
 	err := q.delBatcher.Close()

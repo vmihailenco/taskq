@@ -37,7 +37,7 @@ type Factory interface {
 	NewQueue(*QueueOptions) Queue
 	Queues() []Queue
 	StartConsumers() error
-	CloseConsumers() error
+	StopConsumers() error
 	Close() error
 }
 

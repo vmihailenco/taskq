@@ -105,7 +105,9 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		return fmt.Errorf("taskq: %s: messages are not processed after %s", q.consumer, timeout)
 	}
 
-	return q.consumer.CloseTimeout(timeout)
+	_ = q.consumer.StopTimeout(timeout)
+
+	return nil
 }
 
 func (q *Queue) Len() (int, error) {

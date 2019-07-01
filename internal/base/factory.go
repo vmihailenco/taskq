@@ -29,9 +29,9 @@ func (f *Factory) StartConsumers() error {
 	})
 }
 
-func (f *Factory) CloseConsumers() error {
+func (f *Factory) StopConsumers() error {
 	return f.forEachQueue(func(q taskq.Queue) error {
-		return q.Consumer().Close()
+		return q.Consumer().Stop()
 	})
 }
 

@@ -248,6 +248,10 @@ func (q *Queue) Close() error {
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	atomic.StoreUint32(&q._closed, 1)
 
+	if q.consumer != nil {
+		_ = q.consumer.StopTimeout(timeout)
+	}
+
 	_ = q.redis.XGroupDelConsumer(q.stream, q.streamGroup, q.streamConsumer).Err()
 
 	return nil
