@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/vmihailenco/taskq/internal"
+	"github.com/vmihailenco/taskq/v2/internal"
 )
 
 func init() {

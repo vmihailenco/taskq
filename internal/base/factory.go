@@ -3,7 +3,7 @@ package base
 import (
 	"sync"
 
-	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/v2"
 )
 
 type Factory struct {

@@ -4,8 +4,8 @@ import (
 	iron_config "github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/internal/base"
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/internal/base"
 )
 
 type factory struct {

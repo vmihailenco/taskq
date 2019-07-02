@@ -3,8 +3,8 @@ package memqueue_test
 import (
 	"testing"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/memqueue"
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/memqueue"
 )
 
 func BenchmarkCallAsync(b *testing.B) {

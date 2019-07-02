@@ -13,10 +13,10 @@ import (
 	"github.com/go-redis/redis"
 	uuid "github.com/satori/go.uuid"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/internal"
-	"github.com/vmihailenco/taskq/internal/base"
-	"github.com/vmihailenco/taskq/internal/redislock"
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/internal"
+	"github.com/vmihailenco/taskq/v2/internal/base"
+	"github.com/vmihailenco/taskq/v2/internal/redislock"
 )
 
 const batchSize = 100

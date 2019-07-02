@@ -4,11 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/azsqs"
-
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/azsqs"
 )
 
 var accountID string

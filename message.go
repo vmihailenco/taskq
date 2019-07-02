@@ -9,7 +9,7 @@ import (
 	"github.com/valyala/gozstd"
 	"github.com/vmihailenco/msgpack"
 
-	"github.com/vmihailenco/taskq/internal"
+	"github.com/vmihailenco/taskq/v2/internal"
 )
 
 // ErrDuplicate is returned when adding duplicate message to the queue.

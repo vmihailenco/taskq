@@ -3,7 +3,7 @@ package msgutil
 import (
 	"fmt"
 
-	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/v2"
 )
 
 func WrapMessage(msg *taskq.Message) *taskq.Message {

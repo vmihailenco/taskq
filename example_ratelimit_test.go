@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/memqueue"
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/memqueue"
 )
 
 type RateLimitError string

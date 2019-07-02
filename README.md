@@ -6,7 +6,7 @@
 ## Installation
 
 ```bash
-go get -u github.com/vmihailenco/taskq
+go get github.com/vmihailenco/taskq/v2
 ```
 
 ## Features

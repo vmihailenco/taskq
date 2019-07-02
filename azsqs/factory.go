@@ -3,8 +3,8 @@ package azsqs
 import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/internal/base"
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/internal/base"
 )
 
 type factory struct {

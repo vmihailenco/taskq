@@ -3,10 +3,10 @@ package taskq_test
 import (
 	"testing"
 
-	"github.com/vmihailenco/taskq"
-	"github.com/vmihailenco/taskq/ironmq"
-
 	iron_config "github.com/iron-io/iron_go3/config"
+
+	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/ironmq"
 )
 
 func ironmqFactory() taskq.Factory {

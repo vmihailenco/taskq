@@ -14,7 +14,7 @@ import (
 	"github.com/go-redis/redis"
 	"golang.org/x/time/rate"
 
-	"github.com/vmihailenco/taskq"
+	"github.com/vmihailenco/taskq/v2"
 )
 
 const waitTimeout = time.Second

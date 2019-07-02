@@ -8,9 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vmihailenco/taskq/internal"
-	"github.com/vmihailenco/taskq/internal/redislock"
 	"golang.org/x/time/rate"
+
+	"github.com/vmihailenco/taskq/v2/internal"
+	"github.com/vmihailenco/taskq/v2/internal/redislock"
 )
 
 const timePrecision = time.Microsecond

@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/vmihailenco/taskq/examples/api_worker"
+	"github.com/vmihailenco/taskq/v2/examples/api_worker"
 )
 
 func main() {
