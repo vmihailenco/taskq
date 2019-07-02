@@ -46,7 +46,7 @@ type Redis interface {
 	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 
-	// Required by redlock
+	// Required by redislock
 	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
 	EvalSha(sha1 string, keys []string, args ...interface{}) *redis.Cmd
 	ScriptExists(scripts ...string) *redis.BoolSliceCmd

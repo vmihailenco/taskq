@@ -10,13 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	redlock "github.com/bsm/redis-lock"
 	"github.com/go-redis/redis"
 	uuid "github.com/satori/go.uuid"
 
 	"github.com/vmihailenco/taskq"
 	"github.com/vmihailenco/taskq/internal"
 	"github.com/vmihailenco/taskq/internal/base"
+	"github.com/vmihailenco/taskq/internal/redislock"
 )
 
 const batchSize = 100
@@ -264,21 +264,14 @@ func (q *Queue) closed() bool {
 func (q *Queue) scheduler(name string, fn func() (int, error)) {
 	const backoff = time.Second
 
-	lock := redlock.New(q.opt.Redis, q.schedulerLockPrefix+name, &redlock.Options{
-		LockTimeout: 5 * time.Second,
-	})
-
 	for {
 		if q.closed() {
 			break
 		}
 
-		ok, err := lock.Lock()
+		lock, err := redislock.Obtain(q.opt.Redis, q.schedulerLockPrefix+name, time.Minute, nil)
 		if err != nil {
-			internal.Logger.Printf("redlock.Lock failed: %s", err)
-			continue
-		}
-		if !ok {
+			internal.Logger.Printf("redislock.Lock failed: %s", err)
 			time.Sleep(q.schedulerBackoff())
 			continue
 		}
@@ -288,9 +281,9 @@ func (q *Queue) scheduler(name string, fn func() (int, error)) {
 			internal.Logger.Printf("redisq: %s failed: %s", name, err)
 		}
 
-		err = lock.Unlock()
+		err = lock.Release()
 		if err != nil {
-			internal.Logger.Printf("redlock.Unlock failed: %s", err)
+			internal.Logger.Printf("redislock.Release failed: %s", err)
 		}
 
 		if err != nil || n == 0 {

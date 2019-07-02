@@ -8,10 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	redlock "github.com/bsm/redis-lock"
-	"golang.org/x/time/rate"
-
 	"github.com/vmihailenco/taskq/internal"
+	"github.com/vmihailenco/taskq/internal/redislock"
+	"golang.org/x/time/rate"
 )
 
 const timePrecision = time.Microsecond
@@ -449,22 +448,22 @@ func (c *Consumer) worker(workerID int32) {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
-	var lock *redlock.Locker
-	if c.opt.WorkerLimit > 0 {
-		key := fmt.Sprintf("%s:worker:lock:%d", c.q.Name(), workerID)
-		lock = redlock.New(c.opt.Redis, key, &redlock.Options{
-			LockTimeout: c.opt.ReservationTimeout + 10*time.Second,
-		})
-		defer c.unlockWorker(lock)
-	}
+	var lock *redislock.Lock
+	defer func() {
+		if lock != nil {
+			_ = lock.Release()
+		}
+	}()
 
 	for {
 		if workerID >= atomic.LoadInt32(&c.workerNumber) {
 			return
 		}
 
-		if lock != nil {
-			if !c.lockWorker(lock) {
+		if c.opt.WorkerLimit > 0 {
+			var ok bool
+			lock, ok = c.lockWorker(lock, workerID)
+			if !ok {
 				return
 			}
 		}
@@ -713,18 +712,28 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.errCount, 0)
 }
 
-func (c *Consumer) lockWorker(lock *redlock.Locker) bool {
+func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) (*redislock.Lock, bool) {
+	timeout := c.opt.ReservationTimeout + 10*time.Second
+
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
 	for {
-		ok, err := lock.Lock()
-		if err != nil {
-			internal.Logger.Printf("redlock.Lock failed: %s", err)
+		var err error
+		if lock == nil {
+			key := fmt.Sprintf("%s:worker:lock:%d", c.q.Name(), workerID)
+			lock, err = redislock.Obtain(c.opt.Redis, key, timeout, nil)
+		} else {
+			err = lock.Refresh(timeout, nil)
 		}
-		if ok {
-			return true
+		if err == nil {
+			return lock, true
 		}
+
+		if err != redislock.ErrNotObtained {
+			internal.Logger.Printf("redislock.Lock failed: %s", err)
+		}
+		lock = nil
 
 		timeout := time.Duration(500+rand.Intn(500)) * time.Millisecond
 		timer.Reset(timeout)
@@ -734,14 +743,10 @@ func (c *Consumer) lockWorker(lock *redlock.Locker) bool {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			return false
+			return lock, false
 		case <-timer.C:
 		}
 	}
-}
-
-func (c *Consumer) unlockWorker(lock *redlock.Locker) {
-	_ = lock.Unlock()
 }
 
 func (c *Consumer) String() string {
