@@ -15,7 +15,6 @@ import (
 
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/base"
 	"github.com/vmihailenco/taskq/v2/internal/redislock"
 )
 
@@ -41,8 +40,7 @@ type redisStreamClient interface {
 }
 
 type Queue struct {
-	base base.Queue
-	opt  *taskq.QueueOptions
+	opt *taskq.QueueOptions
 
 	consumer *taskq.Consumer
 
@@ -58,7 +56,7 @@ type Queue struct {
 	_closed uint32
 }
 
-var _ taskq.Queue = (*Queue)(nil)
+var _ taskq.Queuer = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
 	const redisPrefix = "taskq:"
@@ -120,22 +118,6 @@ func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
 }
 
-func (q *Queue) HandleMessage(msg *taskq.Message) error {
-	return q.base.HandleMessage(msg)
-}
-
-func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
-	return q.base.NewTask(q, opt)
-}
-
-func (q *Queue) GetTask(name string) *taskq.Task {
-	return q.base.GetTask(name)
-}
-
-func (q *Queue) RemoveTask(name string) {
-	q.base.RemoveTask(name)
-}
-
 func (q *Queue) Consumer() *taskq.Consumer {
 	if q.consumer == nil {
 		q.consumer = taskq.NewConsumer(q)
@@ -152,6 +134,9 @@ func (q *Queue) Len() (int, error) {
 func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
+	}
+	if q.isDuplicate(msg) {
+		return taskq.ErrDuplicate
 	}
 
 	if msg.ID == "" {
@@ -262,30 +247,20 @@ func (q *Queue) closed() bool {
 }
 
 func (q *Queue) scheduler(name string, fn func() (int, error)) {
-	const backoff = time.Second
-
 	for {
 		if q.closed() {
 			break
 		}
 
-		lock, err := redislock.Obtain(q.opt.Redis, q.schedulerLockPrefix+name, time.Minute, nil)
-		if err != nil {
-			internal.Logger.Printf("redislock.Lock failed: %s", err)
-			time.Sleep(q.schedulerBackoff())
-			continue
-		}
-
-		n, err := fn()
-		if err != nil {
+		var n int
+		err := q.withRedisLock(q.schedulerLockPrefix+name, func() error {
+			var err error
+			n, err = fn()
+			return err
+		})
+		if err != nil && err != redislock.ErrNotObtained {
 			internal.Logger.Printf("redisq: %s failed: %s", name, err)
 		}
-
-		err = lock.Release()
-		if err != nil {
-			internal.Logger.Printf("redislock.Release failed: %s", err)
-		}
-
 		if err != nil || n == 0 {
 			time.Sleep(q.schedulerBackoff())
 		}
@@ -377,6 +352,28 @@ func (q *Queue) schedulePending() (int, error) {
 	}
 
 	return len(pending), nil
+}
+
+func (q *Queue) isDuplicate(msg *taskq.Message) bool {
+	if msg.Name == "" {
+		return false
+	}
+	return q.opt.Storage.Exists("taskq:" + q.opt.Name + ":" + msg.Name)
+}
+
+func (q *Queue) withRedisLock(name string, fn func() error) error {
+	lock, err := redislock.Obtain(q.opt.Redis, name, time.Minute, nil)
+	if err != nil {
+		return err
+	}
+
+	err = fn()
+
+	if err := lock.Release(); err != nil {
+		internal.Logger.Printf("redislock.Release failed: %s", err)
+	}
+
+	return err
 }
 
 func unixMs(tm time.Time) int64 {

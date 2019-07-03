@@ -29,12 +29,19 @@ var _ = BeforeSuite(func() {
 	taskq.SetLogger(log.New(ioutil.Discard, "", 0))
 })
 
+var _ = BeforeEach(func() {
+	taskq.Queues.Reset()
+	taskq.Tasks.Reset()
+})
+
 var _ = Describe("message with args", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(s string, i int) {
 				Expect(s).To(Equal("string"))
@@ -42,7 +49,7 @@ var _ = Describe("message with args", func() {
 				ch <- true
 			},
 		})
-		err := task.Call("string", 42)
+		err := q.Add(task.WithArgs("string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -59,8 +66,10 @@ var _ = Describe("context.Context", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(c context.Context, s string, i int) {
 				Expect(s).To(Equal("string"))
@@ -68,7 +77,7 @@ var _ = Describe("context.Context", func() {
 				ch <- true
 			},
 		})
-		err := task.Call("string", 42)
+		err := q.Add(task.WithArgs("string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -85,8 +94,10 @@ var _ = Describe("message with invalid number of args", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(s string) {
 				ch <- true
@@ -95,7 +106,7 @@ var _ = Describe("message with invalid number of args", func() {
 		})
 		q.Consumer().Stop()
 
-		err := task.Call()
+		err := q.Add(task.WithArgs())
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Consumer().ProcessOne()
@@ -117,8 +128,10 @@ var _ = Describe("HandlerFunc", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(msg *taskq.Message) error {
 				Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
@@ -126,9 +139,11 @@ var _ = Describe("HandlerFunc", func() {
 				return nil
 			},
 		})
-		task.Call("string", 42)
 
-		err := q.Close()
+		err := q.Add(task.WithArgs("string", 42))
+		Expect(err).NotTo(HaveOccurred())
+
+		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -148,8 +163,10 @@ var _ = Describe("message retry timing", func() {
 	BeforeEach(func() {
 		count = 0
 		ch = make(chan time.Time, 10)
-		q = memqueue.NewQueue(&taskq.QueueOptions{})
-		task = q.NewTask(&taskq.TaskOptions{
+		q = memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task = taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				ch <- time.Now()
@@ -166,7 +183,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			task.Call()
+			_ = q.Add(task.WithArgs())
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -184,11 +201,11 @@ var _ = Describe("message retry timing", func() {
 		var now time.Time
 
 		BeforeEach(func() {
-			msg := taskq.NewMessage()
+			msg := task.WithArgs()
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			task.AddMessage(msg)
+			q.Add(msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -208,8 +225,10 @@ var _ = Describe("failing queue with error handler", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q = memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				return errors.New("fake error")
@@ -219,7 +238,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		task.Call()
+		q.Add(task.WithArgs())
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -236,9 +255,10 @@ var _ = Describe("named message", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name:  "test",
 			Redis: redisRing(),
 		})
-		task := q.NewTask(&taskq.TaskOptions{
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
@@ -253,9 +273,9 @@ var _ = Describe("named message", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer wg.Done()
-				msg := taskq.NewMessage()
+				msg := task.WithArgs()
 				msg.Name = name
-				task.AddMessage(msg)
+				q.Add(msg)
 			}()
 		}
 		wg.Wait()
@@ -279,9 +299,10 @@ var _ = Describe("CallOnce", func() {
 		now = time.Now()
 
 		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name:  "test",
 			Redis: redisRing(),
 		})
-		task := q.NewTask(&taskq.TaskOptions{
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(slot int64) error {
 				ch <- time.Now()
@@ -296,7 +317,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				task.CallOnce(delay, slot(delay))
+				q.Add(task.OnceWithArgs(delay, slot(delay)))
 			}()
 		}
 		wg.Wait()
@@ -316,8 +337,10 @@ var _ = Describe("stress testing", func() {
 	var count int64
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{})
-		task := q.NewTask(&taskq.TaskOptions{
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name: "test",
+		})
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
@@ -325,7 +348,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			task.Call()
+			q.Add(task.WithArgs())
 		}
 
 		err := q.Close()
@@ -344,9 +367,10 @@ var _ = Describe("stress testing failing queue", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name:                 "test",
 			PauseErrorsThreshold: -1,
 		})
-		task := q.NewTask(&taskq.TaskOptions{
+		task := taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				return errors.New("fake error")
@@ -358,7 +382,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			task.Call()
+			q.Add(task.WithArgs())
 		}
 
 		err := q.Close()
@@ -379,9 +403,10 @@ var _ = Describe("empty queue", func() {
 	BeforeEach(func() {
 		processed = 0
 		q = memqueue.NewQueue(&taskq.QueueOptions{
+			Name:  "test",
 			Redis: redisRing(),
 		})
-		task = q.NewTask(&taskq.TaskOptions{
+		task = taskq.NewTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddUint32(&processed, 1)
@@ -429,7 +454,7 @@ var _ = Describe("empty queue", func() {
 		Context("when there are messages in the queue", func() {
 			BeforeEach(func() {
 				for i := 0; i < 3; i++ {
-					err := task.Call()
+					err := q.Add(task.WithArgs())
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})

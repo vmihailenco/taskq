@@ -17,8 +17,7 @@ import (
 )
 
 type Queue struct {
-	base base.Queue
-	opt  *taskq.QueueOptions
+	opt *taskq.QueueOptions
 
 	q mq.Queue
 
@@ -32,7 +31,7 @@ type Queue struct {
 	consumer *taskq.Consumer
 }
 
-var _ taskq.Queue = (*Queue)(nil)
+var _ taskq.Queuer = (*Queue)(nil)
 
 func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 	if opt.Name == "" {
@@ -52,28 +51,30 @@ func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 }
 
 func (q *Queue) initAddQueue() {
+	queueName := "ironmq:" + q.opt.Name + ":add"
 	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:       "ironmq:" + q.opt.Name + ":add",
+		Name:       queueName,
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.addTask = q.addQueue.NewTask(&taskq.TaskOptions{
-		Name:            "add-mesage",
+	q.addTask = taskq.NewTask(&taskq.TaskOptions{
+		Name:            queueName + ":add-mesage",
 		Handler:         taskq.HandlerFunc(q.add),
-		FallbackHandler: msgutil.UnwrapMessageHandler(q.HandleMessage),
+		FallbackHandler: msgutil.UnwrapMessageHandler(taskq.Tasks.HandleMessage),
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
 	})
 }
 
 func (q *Queue) initDelQueue() {
+	queueName := "ironmq:" + q.opt.Name + ":delete"
 	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:       "ironmq:" + q.opt.Name + ":delete",
+		Name:       queueName,
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.delTask = q.delQueue.NewTask(&taskq.TaskOptions{
-		Name:       "delete-message",
+	q.delTask = taskq.NewTask(&taskq.TaskOptions{
+		Name:       queueName + ":delete-message",
 		Handler:    taskq.HandlerFunc(q.delBatcherAdd),
 		RetryLimit: 3,
 		MinBackoff: time.Second,
@@ -94,22 +95,6 @@ func (q *Queue) String() string {
 
 func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
-}
-
-func (q *Queue) HandleMessage(msg *taskq.Message) error {
-	return q.base.HandleMessage(msg)
-}
-
-func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
-	return q.base.NewTask(q, opt)
-}
-
-func (q *Queue) GetTask(name string) *taskq.Task {
-	return q.base.GetTask(name)
-}
-
-func (q *Queue) RemoveTask(name string) {
-	q.base.RemoveTask(name)
 }
 
 func (q *Queue) Consumer() *taskq.Consumer {
@@ -137,8 +122,11 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
+	if q.isDuplicate(msg) {
+		return taskq.ErrDuplicate
+	}
 	msg = msgutil.WrapMessage(msg)
-	return q.addTask.AddMessage(msg)
+	return q.addQueue.Add(q.addTask.WithMessage(msg))
 }
 
 func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
@@ -294,6 +282,13 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 func (q *Queue) shouldBatchDelete(batch []*taskq.Message, msg *taskq.Message) bool {
 	const messagesLimit = 10
 	return len(batch)+1 < messagesLimit
+}
+
+func (q *Queue) isDuplicate(msg *taskq.Message) bool {
+	if msg.Name == "" {
+		return false
+	}
+	return q.opt.Storage.Exists("taskq:" + q.opt.Name + ":" + msg.Name)
 }
 
 func retry(fn func() error) error {

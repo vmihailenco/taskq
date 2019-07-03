@@ -23,6 +23,7 @@ func SetUnknownTaskOptions(opt *TaskOptions) {
 }
 
 type TaskOptions struct {
+	// Task name.
 	Name string
 
 	// Function called to process a message.
@@ -69,26 +70,17 @@ func (opt *TaskOptions) init() {
 }
 
 type Task struct {
-	queue Queue
-	opt   *TaskOptions
-
-	storage    Storage
-	namePrefix string
+	opt *TaskOptions
 
 	handler         Handler
 	fallbackHandler Handler
 }
 
-func NewTask(queue Queue, opt *TaskOptions) *Task {
+func NewTask(opt *TaskOptions) *Task {
 	opt.init()
 
-	qopt := queue.Options()
 	t := &Task{
-		queue: queue,
-		opt:   opt,
-
-		storage:    queue.Options().Storage,
-		namePrefix: fmt.Sprintf("taskq:%s:%s:", qopt.Name, opt.Name),
+		opt: opt,
 	}
 
 	t.handler = NewHandler(opt.Handler)
@@ -96,7 +88,15 @@ func NewTask(queue Queue, opt *TaskOptions) *Task {
 		t.fallbackHandler = NewHandler(opt.FallbackHandler)
 	}
 
+	if err := Tasks.Register(t); err != nil {
+		panic(err)
+	}
+
 	return t
+}
+
+func (t *Task) Name() string {
+	return t.opt.Name
 }
 
 func (t *Task) String() string {
@@ -117,37 +117,23 @@ func (t *Task) HandleMessage(msg *Message) error {
 	return t.handler.HandleMessage(msg)
 }
 
-// AddMessage adds message to the queue.
-func (t *Task) AddMessage(msg *Message) error {
-	if !t.isUniqueName(msg.Name) {
-		return ErrDuplicate
-	}
-
+func (t *Task) WithMessage(msg *Message) *Message {
 	msg.TaskName = t.opt.Name
-	msg.Task = t
-	return t.queue.Add(msg)
+	return msg
 }
 
-// Call creates a message using the args and adds it to the queue.
-func (t *Task) Call(args ...interface{}) error {
-	msg := NewMessage(args...)
-	return t.AddMessage(msg)
+func (t *Task) WithArgs(args ...interface{}) *Message {
+	return t.newMessage(args...)
 }
 
-// CallOnce works like Call, but it returns ErrDuplicate if message
-// with such args was already added in a period.
-func (t *Task) CallOnce(period time.Duration, args ...interface{}) error {
-	msg := NewMessage(args...)
+func (t *Task) newMessage(args ...interface{}) *Message {
+	return t.WithMessage(NewMessage(args...))
+}
+
+func (t *Task) OnceWithArgs(period time.Duration, args ...interface{}) *Message {
+	msg := t.newMessage(args...)
 	msg.OnceWithArgs(period, args...)
-	return t.AddMessage(msg)
-}
-
-func (t *Task) isUniqueName(name string) bool {
-	if name == "" {
-		return true
-	}
-	exists := t.storage.Exists(t.namePrefix + name)
-	return !exists
+	return msg
 }
 
 func timeSlot(period time.Duration) int64 {

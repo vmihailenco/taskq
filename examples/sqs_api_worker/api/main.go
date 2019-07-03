@@ -11,7 +11,7 @@ func main() {
 
 	go func() {
 		for {
-			err := sqs_api_worker.CountTask.Call()
+			err := sqs_api_worker.MainQueue.Add(sqs_api_worker.CountTask.WithArgs())
 			if err != nil {
 				log.Fatal(err)
 			}

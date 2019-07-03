@@ -34,7 +34,6 @@ type Message struct {
 	Args []interface{} `msgpack:"-"`
 
 	// Binary representation of the args.
-	ArgsCompressed  bool
 	ArgsCompression string `msgpack:",omitempty"`
 	ArgsBin         []byte
 
@@ -45,7 +44,6 @@ type Message struct {
 	ReservedCount int
 
 	TaskName  string
-	Task      *Task `msgpack:"-"`
 	StickyErr error `msgpack:"-"`
 
 	marshalBinaryCache []byte
@@ -73,7 +71,7 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 	}
 
 	if m.ArgsBin != nil {
-		if !m.ArgsCompressed {
+		if m.ArgsCompression == "" {
 			return m.ArgsBin, nil
 		}
 		if m.Args == nil {
@@ -123,10 +121,6 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		return err
 	}
 
-	if m.ArgsCompressed {
-		m.ArgsCompression = "zstd"
-	}
-
 	switch m.ArgsCompression {
 	case "":
 	case "zstd":
@@ -134,8 +128,6 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		if err != nil {
 			return err
 		}
-
-		m.ArgsCompressed = false
 		m.ArgsBin = b
 	default:
 		return fmt.Errorf("taskq: unsupported compression=%s", m.ArgsCompression)

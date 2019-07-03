@@ -24,8 +24,7 @@ const msgSizeLimit = 262144
 const delayUntilAttr = "TaskqDelayUntil"
 
 type Queue struct {
-	base base.Queue
-	opt  *taskq.QueueOptions
+	opt *taskq.QueueOptions
 
 	sqs       *sqs.SQS
 	accountID string
@@ -44,7 +43,7 @@ type Queue struct {
 	consumer *taskq.Consumer
 }
 
-var _ taskq.Queue = (*Queue)(nil)
+var _ taskq.Queuer = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
@@ -62,15 +61,16 @@ func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 }
 
 func (q *Queue) initAddQueue() {
+	queueName := "azsqs:" + q.opt.Name + ":add"
 	q.addQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:       "azsqs:" + q.opt.Name + ":add",
+		Name:       queueName,
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.addTask = q.addQueue.NewTask(&taskq.TaskOptions{
-		Name:            "add-message",
+	q.addTask = taskq.NewTask(&taskq.TaskOptions{
+		Name:            queueName + ":add-message",
 		Handler:         taskq.HandlerFunc(q.addBatcherAdd),
-		FallbackHandler: msgutil.UnwrapMessageHandler(q.HandleMessage),
+		FallbackHandler: msgutil.UnwrapMessageHandler(taskq.Tasks.HandleMessage),
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
 	})
@@ -81,13 +81,14 @@ func (q *Queue) initAddQueue() {
 }
 
 func (q *Queue) initDelQueue() {
+	queueName := "azsqs:" + q.opt.Name + ":delete"
 	q.delQueue = memqueue.NewQueue(&taskq.QueueOptions{
-		Name:       "azsqs:" + q.opt.Name + ":delete",
+		Name:       queueName,
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.delTask = q.delQueue.NewTask(&taskq.TaskOptions{
-		Name:       "delete-message",
+	q.delTask = taskq.NewTask(&taskq.TaskOptions{
+		Name:       queueName + ":delete-message",
 		Handler:    taskq.HandlerFunc(q.delBatcherAdd),
 		RetryLimit: 3,
 		MinBackoff: time.Second,
@@ -108,22 +109,6 @@ func (q *Queue) String() string {
 
 func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
-}
-
-func (q *Queue) HandleMessage(msg *taskq.Message) error {
-	return q.base.HandleMessage(msg)
-}
-
-func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
-	return q.base.NewTask(q, opt)
-}
-
-func (q *Queue) GetTask(name string) *taskq.Task {
-	return q.base.GetTask(name)
-}
-
-func (q *Queue) RemoveTask(name string) {
-	q.base.RemoveTask(name)
 }
 
 func (q *Queue) Consumer() *taskq.Consumer {
@@ -152,8 +137,11 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
+	if q.isDuplicate(msg) {
+		return taskq.ErrDuplicate
+	}
 	msg = msgutil.WrapMessage(msg)
-	return q.addTask.AddMessage(msg)
+	return q.addQueue.Add(q.addTask.WithMessage(msg))
 }
 
 func (q *Queue) queueURL() string {
@@ -286,7 +274,8 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
-	return q.delTask.AddMessage(msgutil.WrapMessage(msg))
+	msg = msgutil.WrapMessage(msg)
+	return q.delQueue.Add(q.delTask.WithMessage(msg))
 }
 
 // Purge deletes all messages from the queue using SQS API.
@@ -368,8 +357,8 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 		}
 
 		if len(str) > msgSizeLimit {
-			internal.Logger.Printf("%s: str=%d bytes=%d is larger than %d",
-				msg.Task, len(str), len(b), msgSizeLimit)
+			internal.Logger.Printf("task=%q: str=%d bytes=%d is larger than %d",
+				msg.TaskName, len(str), len(b), msgSizeLimit)
 		}
 
 		entry := &sqs.SendMessageBatchRequestEntry{
@@ -518,6 +507,13 @@ func (q *Queue) GetAddQueue() *memqueue.Queue {
 
 func (q *Queue) GetDeleteQueue() *memqueue.Queue {
 	return q.delQueue
+}
+
+func (q *Queue) isDuplicate(msg *taskq.Message) bool {
+	if msg.Name == "" {
+		return false
+	}
+	return q.opt.Storage.Exists("taskq:" + q.opt.Name + ":" + msg.Name)
 }
 
 func findMessageById(msgs []*taskq.Message, id string) *taskq.Message {

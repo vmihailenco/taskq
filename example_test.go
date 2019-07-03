@@ -24,9 +24,11 @@ func timeSinceCeil(start time.Time) time.Duration {
 
 func Example_retryOnError() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{})
-	task := q.NewTask(&taskq.TaskOptions{
+	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
+	})
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: "Example_retryOnError",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return errors.New("fake error")
@@ -35,7 +37,7 @@ func Example_retryOnError() {
 		MinBackoff: time.Second,
 	})
 
-	task.Call()
+	q.Add(task.WithArgs())
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -47,17 +49,19 @@ func Example_retryOnError() {
 
 func Example_messageDelay() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{})
-	task := q.NewTask(&taskq.TaskOptions{
+	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
+	})
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: "Example_messageDelay",
 		Handler: func() {
 			fmt.Println("processed with delay", timeSince(start))
 		},
 	})
 
-	msg := taskq.NewMessage()
+	msg := task.WithArgs()
 	msg.Delay = time.Second
-	_ = task.AddMessage(msg)
+	_ = q.Add(msg)
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -68,17 +72,18 @@ func Example_messageDelay() {
 func Example_rateLimit() {
 	start := time.Now()
 	q := memqueue.NewQueue(&taskq.QueueOptions{
+		Name:      "test",
 		Redis:     redisRing(),
 		RateLimit: rate.Every(time.Second),
 	})
-	task := q.NewTask(&taskq.TaskOptions{
-		Name:    "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name:    "Example_rateLimit",
 		Handler: func() {},
 	})
 
 	const n = 5
 	for i := 0; i < n; i++ {
-		_ = task.Call()
+		_ = q.Add(task.WithArgs())
 	}
 
 	// Wait for all messages to be processed.
@@ -90,11 +95,12 @@ func Example_rateLimit() {
 
 func Example_once() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
+		Name:      "test",
 		Redis:     redisRing(),
 		RateLimit: rate.Every(time.Second),
 	})
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: "Example_once",
 		Handler: func(name string) {
 			fmt.Println("hello", name)
 		},
@@ -102,7 +108,7 @@ func Example_once() {
 
 	for i := 0; i < 10; i++ {
 		// Call once in a second.
-		_ = task.CallOnce(time.Second, "world")
+		_ = q.Add(task.OnceWithArgs(time.Second, "world"))
 	}
 
 	// Wait for all messages to be processed.

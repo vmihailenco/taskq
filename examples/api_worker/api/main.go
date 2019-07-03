@@ -11,7 +11,7 @@ func main() {
 
 	go func() {
 		for {
-			err := api_worker.CountTask.Call()
+			err := api_worker.MainQueue.Add(api_worker.CountTask.WithArgs())
 			if err != nil {
 				log.Fatal(err)
 			}

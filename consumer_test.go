@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,8 +51,8 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %s, wanted hello", hello)
@@ -64,8 +65,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		},
 	})
 
-	msg := taskq.NewMessage("hello", "world")
-	err := task.AddMessage(msg)
+	err := q.Add(task.WithArgs("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +99,8 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	_ = q.NewTask(&taskq.TaskOptions{
-		Name:    "test",
+	_ = taskq.NewTask(&taskq.TaskOptions{
+		Name:    nextTaskID(),
 		Handler: func() {},
 	})
 
@@ -140,8 +140,8 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() error {
 			return errors.New("fake error")
 		},
@@ -158,8 +158,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		RetryLimit: 1,
 	})
 
-	msg := taskq.NewMessage("hello", "world")
-	err := task.AddMessage(msg)
+	err := q.Add(task.WithArgs("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,8 +191,8 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() {
 			handlerCh <- time.Now()
 		},
@@ -201,9 +200,9 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 
 	start := time.Now()
 
-	msg := taskq.NewMessage()
+	msg := task.WithArgs()
 	msg.Delay = 5 * time.Second
-	err := task.AddMessage(msg)
+	err := q.Add(msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,8 +241,8 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %q, wanted hello", hello)
@@ -262,8 +261,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 		MinBackoff: time.Second,
 	})
 
-	msg := taskq.NewMessage("hello", "world")
-	err := task.AddMessage(msg)
+	err := q.Add(task.WithArgs("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,8 +291,8 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func(hello string) error {
 			if hello != "world" {
 				panic("hello != world")
@@ -309,9 +307,10 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			msg := taskq.NewMessage("world")
+
+			msg := task.WithArgs("world")
 			msg.Name = "the-name"
-			err := task.AddMessage(msg)
+			err := q.Add(msg)
 			if err != nil && err != taskq.ErrDuplicate {
 				t.Fatal(err)
 			}
@@ -353,8 +352,8 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() {
 			ch <- time.Now()
 		},
@@ -363,7 +362,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				err := task.CallOnce(500 * time.Millisecond)
+				err := q.Add(task.OnceWithArgs(500 * time.Millisecond))
 				if err != nil && err != taskq.ErrDuplicate {
 					t.Fatal(err)
 				}
@@ -411,13 +410,13 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	task := q.NewTask(&taskq.TaskOptions{
-		Name:    "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name:    nextTaskID(),
 		Handler: func() {},
 	})
 
 	for i := 0; i < N; i++ {
-		err := task.Call()
+		err := q.Add(task.WithArgs())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -451,8 +450,8 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	purge(t, q)
 
 	var count int64
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() {
 			atomic.AddInt64(&count, 1)
 		},
@@ -463,8 +462,8 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			msg := taskq.NewMessage()
-			err := task.AddMessage(msg)
+
+			err := q.Add(task.WithArgs())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -500,8 +499,8 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() error {
 			handlerCh <- time.Now()
 			return RateLimitError("fake error")
@@ -510,7 +509,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 		RetryLimit: 3,
 	})
 
-	err := task.Call()
+	err := q.Add(task.WithArgs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,8 +540,8 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func() {
 			ch <- time.Now()
 			time.Sleep(time.Second)
@@ -550,7 +549,7 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	})
 
 	for i := 0; i < 3; i++ {
-		err := task.Call()
+		err := q.Add(task.WithArgs())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -579,8 +578,8 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	q := factory.NewQueue(opt)
 
 	ch := make(chan time.Time, 10)
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func(s1, s2 string) {
 			if s1 != "hello" {
 				t.Fatalf("got %q, wanted hello", s1)
@@ -592,7 +591,7 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 		},
 	})
 
-	err := task.Call("hello", "world")
+	err := q.Add(task.WithArgs("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,8 +628,8 @@ func testBatchConsumer(
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	task := q.NewTask(&taskq.TaskOptions{
-		Name: "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
 		Handler: func(s string) {
 			defer wg.Done()
 			if s != string(payload) {
@@ -640,7 +639,7 @@ func testBatchConsumer(
 	})
 
 	for i := 0; i < N; i++ {
-		err := task.Call(payload)
+		err := q.Add(task.WithArgs(payload))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -692,14 +691,14 @@ func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 	}
 }
 
-func purge(t *testing.T, q taskq.Queue) {
+func purge(t *testing.T, q taskq.Queuer) {
 	err := q.Purge()
 	if err == nil {
 		return
 	}
 
-	_ = q.NewTask(&taskq.TaskOptions{
-		Name:    "test",
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name:    "*",
 		Handler: func() {},
 	})
 
@@ -709,7 +708,7 @@ func purge(t *testing.T, q taskq.Queue) {
 		t.Fatal(err)
 	}
 
-	q.RemoveTask("test")
+	taskq.Tasks.Unregister(task)
 }
 
 func eventually(fn func() error, timeout time.Duration) error {
@@ -750,4 +749,12 @@ func eventually(fn func() error, timeout time.Duration) error {
 			return fmt.Errorf("timeout after %s", timeout)
 		}
 	}
+}
+
+var taskID int
+
+func nextTaskID() string {
+	id := strconv.Itoa(taskID)
+	taskID++
+	return id
 }

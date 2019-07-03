@@ -16,14 +16,14 @@ type factory struct {
 
 var _ taskq.Factory = (*factory)(nil)
 
-func (f *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (f *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queuer {
 	ironq := mq.ConfigNew(opt.Name, f.cfg)
 	q := NewQueue(ironq, opt)
 	f.base.Add(q)
 	return q
 }
 
-func (f *factory) Queues() []taskq.Queue {
+func (f *factory) Queues() []taskq.Queuer {
 	return f.base.Queues()
 }
 

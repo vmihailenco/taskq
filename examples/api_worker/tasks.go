@@ -24,7 +24,7 @@ var (
 		Name:  "api-worker",
 		Redis: Redis,
 	})
-	CountTask = MainQueue.NewTask(&taskq.TaskOptions{
+	CountTask = taskq.NewTask(&taskq.TaskOptions{
 		Name: "counter",
 		Handler: func() error {
 			IncrLocalCounter()

@@ -8,10 +8,12 @@ import (
 )
 
 func BenchmarkCallAsync(b *testing.B) {
-	q := memqueue.NewQueue(&taskq.QueueOptions{})
+	q := memqueue.NewQueue(&taskq.QueueOptions{
+		Name: "test",
+	})
 	defer q.Close()
 
-	task := q.NewTask(&taskq.TaskOptions{
+	task := taskq.NewTask(&taskq.TaskOptions{
 		Name:    "test",
 		Handler: func() {},
 	})
@@ -20,18 +22,19 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			task.Call()
+			_ = q.Add(task.WithArgs())
 		}
 	})
 }
 
 func BenchmarkNamedMessage(b *testing.B) {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
+		Name:  "test",
 		Redis: redisRing(),
 	})
 	defer q.Close()
 
-	task := q.NewTask(&taskq.TaskOptions{
+	task := taskq.NewTask(&taskq.TaskOptions{
 		Name:    "test",
 		Handler: func() {},
 	})
@@ -40,9 +43,9 @@ func BenchmarkNamedMessage(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			msg := taskq.NewMessage()
+			msg := task.WithArgs()
 			msg.Name = "myname"
-			task.AddMessage(msg)
+			q.Add(msg)
 		}
 	})
 }

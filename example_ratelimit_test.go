@@ -20,9 +20,11 @@ func (RateLimitError) Delay() time.Duration {
 
 func Example_customRateLimit() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{})
-	task := q.NewTask(&taskq.TaskOptions{
+	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
+	})
+	task := taskq.NewTask(&taskq.TaskOptions{
+		Name: "Example_customRateLimit",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return RateLimitError("calm down")
@@ -31,7 +33,7 @@ func Example_customRateLimit() {
 		MinBackoff: time.Millisecond,
 	})
 
-	task.Call()
+	q.Add(task.WithArgs())
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

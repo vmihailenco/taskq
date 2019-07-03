@@ -14,10 +14,7 @@ import (
 	"github.com/vmihailenco/taskq/v2/internal/redislock"
 )
 
-const timePrecision = time.Microsecond
 const stopTimeout = 30 * time.Second
-const workerIdleTimeout = time.Second
-const tunerPeriod = 30 * time.Second
 
 var ErrAsyncTask = errors.New("taskq: async task")
 
@@ -38,22 +35,17 @@ type ConsumerStats struct {
 
 //------------------------------------------------------------------------------
 
-const (
-	stateStopped = 0
-	stateStarted = 1
-)
-
 // Consumer reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Consumer struct {
-	q   Queue
+	q   Queuer
 	opt *QueueOptions
 
 	buffer  chan *Message // never closed
 	limiter *limiter
 
-	state   int32 // atomic
-	closeCh chan struct{}
+	startStopMu sync.Mutex
+	stopCh      chan struct{}
 
 	fetcherUnsupported int32
 	workerNumber       int32 // atomic
@@ -66,11 +58,9 @@ type Consumer struct {
 	delaySec uint32
 
 	tunerStats    tunerStats
-	tunerLastAt   time.Time
 	tunerRollback func()
 
 	inFlight  uint32
-	deleting  uint32
 	processed uint32
 	fails     uint32
 	retries   uint32
@@ -79,7 +69,7 @@ type Consumer struct {
 }
 
 // New creates new Consumer for the queue using provided processing options.
-func NewConsumer(q Queue) *Consumer {
+func NewConsumer(q Queuer) *Consumer {
 	opt := q.Options()
 	p := &Consumer{
 		q:   q,
@@ -97,7 +87,7 @@ func NewConsumer(q Queue) *Consumer {
 }
 
 // Starts creates new Consumer and starts it.
-func StartConsumer(q Queue) *Consumer {
+func StartConsumer(q Queuer) *Consumer {
 	c := NewConsumer(q)
 	if err := c.Start(); err != nil {
 		panic(err)
@@ -110,7 +100,7 @@ func (c *Consumer) AddHook(hook ConsumerHook) {
 	c.hooks = append(c.hooks, hook)
 }
 
-func (c *Consumer) Queue() Queue {
+func (c *Consumer) Queue() Queuer {
 	return c.q
 }
 
@@ -155,17 +145,18 @@ func (c *Consumer) add(msg *Message) {
 
 // Start starts consuming messages in the queue.
 func (c *Consumer) Start() error {
-	if !atomic.CompareAndSwapInt32(&c.state, stateStopped, stateStarted) {
+	c.startStopMu.Lock()
+	defer c.startStopMu.Unlock()
+
+	if c.stopCh != nil {
 		return errors.New("taksq: Consumer is already started")
 	}
-
-	c.closeCh = make(chan struct{})
+	c.stopCh = make(chan struct{})
 
 	for i := 0; i < c.opt.MinWorkers; i++ {
 		c.addWorker()
 	}
 
-	c.tunerLastAt = time.Now()
 	c.fetchersWG.Add(1)
 	go func() {
 		defer c.fetchersWG.Done()
@@ -183,12 +174,21 @@ func (c *Consumer) Stop() error {
 // StopTimeout waits workers for timeout duration to finish processing current
 // messages and stops workers.
 func (c *Consumer) StopTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapInt32(&c.state, stateStarted, stateStopped) {
+	c.startStopMu.Lock()
+	defer c.startStopMu.Unlock()
+
+	if c.stopCh == nil {
+		return errors.New("taksq: Consumer is not started")
+	}
+	select {
+	case <-c.stopCh:
 		return errors.New("taksq: Consumer is already stopped")
+	default:
 	}
 
-	close(c.closeCh)
+	close(c.stopCh)
 	defer func() {
+		c.stopCh = nil
 		atomic.StoreInt32(&c.fetcherNumber, 0)
 		atomic.StoreInt32(&c.workerNumber, 0)
 	}()
@@ -223,7 +223,12 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 }
 
 func (c *Consumer) stopped() bool {
-	return atomic.LoadInt32(&c.state) == stateStopped
+	select {
+	case <-c.stopCh:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Consumer) paused() time.Duration {
@@ -403,12 +408,8 @@ func (c *Consumer) fetchMessages(
 		return false, err
 	}
 
-	d := size - len(msgs)
-	if d > 0 {
+	if d := size - len(msgs); d > 0 {
 		c.limiter.Cancel(d)
-	}
-
-	if d > size/5 {
 		c.tunerStats.incFetcherIdle(d)
 	} else {
 		c.tunerStats.incFetcherBusy()
@@ -435,20 +436,7 @@ func (c *Consumer) fetchMessages(
 	return false, nil
 }
 
-func (c *Consumer) releaseBuffer() {
-	for {
-		msg := c.dequeueMessage()
-		if msg == nil {
-			break
-		}
-		_ = c.q.Release(msg)
-	}
-}
-
 func (c *Consumer) worker(workerID int32) {
-	timer := time.NewTimer(time.Minute)
-	timer.Stop()
-
 	var lock *redislock.Lock
 	defer func() {
 		if lock != nil {
@@ -456,20 +444,17 @@ func (c *Consumer) worker(workerID int32) {
 		}
 	}()
 
+	timer := time.NewTimer(time.Minute)
+	timer.Stop()
+
 	for {
-		if workerID >= atomic.LoadInt32(&c.workerNumber) {
+		if c.opt.WorkerLimit > 0 {
+			lock = c.lockWorker(lock, workerID)
+		} else if workerID >= atomic.LoadInt32(&c.workerNumber) {
 			return
 		}
 
-		if c.opt.WorkerLimit > 0 {
-			var ok bool
-			lock, ok = c.lockWorker(lock, workerID)
-			if !ok {
-				return
-			}
-		}
-
-		msg, timeout := c.waitMessage(timer, workerIdleTimeout)
+		msg, timeout := c.waitMessage(timer)
 		if timeout {
 			continue
 		}
@@ -480,40 +465,34 @@ func (c *Consumer) worker(workerID int32) {
 	}
 }
 
-func (c *Consumer) waitMessage(timer *time.Timer, timeout time.Duration) (*Message, bool) {
-	msg := c.dequeueMessage()
-	if msg != nil {
+func (c *Consumer) waitMessage(timer *time.Timer) (_ *Message, timeout bool) {
+	const workerIdleTimeout = time.Second
+
+	select {
+	case msg := <-c.buffer:
 		c.tunerStats.incWorkerBusy()
 		return msg, false
+	default:
 	}
+
 	c.tunerStats.incWorkerIdle(1)
 
 	if atomic.LoadInt32(&c.fetcherUnsupported) == 0 {
 		c.tryStartFetcher(0)
 	}
 
-	timer.Reset(timeout)
-
+	timer.Reset(workerIdleTimeout)
 	select {
-	case msg = <-c.buffer:
+	case msg := <-c.buffer:
 		if !timer.Stop() {
 			<-timer.C
 		}
 		return msg, false
-	case <-c.closeCh:
+	case <-c.stopCh:
 		return nil, false
 	case <-timer.C:
 		c.tunerStats.incWorkerIdle(2)
 		return nil, true
-	}
-}
-
-func (c *Consumer) dequeueMessage() *Message {
-	select {
-	case msg := <-c.buffer:
-		return msg
-	default:
-		return nil
 	}
 }
 
@@ -551,13 +530,7 @@ func (c *Consumer) Process(msg *Message) error {
 }
 
 func (c *Consumer) handleMessage(msg *Message) error {
-	if msg.Task != nil {
-		opt := msg.Task.Options()
-		if opt.DeferFunc != nil {
-			defer opt.DeferFunc()
-		}
-	}
-	return c.q.HandleMessage(msg)
+	return Tasks.HandleMessage(msg)
 }
 
 func (c *Consumer) handleError(msg *Message, err error) error {
@@ -579,13 +552,10 @@ func (c *Consumer) Put(msg *Message) {
 		return
 	}
 
-	if msg.Task == nil {
-		msg.Task = c.q.GetTask(msg.TaskName)
-	}
-
+	task := Tasks.Get(msg.TaskName)
 	var opt *TaskOptions
-	if msg.Task != nil {
-		opt = msg.Task.Options()
+	if task != nil {
+		opt = task.Options()
 	} else {
 		opt = unknownTaskOpt
 	}
@@ -621,33 +591,33 @@ func (c *Consumer) release(msg *Message) {
 			}
 		}
 
-		internal.Logger.Printf("%s handler failed (will retry=%d in dur=%s): %s",
-			msg.Task, msg.ReservedCount, msg.Delay, msg.StickyErr)
+		internal.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
+			msg.TaskName, msg.ReservedCount, msg.Delay, msg.StickyErr)
 	}
 
 	msg.StickyErr = nil
 	err := c.q.Release(msg)
 	if err != nil {
-		internal.Logger.Printf("%s Release failed: %s", msg.Task, err)
+		internal.Logger.Printf("task=%q Release failed: %s", msg.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
 func (c *Consumer) delete(msg *Message) {
 	if msg.StickyErr != nil {
-		internal.Logger.Printf("%s handler failed after retry=%d: %s",
-			msg.Task, msg.ReservedCount, msg.StickyErr)
+		internal.Logger.Printf("task=%q handler failed after retry=%d: %s",
+			msg.TaskName, msg.ReservedCount, msg.StickyErr)
 
-		err := c.q.HandleMessage(msg)
+		err := c.handleMessage(msg)
 		if err != nil {
-			internal.Logger.Printf("%s fallback handler failed: %s", msg.Task, err)
+			internal.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
 		}
 	}
 
 	msg.StickyErr = nil
 	err := c.q.Delete(msg)
 	if err != nil {
-		internal.Logger.Printf("%s Delete failed: %s", msg.Task, err)
+		internal.Logger.Printf("taks=%q Delete failed: %s", msg.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
@@ -713,7 +683,7 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.errCount, 0)
 }
 
-func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) (*redislock.Lock, bool) {
+func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.Lock {
 	timeout := c.opt.ReservationTimeout + 10*time.Second
 
 	timer := time.NewTimer(time.Minute)
@@ -728,7 +698,7 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) (*redislock.
 			err = lock.Refresh(timeout, nil)
 		}
 		if err == nil {
-			return lock, true
+			return lock
 		}
 
 		if err != redislock.ErrNotObtained {
@@ -740,11 +710,11 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) (*redislock.
 		timer.Reset(timeout)
 
 		select {
-		case <-c.closeCh:
+		case <-c.stopCh:
 			if !timer.Stop() {
 				<-timer.C
 			}
-			return lock, false
+			return lock
 		case <-timer.C:
 		}
 	}
@@ -766,37 +736,29 @@ func (c *Consumer) String() string {
 }
 
 func (c *Consumer) autotune() {
-	timer := time.NewTimer(time.Minute)
-	timer.Stop()
-
+	timer := time.NewTicker(100 * time.Millisecond)
 	for {
-		timeout := time.Duration(1000+rand.Intn(1000)) * time.Millisecond
-		timer.Reset(timeout)
-
 		select {
 		case <-timer.C:
 			c.tunerTick()
-		case <-c.closeCh:
-			if !timer.Stop() {
-				<-timer.C
-			}
+		case <-c.stopCh:
 			return
 		}
 	}
 }
 
 func (c *Consumer) tunerTick() {
-	if time.Since(c.tunerLastAt) > tunerPeriod {
-		c.tunerLastAt = time.Now()
+	if c.tunerStats.ticks >= 10 {
 		c.tune()
 	}
 
 	buffered := len(c.buffer)
 	if buffered < cap(c.buffer)/5 {
-		c.tunerStats.incStarving()
+		c.tunerStats.starving++
 	} else if buffered > cap(c.buffer)*4/5 {
-		c.tunerStats.incLoaded()
+		c.tunerStats.loaded++
 	}
+	c.tunerStats.ticks++
 }
 
 func (c *Consumer) tune() {
@@ -804,17 +766,12 @@ func (c *Consumer) tune() {
 		rollback := c.tunerRollback
 		c.tunerRollback = nil
 
-		processed := c.tunerStats.getProcessed()
-		prevProcessed := c.tunerStats.prevProcessed
-		threshold := prevProcessed / 100
-		if threshold < 10 {
-			threshold = 10
-		}
-
-		if processed-prevProcessed < threshold {
+		rate := c.tunerStats.rate()
+		prevRate := c.tunerStats.prevRate
+		if rate < prevRate {
 			rollback()
 			c.tunerStats.reset()
-			c.tunerStats.prevProcessed = prevProcessed
+			c.tunerStats.prevRate = prevRate
 			return
 		}
 	}
@@ -825,18 +782,12 @@ func (c *Consumer) tune() {
 		}
 	}
 
-	if c.tunerStats.isLoaded() {
-		var added int
-		for i := 0; i < 3; i++ {
-			if id := c.addWorker(); id != -1 {
-				added++
-			}
-		}
-		if added > 0 {
-			internal.Logger.Printf("%s: added n=%d workers", c, added)
+	if c.opt.WorkerLimit == 0 && c.tunerStats.isLoaded() {
+		if id := c.addWorker(); id != -1 {
+			internal.Logger.Printf("%s: added worker=%d", c, id)
 			c.tunerRollback = func() {
-				if c.removeWorker(atomic.LoadInt32(&c.workerNumber)) {
-					internal.Logger.Printf("%s: rolled back worker addition", c)
+				if c.removeWorker(id) {
+					internal.Logger.Printf("%s: remove added worker=%d", c, id)
 				}
 			}
 			c.tunerStats.reset()
@@ -844,33 +795,26 @@ func (c *Consumer) tune() {
 		return
 	}
 
-	defer c.tunerStats.reset()
-	var hasIdle bool
+	var reset bool
 
 	if id := c.idleFetcher(); id != -1 {
-		hasIdle = true
-		if id != 0 || c.tunerStats.workersStuck() {
-			if c.removeFetcher(id) {
-				internal.Logger.Printf("%s: removed idle fetcher=%d", c, id)
+		if c.removeFetcher(id) {
+			internal.Logger.Printf("%s: removed idle fetcher=%d", c, id)
+		}
+		reset = true
+	}
+
+	if c.opt.WorkerLimit == 0 {
+		if id := c.idleWorker(); id != -1 {
+			if c.removeWorker(id) {
+				internal.Logger.Printf("%s: removed idle worker=%d", c, id)
 			}
+			reset = true
 		}
 	}
 
-	if id := c.idleWorker(); id != -1 {
-		hasIdle = true
-		if id > 0 && c.removeWorker(id) {
-			internal.Logger.Printf("%s: removed idle worker=%d", c, id)
-		}
-	}
-
-	if hasIdle {
-		return
-	}
-
-	// In rare cases number of fetchers and workers can be perfectly balanced.
-	// Check if queue is not empty and add a fetcher to skew the balance.
-	if c.tunerStats.getProcessed() > 0 {
-		c.tunerAddFetcher()
+	if reset || c.tunerStats.ticks >= 100 {
+		c.tunerStats.reset()
 	}
 }
 
@@ -879,10 +823,10 @@ func (c *Consumer) tunerAddFetcher() bool {
 	if id == -1 {
 		return false
 	}
-	internal.Logger.Printf("%s: added a fetcher", c)
+	internal.Logger.Printf("%s: added fetcher=%d", c, id)
 	c.tunerRollback = func() {
 		if c.removeFetcher(id) {
-			internal.Logger.Printf("%s: rolled back fetcher addition", c)
+			internal.Logger.Printf("%s: remove added fetcher=%d", c, id)
 		}
 	}
 	c.tunerStats.reset()
@@ -891,6 +835,9 @@ func (c *Consumer) tunerAddFetcher() bool {
 
 func (c *Consumer) idleFetcher() int32 {
 	num := atomic.LoadInt32(&c.fetcherNumber)
+	if num == 0 || (num == 1 && !c.tunerStats.workersStuck()) {
+		return -1
+	}
 	if c.tunerStats.hasIdleFetcher(num) {
 		return num - 1
 	}
@@ -899,6 +846,9 @@ func (c *Consumer) idleFetcher() int32 {
 
 func (c *Consumer) idleWorker() int32 {
 	num := atomic.LoadInt32(&c.workerNumber)
+	if num <= 1 {
+		return -1
+	}
 	if c.tunerStats.hasIdleWorker(num) {
 		return num - 1
 	}
@@ -974,9 +924,10 @@ func (l *limiter) Limited() bool {
 //------------------------------------------------------------------------------
 
 type tunerStats struct {
-	processed     uint32
-	prevProcessed uint32
+	processed uint32 // atomic
+	prevRate  float64
 
+	ticks    int
 	starving int
 	loaded   int
 
@@ -988,9 +939,10 @@ type tunerStats struct {
 }
 
 func (s *tunerStats) reset() {
-	s.prevProcessed = s.processed
-	s.processed = 0
+	s.prevRate = s.rate()
+	atomic.StoreUint32(&s.processed, 0)
 
+	s.ticks = 0
 	s.starving = 0
 	s.loaded = 0
 
@@ -1005,16 +957,9 @@ func (s *tunerStats) incProcessed() {
 	atomic.AddUint32(&s.processed, 1)
 }
 
-func (s *tunerStats) getProcessed() uint32 {
-	return atomic.LoadUint32(&s.processed)
-}
-
-func (s *tunerStats) incStarving() {
-	s.starving++
-}
-
-func (s *tunerStats) incLoaded() {
-	s.loaded++
+func (s *tunerStats) rate() float64 {
+	n := atomic.LoadUint32(&s.processed)
+	return float64(n) / float64(s.ticks)
 }
 
 func (s *tunerStats) getFetcherIdle() uint32 {
@@ -1068,7 +1013,7 @@ func (s *tunerStats) hasIdleWorker(num int32) bool {
 }
 
 func hasIdleUnit(idle, busy uint32, num int32) bool {
-	return idle+busy > 10 && float64(idle) > float64(busy)/float64(num)
+	return idle+busy >= 10 && float64(idle) > 2*(float64(busy)/float64(num))
 }
 
 func (s *tunerStats) isStarving() bool {
@@ -1090,7 +1035,7 @@ func (s *tunerStats) isLoaded() bool {
 }
 
 func isBusy(idle, busy uint32) bool {
-	return idle+busy > 10 && busy > idle
+	return idle+busy >= 10 && busy > idle
 }
 
 //------------------------------------------------------------------------------

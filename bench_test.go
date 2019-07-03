@@ -19,18 +19,19 @@ func BenchmarkConsumerRedisq(b *testing.B) {
 
 var (
 	once sync.Once
+	q    taskq.Queuer
 	task *taskq.Task
 	wg   sync.WaitGroup
 )
 
 func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 	once.Do(func() {
-		q := factory.NewQueue(&taskq.QueueOptions{
+		q = factory.NewQueue(&taskq.QueueOptions{
 			Name:  "bench",
 			Redis: redisRing(),
 		})
 
-		task = q.NewTask(&taskq.TaskOptions{
+		task = taskq.NewTask(&taskq.TaskOptions{
 			Name: "bench",
 			Handler: func() {
 				wg.Done()
@@ -45,7 +46,7 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
 			wg.Add(1)
-			_ = task.Call()
+			_ = q.Add(task.WithArgs())
 		}
 		wg.Wait()
 	}

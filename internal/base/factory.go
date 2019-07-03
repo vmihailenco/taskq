@@ -8,45 +8,45 @@ import (
 
 type Factory struct {
 	queuesMu sync.RWMutex
-	queues   []taskq.Queue
+	queues   []taskq.Queuer
 }
 
-func (f *Factory) Add(q taskq.Queue) {
+func (f *Factory) Add(q taskq.Queuer) {
 	f.queuesMu.Lock()
 	f.queues = append(f.queues, q)
 	f.queuesMu.Unlock()
 }
 
-func (f *Factory) Queues() []taskq.Queue {
+func (f *Factory) Queues() []taskq.Queuer {
 	f.queuesMu.RLock()
 	defer f.queuesMu.RUnlock()
 	return f.queues
 }
 
 func (f *Factory) StartConsumers() error {
-	return f.forEachQueue(func(q taskq.Queue) error {
+	return f.forEachQueue(func(q taskq.Queuer) error {
 		return q.Consumer().Start()
 	})
 }
 
 func (f *Factory) StopConsumers() error {
-	return f.forEachQueue(func(q taskq.Queue) error {
+	return f.forEachQueue(func(q taskq.Queuer) error {
 		return q.Consumer().Stop()
 	})
 }
 
 func (f *Factory) Close() error {
-	return f.forEachQueue(func(q taskq.Queue) error {
+	return f.forEachQueue(func(q taskq.Queuer) error {
 		return q.Close()
 	})
 }
 
-func (f *Factory) forEachQueue(fn func(taskq.Queue) error) error {
+func (f *Factory) forEachQueue(fn func(taskq.Queuer) error) error {
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
 	for _, q := range f.Queues() {
 		wg.Add(1)
-		go func(q taskq.Queue) {
+		go func(q taskq.Queuer) {
 			defer wg.Done()
 			err := fn(q)
 			select {

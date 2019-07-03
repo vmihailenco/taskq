@@ -9,12 +9,9 @@ import (
 
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/base"
 )
 
 type Queue struct {
-	base base.Queue
-
 	opt *taskq.QueueOptions
 
 	sync    bool
@@ -26,7 +23,7 @@ type Queue struct {
 	_closed int32
 }
 
-var _ taskq.Queue = (*Queue)(nil)
+var _ taskq.Queuer = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()
@@ -52,22 +49,6 @@ func (q *Queue) String() string {
 
 func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
-}
-
-func (q *Queue) HandleMessage(msg *taskq.Message) error {
-	return q.base.HandleMessage(msg)
-}
-
-func (q *Queue) NewTask(opt *taskq.TaskOptions) *taskq.Task {
-	return q.base.NewTask(q, opt)
-}
-
-func (q *Queue) GetTask(name string) *taskq.Task {
-	return q.base.GetTask(name)
-}
-
-func (q *Queue) RemoveTask(name string) {
-	q.base.RemoveTask(name)
 }
 
 func (q *Queue) Consumer() *taskq.Consumer {
@@ -122,6 +103,9 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
+	if q.isDuplicate(msg) {
+		return taskq.ErrDuplicate
+	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)
 }
@@ -169,4 +153,11 @@ func (q *Queue) Purge() error {
 
 func (q *Queue) closed() bool {
 	return atomic.LoadInt32(&q._closed) == 1
+}
+
+func (q *Queue) isDuplicate(msg *taskq.Message) bool {
+	if msg.Name == "" {
+		return false
+	}
+	return q.opt.Storage.Exists("taskq:" + q.opt.Name + ":" + msg.Name)
 }
