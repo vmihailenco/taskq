@@ -43,7 +43,7 @@ type Queue struct {
 	consumer *taskq.Consumer
 }
 
-var _ taskq.Queuer = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()

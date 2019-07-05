@@ -30,7 +30,6 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = BeforeEach(func() {
-	taskq.Queues.Reset()
 	taskq.Tasks.Reset()
 })
 

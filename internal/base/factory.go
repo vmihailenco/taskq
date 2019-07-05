@@ -1,52 +1,63 @@
 package base
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/vmihailenco/taskq/v2"
 )
 
 type Factory struct {
-	queuesMu sync.RWMutex
-	queues   []taskq.Queuer
+	m sync.Map
 }
 
-func (f *Factory) Add(q taskq.Queuer) {
-	f.queuesMu.Lock()
-	f.queues = append(f.queues, q)
-	f.queuesMu.Unlock()
+func (f *Factory) Register(queue taskq.Queue) error {
+	name := queue.Name()
+	_, loaded := f.m.LoadOrStore(name, queue)
+	if loaded {
+		return fmt.Errorf("queue=%q already exists", name)
+	}
+	return nil
 }
 
-func (f *Factory) Queues() []taskq.Queuer {
-	f.queuesMu.RLock()
-	defer f.queuesMu.RUnlock()
-	return f.queues
+func (f *Factory) Unregister(name string) {
+	f.m.Delete(name)
+}
+
+func (f *Factory) Reset() {
+	f.m = sync.Map{}
+}
+
+func (f *Factory) Range(fn func(queue taskq.Queue) bool) {
+	f.m.Range(func(_, value interface{}) bool {
+		return fn(value.(taskq.Queue))
+	})
 }
 
 func (f *Factory) StartConsumers() error {
-	return f.forEachQueue(func(q taskq.Queuer) error {
+	return f.forEachQueue(func(q taskq.Queue) error {
 		return q.Consumer().Start()
 	})
 }
 
 func (f *Factory) StopConsumers() error {
-	return f.forEachQueue(func(q taskq.Queuer) error {
+	return f.forEachQueue(func(q taskq.Queue) error {
 		return q.Consumer().Stop()
 	})
 }
 
 func (f *Factory) Close() error {
-	return f.forEachQueue(func(q taskq.Queuer) error {
+	return f.forEachQueue(func(q taskq.Queue) error {
 		return q.Close()
 	})
 }
 
-func (f *Factory) forEachQueue(fn func(taskq.Queuer) error) error {
+func (f *Factory) forEachQueue(fn func(taskq.Queue) error) error {
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	for _, q := range f.Queues() {
+	f.Range(func(q taskq.Queue) bool {
 		wg.Add(1)
-		go func(q taskq.Queuer) {
+		go func(q taskq.Queue) {
 			defer wg.Done()
 			err := fn(q)
 			select {
@@ -54,7 +65,8 @@ func (f *Factory) forEachQueue(fn func(taskq.Queuer) error) error {
 			default:
 			}
 		}(q)
-	}
+		return true
+	})
 	wg.Wait()
 	select {
 	case err := <-errCh:

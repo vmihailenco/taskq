@@ -19,14 +19,14 @@ func BenchmarkConsumerRedisq(b *testing.B) {
 
 var (
 	once sync.Once
-	q    taskq.Queuer
+	q    taskq.Queue
 	task *taskq.Task
 	wg   sync.WaitGroup
 )
 
 func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 	once.Do(func() {
-		q = factory.NewQueue(&taskq.QueueOptions{
+		q = factory.RegisterQueue(&taskq.QueueOptions{
 			Name:  "bench",
 			Redis: redisRing(),
 		})

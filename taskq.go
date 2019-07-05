@@ -23,8 +23,8 @@ func SetLogger(logger *log.Logger) {
 // Factory is an interface that abstracts creation of new queues.
 // It is implemented in subpackages memqueue, azsqs, and ironmq.
 type Factory interface {
-	NewQueue(*QueueOptions) Queuer
-	Queues() []Queuer
+	RegisterQueue(*QueueOptions) Queue
+	Range(func(Queue) bool)
 	StartConsumers() error
 	StopConsumers() error
 	Close() error

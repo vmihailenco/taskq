@@ -16,15 +16,17 @@ type factory struct {
 
 var _ taskq.Factory = (*factory)(nil)
 
-func (f *factory) NewQueue(opt *taskq.QueueOptions) taskq.Queuer {
+func (f *factory) RegisterQueue(opt *taskq.QueueOptions) taskq.Queue {
 	ironq := mq.ConfigNew(opt.Name, f.cfg)
 	q := NewQueue(ironq, opt)
-	f.base.Add(q)
+	if err := f.base.Register(q); err != nil {
+		panic(err)
+	}
 	return q
 }
 
-func (f *factory) Queues() []taskq.Queuer {
-	return f.base.Queues()
+func (f *factory) Range(fn func(taskq.Queue) bool) {
+	f.base.Range(fn)
 }
 
 func (f *factory) StartConsumers() error {

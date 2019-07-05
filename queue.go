@@ -118,7 +118,7 @@ func (opt *QueueOptions) Init() {
 
 //------------------------------------------------------------------------------
 
-type Queuer interface {
+type Queue interface {
 	fmt.Stringer
 	Name() string
 	Options() *QueueOptions
@@ -132,73 +132,4 @@ type Queuer interface {
 	Purge() error
 	Close() error
 	CloseTimeout(timeout time.Duration) error
-}
-
-type Queue struct {
-	q   Queuer
-	opt *QueueOptions
-}
-
-var _ Queuer = (*Queue)(nil)
-
-func RegisterQueue(opt *QueueOptions) *Queue {
-	q := &Queue{
-		opt: opt,
-	}
-	if err := Queues.Register(q); err != nil {
-		panic(err)
-	}
-	return q
-}
-
-func (q *Queue) Bind(factory Factory) {
-	q.q = factory.NewQueue(q.opt)
-}
-
-func (q *Queue) String() string {
-	return fmt.Sprintf("queue=%q", q.Name())
-}
-
-func (q *Queue) Name() string {
-	return q.opt.Name
-}
-
-func (q *Queue) Options() *QueueOptions {
-	return q.q.Options()
-}
-
-func (q *Queue) Consumer() *Consumer {
-	return q.q.Consumer()
-}
-
-func (q *Queue) Len() (int, error) {
-	return q.q.Len()
-}
-
-func (q *Queue) Add(msg *Message) error {
-	return q.q.Add(msg)
-}
-
-func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]Message, error) {
-	return q.q.ReserveN(n, waitTimeout)
-}
-
-func (q *Queue) Release(msg *Message) error {
-	return q.q.Release(msg)
-}
-
-func (q *Queue) Delete(msg *Message) error {
-	return q.q.Delete(msg)
-}
-
-func (q *Queue) Purge() error {
-	return q.q.Purge()
-}
-
-func (q *Queue) Close() error {
-	return q.q.Close()
-}
-
-func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	return q.q.CloseTimeout(timeout)
 }

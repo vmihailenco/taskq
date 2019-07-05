@@ -31,7 +31,7 @@ type Queue struct {
 	consumer *taskq.Consumer
 }
 
-var _ taskq.Queuer = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(mqueue mq.Queue, opt *taskq.QueueOptions) *Queue {
 	if opt.Name == "" {

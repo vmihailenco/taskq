@@ -38,7 +38,7 @@ type ConsumerStats struct {
 // Consumer reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Consumer struct {
-	q   Queuer
+	q   Queue
 	opt *QueueOptions
 
 	buffer  chan *Message // never closed
@@ -69,7 +69,7 @@ type Consumer struct {
 }
 
 // New creates new Consumer for the queue using provided processing options.
-func NewConsumer(q Queuer) *Consumer {
+func NewConsumer(q Queue) *Consumer {
 	opt := q.Options()
 	p := &Consumer{
 		q:   q,
@@ -87,7 +87,7 @@ func NewConsumer(q Queuer) *Consumer {
 }
 
 // Starts creates new Consumer and starts it.
-func StartConsumer(q Queuer) *Consumer {
+func StartConsumer(q Queue) *Consumer {
 	c := NewConsumer(q)
 	if err := c.Start(); err != nil {
 		panic(err)
@@ -100,7 +100,7 @@ func (c *Consumer) AddHook(hook ConsumerHook) {
 	c.hooks = append(c.hooks, hook)
 }
 
-func (c *Consumer) Queue() Queuer {
+func (c *Consumer) Queue() Queue {
 	return c.q
 }
 

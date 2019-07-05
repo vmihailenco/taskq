@@ -47,7 +47,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	ch := make(chan time.Time)
@@ -96,7 +96,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	_ = taskq.RegisterTask(&taskq.TaskOptions{
@@ -136,7 +136,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	ch := make(chan time.Time)
@@ -187,7 +187,7 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -237,7 +237,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -287,7 +287,7 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -348,7 +348,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -407,7 +407,7 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -446,7 +446,7 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	opt.RateLimit = rate.Every(time.Second)
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	var count int64
@@ -495,7 +495,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -536,7 +536,7 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	opt.Redis = redisRing()
 	opt.WorkerLimit = 1
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -575,7 +575,7 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 
 	ch := make(chan time.Time, 10)
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -625,7 +625,7 @@ func testBatchConsumer(
 	wg.Add(N)
 
 	opt.WaitTimeout = waitTimeout
-	q := factory.NewQueue(opt)
+	q := factory.RegisterQueue(opt)
 	purge(t, q)
 
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -691,7 +691,7 @@ func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 	}
 }
 
-func purge(t *testing.T, q taskq.Queuer) {
+func purge(t *testing.T, q taskq.Queue) {
 	err := q.Purge()
 	if err == nil {
 		return

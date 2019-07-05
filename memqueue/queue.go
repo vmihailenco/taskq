@@ -23,7 +23,7 @@ type Queue struct {
 	_closed int32
 }
 
-var _ taskq.Queuer = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()

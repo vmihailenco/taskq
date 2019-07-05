@@ -56,7 +56,7 @@ type Queue struct {
 	_closed uint32
 }
 
-var _ taskq.Queuer = (*Queue)(nil)
+var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
 	const redisPrefix = "taskq:"
