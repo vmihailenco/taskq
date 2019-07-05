@@ -51,6 +51,7 @@ type Message struct {
 
 func NewMessage(args ...interface{}) *Message {
 	return &Message{
+		Ctx:  context.Background(),
 		Args: args,
 	}
 }

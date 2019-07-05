@@ -13,7 +13,6 @@ require (
 	github.com/onsi/ginkgo v1.8.0
 	github.com/onsi/gomega v1.5.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0 // indirect
 	github.com/valyala/gozstd v1.5.0
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
