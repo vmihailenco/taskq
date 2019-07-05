@@ -17,7 +17,7 @@ var ErrDuplicate = errors.New("taskq: message with such name already exists")
 
 // Message is used to create and retrieve messages from a queue.
 type Message struct {
-	ctx context.Context `msgpack:"-"`
+	ctx context.Context
 
 	// SQS/IronMQ message id.
 	ID string `msgpack:",omitempty"`
@@ -41,7 +41,7 @@ type Message struct {
 	ReservationID string `msgpack:"-"`
 
 	// The number of times the message has been reserved or released.
-	ReservedCount int
+	ReservedCount int `msgpack:",omitempty"`
 
 	TaskName  string
 	StickyErr error `msgpack:"-"`
@@ -78,10 +78,6 @@ func (m *Message) OnceWithArgs(period time.Duration, args ...interface{}) {
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
-	if m.TaskName == "" {
-		return nil, internal.ErrTaskNameRequired
-	}
-
 	if m.ArgsBin != nil {
 		if m.ArgsCompression == "" {
 			return m.ArgsBin, nil
@@ -101,6 +97,9 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 }
 
 func (m *Message) MarshalBinary() ([]byte, error) {
+	if m.TaskName == "" {
+		return nil, internal.ErrTaskNameRequired
+	}
 	if m.marshalBinaryCache != nil {
 		return m.marshalBinaryCache, nil
 	}
@@ -110,7 +109,7 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	if m.ArgsCompression == "" && len(m.ArgsBin) > 512 {
+	if m.ArgsCompression == "" && len(m.ArgsBin) >= 512 {
 		compressed := gozstd.Compress(nil, m.ArgsBin)
 		if len(compressed) < len(m.ArgsBin) {
 			m.ArgsCompression = "zstd"
@@ -140,6 +139,7 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		if err != nil {
 			return err
 		}
+		m.ArgsCompression = ""
 		m.ArgsBin = b
 	default:
 		return fmt.Errorf("taskq: unsupported compression=%s", m.ArgsCompression)
