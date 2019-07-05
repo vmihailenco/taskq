@@ -41,7 +41,7 @@ var _ = Describe("message with args", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(s string, i int) {
 				Expect(s).To(Equal("string"))
@@ -69,7 +69,7 @@ var _ = Describe("context.Context", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(c context.Context, s string, i int) {
 				Expect(s).To(Equal("string"))
@@ -97,7 +97,7 @@ var _ = Describe("message with invalid number of args", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(s string) {
 				ch <- true
@@ -131,7 +131,7 @@ var _ = Describe("HandlerFunc", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(msg *taskq.Message) error {
 				Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
@@ -166,7 +166,7 @@ var _ = Describe("message retry timing", func() {
 		q = memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task = taskq.NewTask(&taskq.TaskOptions{
+		task = taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				ch <- time.Now()
@@ -228,7 +228,7 @@ var _ = Describe("failing queue with error handler", func() {
 		q = memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				return errors.New("fake error")
@@ -258,7 +258,7 @@ var _ = Describe("named message", func() {
 			Name:  "test",
 			Redis: redisRing(),
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
@@ -302,7 +302,7 @@ var _ = Describe("CallOnce", func() {
 			Name:  "test",
 			Redis: redisRing(),
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func(slot int64) error {
 				ch <- time.Now()
@@ -340,7 +340,7 @@ var _ = Describe("stress testing", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name: "test",
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
@@ -370,7 +370,7 @@ var _ = Describe("stress testing failing queue", func() {
 			Name:                 "test",
 			PauseErrorsThreshold: -1,
 		})
-		task := taskq.NewTask(&taskq.TaskOptions{
+		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() error {
 				return errors.New("fake error")
@@ -406,7 +406,7 @@ var _ = Describe("empty queue", func() {
 			Name:  "test",
 			Redis: redisRing(),
 		})
-		task = taskq.NewTask(&taskq.TaskOptions{
+		task = taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
 			Handler: func() {
 				atomic.AddUint32(&processed, 1)

@@ -1,6 +1,7 @@
 package taskq
 
 import (
+	"fmt"
 	"runtime"
 	"time"
 
@@ -118,6 +119,7 @@ func (opt *QueueOptions) Init() {
 //------------------------------------------------------------------------------
 
 type Queuer interface {
+	fmt.Stringer
 	Name() string
 	Options() *QueueOptions
 	Consumer() *Consumer
@@ -139,7 +141,7 @@ type Queue struct {
 
 var _ Queuer = (*Queue)(nil)
 
-func NewQueue(opt *QueueOptions) *Queue {
+func RegisterQueue(opt *QueueOptions) *Queue {
 	q := &Queue{
 		opt: opt,
 	}
@@ -153,8 +155,12 @@ func (q *Queue) Bind(factory Factory) {
 	q.q = factory.NewQueue(q.opt)
 }
 
+func (q *Queue) String() string {
+	return fmt.Sprintf("queue=%q", q.Name())
+}
+
 func (q *Queue) Name() string {
-	return q.q.Name()
+	return q.opt.Name
 }
 
 func (q *Queue) Options() *QueueOptions {

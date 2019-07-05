@@ -51,7 +51,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
@@ -99,7 +99,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	_ = taskq.NewTask(&taskq.TaskOptions{
+	_ = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    nextTaskID(),
 		Handler: func() {},
 	})
@@ -140,7 +140,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() error {
 			return errors.New("fake error")
@@ -191,7 +191,7 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() {
 			handlerCh <- time.Now()
@@ -241,7 +241,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
@@ -291,7 +291,7 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func(hello string) error {
 			if hello != "world" {
@@ -352,7 +352,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() {
 			ch <- time.Now()
@@ -410,7 +410,7 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    nextTaskID(),
 		Handler: func() {},
 	})
@@ -450,7 +450,7 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	purge(t, q)
 
 	var count int64
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() {
 			atomic.AddInt64(&count, 1)
@@ -499,7 +499,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() error {
 			handlerCh <- time.Now()
@@ -540,7 +540,7 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func() {
 			ch <- time.Now()
@@ -578,7 +578,7 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	q := factory.NewQueue(opt)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func(s1, s2 string) {
 			if s1 != "hello" {
@@ -628,7 +628,7 @@ func testBatchConsumer(
 	q := factory.NewQueue(opt)
 	purge(t, q)
 
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: nextTaskID(),
 		Handler: func(s string) {
 			defer wg.Done()
@@ -697,7 +697,7 @@ func purge(t *testing.T, q taskq.Queuer) {
 		return
 	}
 
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    "*",
 		Handler: func() {},
 	})

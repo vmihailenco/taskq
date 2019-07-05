@@ -13,7 +13,7 @@ func BenchmarkCallAsync(b *testing.B) {
 	})
 	defer q.Close()
 
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    "test",
 		Handler: func() {},
 	})
@@ -34,7 +34,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 	})
 	defer q.Close()
 
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    "test",
 		Handler: func() {},
 	})

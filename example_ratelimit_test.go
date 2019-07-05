@@ -23,7 +23,7 @@ func Example_customRateLimit() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
 	})
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "Example_customRateLimit",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))

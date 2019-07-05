@@ -31,7 +31,7 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 			Redis: redisRing(),
 		})
 
-		task = taskq.NewTask(&taskq.TaskOptions{
+		task = taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "bench",
 			Handler: func() {
 				wg.Done()

@@ -76,7 +76,7 @@ type Task struct {
 	fallbackHandler Handler
 }
 
-func NewTask(opt *TaskOptions) *Task {
+func RegisterTask(opt *TaskOptions) *Task {
 	opt.init()
 
 	t := &Task{
@@ -100,7 +100,7 @@ func (t *Task) Name() string {
 }
 
 func (t *Task) String() string {
-	return fmt.Sprintf("Task<Name=%s>", t.opt.Name)
+	return fmt.Sprintf("task=%q", t.Name())
 }
 
 func (t *Task) Options() *TaskOptions {

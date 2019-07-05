@@ -27,7 +27,7 @@ func Example_retryOnError() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
 	})
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "Example_retryOnError",
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
@@ -52,7 +52,7 @@ func Example_messageDelay() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
 	})
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "Example_messageDelay",
 		Handler: func() {
 			fmt.Println("processed with delay", timeSince(start))
@@ -76,7 +76,7 @@ func Example_rateLimit() {
 		Redis:     redisRing(),
 		RateLimit: rate.Every(time.Second),
 	})
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    "Example_rateLimit",
 		Handler: func() {},
 	})
@@ -99,7 +99,7 @@ func Example_once() {
 		Redis:     redisRing(),
 		RateLimit: rate.Every(time.Second),
 	})
-	task := taskq.NewTask(&taskq.TaskOptions{
+	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "Example_once",
 		Handler: func(name string) {
 			fmt.Println("hello", name)

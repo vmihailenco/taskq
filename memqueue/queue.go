@@ -44,7 +44,7 @@ func (q *Queue) Name() string {
 }
 
 func (q *Queue) String() string {
-	return fmt.Sprintf("Memqueue<Name=%s>", q.Name())
+	return fmt.Sprintf("queue=%q", q.Name())
 }
 
 func (q *Queue) Options() *taskq.QueueOptions {

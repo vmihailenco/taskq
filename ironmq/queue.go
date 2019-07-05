@@ -57,7 +57,7 @@ func (q *Queue) initAddQueue() {
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.addTask = taskq.NewTask(&taskq.TaskOptions{
+	q.addTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:            queueName + ":add-mesage",
 		Handler:         taskq.HandlerFunc(q.add),
 		FallbackHandler: msgutil.UnwrapMessageHandler(taskq.Tasks.HandleMessage),
@@ -73,7 +73,7 @@ func (q *Queue) initDelQueue() {
 		BufferSize: 100,
 		Redis:      q.opt.Redis,
 	})
-	q.delTask = taskq.NewTask(&taskq.TaskOptions{
+	q.delTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:       queueName + ":delete-message",
 		Handler:    taskq.HandlerFunc(q.delBatcherAdd),
 		RetryLimit: 3,
@@ -90,7 +90,7 @@ func (q *Queue) Name() string {
 }
 
 func (q *Queue) String() string {
-	return fmt.Sprintf("Queue<Name=%s>", q.Name())
+	return fmt.Sprintf("queue=%q", q.Name())
 }
 
 func (q *Queue) Options() *taskq.QueueOptions {
