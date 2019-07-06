@@ -1,6 +1,7 @@
 package taskq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -87,9 +88,9 @@ func NewConsumer(q Queue) *Consumer {
 }
 
 // Starts creates new Consumer and starts it.
-func StartConsumer(q Queue) *Consumer {
+func StartConsumer(ctx context.Context, q Queue) *Consumer {
 	c := NewConsumer(q)
-	if err := c.Start(); err != nil {
+	if err := c.Start(ctx); err != nil {
 		panic(err)
 	}
 	return c
@@ -106,6 +107,10 @@ func (c *Consumer) Queue() Queue {
 
 func (c *Consumer) Options() *QueueOptions {
 	return c.opt
+}
+
+func (c *Consumer) Len() int {
+	return len(c.buffer)
 }
 
 // Stats returns processor stats.
@@ -134,17 +139,13 @@ func (c *Consumer) Add(msg *Message) error {
 	return nil
 }
 
-func (c *Consumer) Len() int {
-	return len(c.buffer)
-}
-
 func (c *Consumer) add(msg *Message) {
 	_ = c.limiter.Reserve(1)
 	c.buffer <- msg
 }
 
 // Start starts consuming messages in the queue.
-func (c *Consumer) Start() error {
+func (c *Consumer) Start(ctx context.Context) error {
 	c.startStopMu.Lock()
 	defer c.startStopMu.Unlock()
 
@@ -154,13 +155,13 @@ func (c *Consumer) Start() error {
 	c.stopCh = make(chan struct{})
 
 	for i := 0; i < c.opt.MinWorkers; i++ {
-		c.addWorker()
+		c.addWorker(ctx)
 	}
 
 	c.fetchersWG.Add(1)
 	go func() {
 		defer c.fetchersWG.Done()
-		c.autotune()
+		c.autotune(ctx)
 	}()
 
 	return nil
@@ -232,8 +233,6 @@ func (c *Consumer) stopped() bool {
 }
 
 func (c *Consumer) paused() time.Duration {
-	const threshold = 100
-
 	if c.opt.PauseErrorsThreshold == 0 ||
 		atomic.LoadUint32(&c.errCount) < uint32(c.opt.PauseErrorsThreshold) {
 		return 0
@@ -246,7 +245,7 @@ func (c *Consumer) paused() time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-func (c *Consumer) addWorker() int32 {
+func (c *Consumer) addWorker(ctx context.Context) int32 {
 	for {
 		id := atomic.LoadInt32(&c.workerNumber)
 		if id >= int32(c.opt.MaxWorkers) {
@@ -256,7 +255,7 @@ func (c *Consumer) addWorker() int32 {
 			c.workersWG.Add(1)
 			go func() {
 				defer c.workersWG.Done()
-				c.worker(id)
+				c.worker(ctx, id)
 			}()
 			return id
 		}
@@ -300,8 +299,8 @@ func (c *Consumer) removeFetcher(num int32) bool {
 
 // ProcessAll starts workers to process messages in the queue and then stops
 // them when all messages are processed.
-func (c *Consumer) ProcessAll() error {
-	if err := c.Start(); err != nil {
+func (c *Consumer) ProcessAll(ctx context.Context) error {
+	if err := c.Start(ctx); err != nil {
 		return err
 	}
 
@@ -328,13 +327,14 @@ func (c *Consumer) ProcessAll() error {
 }
 
 // ProcessOne processes at most one message in the queue.
-func (c *Consumer) ProcessOne() error {
+func (c *Consumer) ProcessOne(ctx context.Context) error {
 	msg, err := c.reserveOne()
 	if err != nil {
 		return err
 	}
 
 	// TODO: wait
+	msg.Ctx = ctx
 	return c.Process(msg)
 }
 
@@ -436,7 +436,7 @@ func (c *Consumer) fetchMessages(
 	return false, nil
 }
 
-func (c *Consumer) worker(workerID int32) {
+func (c *Consumer) worker(ctx context.Context, workerID int32) {
 	var lock *redislock.Lock
 	defer func() {
 		if lock != nil {
@@ -461,6 +461,8 @@ func (c *Consumer) worker(workerID int32) {
 		if msg == nil {
 			return
 		}
+
+		msg.Ctx = ctx
 		_ = c.Process(msg)
 	}
 }
@@ -735,21 +737,21 @@ func (c *Consumer) String() string {
 		processed, fails)
 }
 
-func (c *Consumer) autotune() {
+func (c *Consumer) autotune(ctx context.Context) {
 	timer := time.NewTicker(100 * time.Millisecond)
 	for {
 		select {
 		case <-timer.C:
-			c.tunerTick()
+			c.tunerTick(ctx)
 		case <-c.stopCh:
 			return
 		}
 	}
 }
 
-func (c *Consumer) tunerTick() {
+func (c *Consumer) tunerTick(ctx context.Context) {
 	if c.tunerStats.ticks >= 10 {
-		c.tune()
+		c.tune(ctx)
 	}
 
 	buffered := len(c.buffer)
@@ -761,7 +763,7 @@ func (c *Consumer) tunerTick() {
 	c.tunerStats.ticks++
 }
 
-func (c *Consumer) tune() {
+func (c *Consumer) tune(ctx context.Context) {
 	if c.tunerRollback != nil {
 		rollback := c.tunerRollback
 		c.tunerRollback = nil
@@ -783,7 +785,7 @@ func (c *Consumer) tune() {
 	}
 
 	if c.opt.WorkerLimit == 0 && c.tunerStats.isLoaded() {
-		if id := c.addWorker(); id != -1 {
+		if id := c.addWorker(ctx); id != -1 {
 			internal.Logger.Printf("%s: added worker=%d", c, id)
 			c.tunerRollback = func() {
 				if c.removeWorker(id) {

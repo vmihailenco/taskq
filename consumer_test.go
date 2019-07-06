@@ -1,6 +1,7 @@
 package taskq_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -71,7 +72,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 
 	p := q.Consumer()
-	if err := p.Start(); err != nil {
+	if err := p.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +118,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	}
 
 	p := q.Consumer()
-	if err := p.Start(); err != nil {
+	if err := p.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +165,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	select {
 	case <-ch:
@@ -208,7 +209,7 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	var tm time.Time
 	select {
@@ -267,7 +268,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -319,7 +320,7 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	select {
 	case <-ch:
@@ -372,7 +373,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}()
 
 	p := q.Consumer()
-	if err := p.Start(); err != nil {
+	if err := p.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -472,7 +473,7 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	time.Sleep(5 * time.Second)
 
@@ -515,7 +516,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	}
 
 	p := q.Consumer()
-	p.Start()
+	p.Start(context.Background())
 
 	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -555,8 +556,9 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 		}
 	}
 
-	p1 := taskq.StartConsumer(q)
-	p2 := taskq.StartConsumer(q)
+	ctx := context.Background()
+	p1 := taskq.StartConsumer(ctx, q)
+	p2 := taskq.StartConsumer(ctx, q)
 
 	timings := []time.Duration{0, time.Second, 2 * time.Second}
 	testTimings(t, ch, timings)
@@ -646,7 +648,7 @@ func testBatchConsumer(
 	}
 
 	p := q.Consumer()
-	if err := p.Start(); err != nil {
+	if err := p.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -703,7 +705,7 @@ func purge(t *testing.T, q taskq.Queue) {
 	})
 
 	consumer := taskq.NewConsumer(q)
-	err = consumer.ProcessAll()
+	err = consumer.ProcessAll(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

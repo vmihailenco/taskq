@@ -1,6 +1,7 @@
 package memqueue
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -32,7 +33,7 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 		opt: opt,
 	}
 	q.consumer = taskq.NewConsumer(q)
-	if err := q.consumer.Start(); err != nil {
+	if err := q.consumer.Start(context.Background()); err != nil {
 		panic(err)
 	}
 

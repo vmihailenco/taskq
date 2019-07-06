@@ -1,6 +1,7 @@
 package taskq
 
 import (
+	"context"
 	"log"
 	"os"
 	"sync"
@@ -25,7 +26,7 @@ func SetLogger(logger *log.Logger) {
 type Factory interface {
 	RegisterQueue(*QueueOptions) Queue
 	Range(func(Queue) bool)
-	StartConsumers() error
+	StartConsumers(context.Context) error
 	StopConsumers() error
 	Close() error
 }

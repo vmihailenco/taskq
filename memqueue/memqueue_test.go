@@ -108,10 +108,10 @@ var _ = Describe("message with invalid number of args", func() {
 		err := q.Add(task.WithArgs())
 		Expect(err).NotTo(HaveOccurred())
 
-		err = q.Consumer().ProcessOne()
+		err = q.Consumer().ProcessOne(context.Background())
 		Expect(err).To(MatchError("taskq: got 0 args, wanted 1"))
 
-		err = q.Consumer().ProcessAll()
+		err = q.Consumer().ProcessAll(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -429,15 +429,15 @@ var _ = Describe("empty queue", func() {
 
 	testEmptyQueue := func() {
 		It("processes all messages", func() {
-			err := q.Consumer().ProcessAll()
+			err := q.Consumer().ProcessAll(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("processes one message", func() {
-			err := q.Consumer().ProcessOne()
+			err := q.Consumer().ProcessOne(context.Background())
 			Expect(err).To(MatchError("taskq: queue is empty"))
 
-			err = q.Consumer().ProcessAll()
+			err = q.Consumer().ProcessAll(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 		})
 	}
@@ -461,7 +461,7 @@ var _ = Describe("empty queue", func() {
 			It("processes all messages", func() {
 				p := q.Consumer()
 
-				err := p.ProcessAll()
+				err := p.ProcessAll(context.Background())
 				Expect(err).NotTo(HaveOccurred())
 
 				n := atomic.LoadUint32(&processed)
@@ -471,13 +471,13 @@ var _ = Describe("empty queue", func() {
 			It("processes one message", func() {
 				p := q.Consumer()
 
-				err := p.ProcessOne()
+				err := p.ProcessOne(context.Background())
 				Expect(err).NotTo(HaveOccurred())
 
 				n := atomic.LoadUint32(&processed)
 				Expect(n).To(Equal(uint32(1)))
 
-				err = p.ProcessAll()
+				err = p.ProcessAll(context.Background())
 				Expect(err).NotTo(HaveOccurred())
 
 				n = atomic.LoadUint32(&processed)

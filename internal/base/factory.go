@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -34,9 +35,9 @@ func (f *Factory) Range(fn func(queue taskq.Queue) bool) {
 	})
 }
 
-func (f *Factory) StartConsumers() error {
+func (f *Factory) StartConsumers(ctx context.Context) error {
 	return f.forEachQueue(func(q taskq.Queue) error {
-		return q.Consumer().Start()
+		return q.Consumer().Start(ctx)
 	})
 }
 

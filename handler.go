@@ -93,7 +93,7 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 	var inStart int
 	if h.acceptsContext {
 		inStart = 1
-		in[0] = reflect.ValueOf(msg.Context())
+		in[0] = reflect.ValueOf(msg.Ctx)
 		in = in[1:]
 	}
 

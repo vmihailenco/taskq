@@ -1,6 +1,7 @@
 package taskq_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -38,7 +39,7 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 			},
 		})
 
-		_ = q.Consumer().Start()
+		_ = q.Consumer().Start(context.Background())
 	})
 
 	b.ResetTimer()

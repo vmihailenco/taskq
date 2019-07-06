@@ -1,6 +1,8 @@
 package azsqs
 
 import (
+	"context"
+
 	"github.com/aws/aws-sdk-go/service/sqs"
 
 	"github.com/vmihailenco/taskq/v2"
@@ -35,8 +37,8 @@ func (f *factory) Range(fn func(queue taskq.Queue) bool) {
 	f.base.Range(fn)
 }
 
-func (f *factory) StartConsumers() error {
-	return f.base.StartConsumers()
+func (f *factory) StartConsumers(ctx context.Context) error {
+	return f.base.StartConsumers(ctx)
 }
 
 func (f *factory) StopConsumers() error {

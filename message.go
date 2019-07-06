@@ -17,7 +17,7 @@ var ErrDuplicate = errors.New("taskq: message with such name already exists")
 
 // Message is used to create and retrieve messages from a queue.
 type Message struct {
-	ctx context.Context
+	Ctx context.Context `msgpack:"-"`
 
 	// SQS/IronMQ message id.
 	ID string `msgpack:",omitempty"`
@@ -58,18 +58,6 @@ func NewMessage(args ...interface{}) *Message {
 func (m *Message) String() string {
 	return fmt.Sprintf("Message<Id=%q Name=%q ReservedCount=%d>",
 		m.ID, m.Name, m.ReservedCount)
-}
-
-func (m *Message) Context() context.Context {
-	if m.ctx == nil {
-		m.ctx = context.Background()
-	}
-	return m.ctx
-}
-
-func (m *Message) WithContext(ctx context.Context) *Message {
-	m.ctx = ctx
-	return m
 }
 
 func (m *Message) OnceWithArgs(period time.Duration, args ...interface{}) {

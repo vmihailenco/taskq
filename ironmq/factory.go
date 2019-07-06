@@ -1,6 +1,8 @@
 package ironmq
 
 import (
+	"context"
+
 	iron_config "github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 
@@ -29,8 +31,8 @@ func (f *factory) Range(fn func(taskq.Queue) bool) {
 	f.base.Range(fn)
 }
 
-func (f *factory) StartConsumers() error {
-	return f.base.StartConsumers()
+func (f *factory) StartConsumers(ctx context.Context) error {
+	return f.base.StartConsumers(ctx)
 }
 
 func (f *factory) StopConsumers() error {
