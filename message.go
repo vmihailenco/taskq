@@ -49,8 +49,9 @@ type Message struct {
 	marshalBinaryCache []byte
 }
 
-func NewMessage(args ...interface{}) *Message {
+func NewMessage(ctx context.Context, args ...interface{}) *Message {
 	return &Message{
+		Ctx:  ctx,
 		Args: args,
 	}
 }

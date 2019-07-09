@@ -1,6 +1,7 @@
 package memqueue_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/vmihailenco/taskq/v2"
@@ -8,6 +9,8 @@ import (
 )
 
 func BenchmarkCallAsync(b *testing.B) {
+	ctx := context.Background()
+
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name: "test",
 	})
@@ -22,12 +25,14 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = q.Add(task.WithArgs())
+			_ = q.Add(task.WithArgs(ctx))
 		}
 	})
 }
 
 func BenchmarkNamedMessage(b *testing.B) {
+	ctx := context.Background()
+
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name:  "test",
 		Redis: redisRing(),
@@ -43,7 +48,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			msg := task.WithArgs()
+			msg := task.WithArgs(ctx)
 			msg.Name = "myname"
 			q.Add(msg)
 		}

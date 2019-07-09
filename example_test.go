@@ -1,6 +1,7 @@
 package taskq_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -37,7 +38,8 @@ func Example_retryOnError() {
 		MinBackoff: time.Second,
 	})
 
-	q.Add(task.WithArgs())
+	ctx := context.Background()
+	q.Add(task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -59,7 +61,8 @@ func Example_messageDelay() {
 		},
 	})
 
-	msg := task.WithArgs()
+	ctx := context.Background()
+	msg := task.WithArgs(ctx)
 	msg.Delay = time.Second
 	_ = q.Add(msg)
 
@@ -82,8 +85,10 @@ func Example_rateLimit() {
 	})
 
 	const n = 5
+
+	ctx := context.Background()
 	for i := 0; i < n; i++ {
-		_ = q.Add(task.WithArgs())
+		_ = q.Add(task.WithArgs(ctx))
 	}
 
 	// Wait for all messages to be processed.
@@ -106,9 +111,10 @@ func Example_once() {
 		},
 	})
 
+	ctx := context.Background()
 	for i := 0; i < 10; i++ {
 		// Call once in a second.
-		_ = q.Add(task.OnceWithArgs(time.Second, "world"))
+		_ = q.Add(task.OnceWithArgs(ctx, time.Second, "world"))
 	}
 
 	// Wait for all messages to be processed.

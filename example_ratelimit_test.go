@@ -1,6 +1,7 @@
 package taskq_test
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -33,7 +34,8 @@ func Example_customRateLimit() {
 		MinBackoff: time.Millisecond,
 	})
 
-	q.Add(task.WithArgs())
+	ctx := context.Background()
+	q.Add(task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

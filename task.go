@@ -2,6 +2,7 @@ package taskq
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"hash/fnv"
 	"time"
@@ -122,16 +123,16 @@ func (t *Task) WithMessage(msg *Message) *Message {
 	return msg
 }
 
-func (t *Task) WithArgs(args ...interface{}) *Message {
-	return t.newMessage(args...)
+func (t *Task) WithArgs(ctx context.Context, args ...interface{}) *Message {
+	return t.newMessage(ctx, args...)
 }
 
-func (t *Task) newMessage(args ...interface{}) *Message {
-	return t.WithMessage(NewMessage(args...))
+func (t *Task) newMessage(ctx context.Context, args ...interface{}) *Message {
+	return t.WithMessage(NewMessage(ctx, args...))
 }
 
-func (t *Task) OnceWithArgs(period time.Duration, args ...interface{}) *Message {
-	msg := t.newMessage(args...)
+func (t *Task) OnceWithArgs(ctx context.Context, period time.Duration, args ...interface{}) *Message {
+	msg := t.newMessage(ctx, args...)
 	msg.OnceWithArgs(period, args...)
 	return msg
 }

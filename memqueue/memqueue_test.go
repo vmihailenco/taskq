@@ -34,6 +34,7 @@ var _ = BeforeEach(func() {
 })
 
 var _ = Describe("message with args", func() {
+	ctx := context.Background()
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
@@ -48,7 +49,7 @@ var _ = Describe("message with args", func() {
 				ch <- true
 			},
 		})
-		err := q.Add(task.WithArgs("string", 42))
+		err := q.Add(task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -62,6 +63,7 @@ var _ = Describe("message with args", func() {
 })
 
 var _ = Describe("context.Context", func() {
+	ctx := context.Background()
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
@@ -76,7 +78,7 @@ var _ = Describe("context.Context", func() {
 				ch <- true
 			},
 		})
-		err := q.Add(task.WithArgs("string", 42))
+		err := q.Add(task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -90,6 +92,7 @@ var _ = Describe("context.Context", func() {
 })
 
 var _ = Describe("message with invalid number of args", func() {
+	ctx := context.Background()
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
@@ -105,13 +108,13 @@ var _ = Describe("message with invalid number of args", func() {
 		})
 		q.Consumer().Stop()
 
-		err := q.Add(task.WithArgs())
+		err := q.Add(task.WithArgs(ctx))
 		Expect(err).NotTo(HaveOccurred())
 
-		err = q.Consumer().ProcessOne(context.Background())
+		err = q.Consumer().ProcessOne(ctx)
 		Expect(err).To(MatchError("taskq: got 0 args, wanted 1"))
 
-		err = q.Consumer().ProcessAll(context.Background())
+		err = q.Consumer().ProcessAll(ctx)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -124,6 +127,7 @@ var _ = Describe("message with invalid number of args", func() {
 })
 
 var _ = Describe("HandlerFunc", func() {
+	ctx := context.Background()
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
@@ -139,7 +143,7 @@ var _ = Describe("HandlerFunc", func() {
 			},
 		})
 
-		err := q.Add(task.WithArgs("string", 42))
+		err := q.Add(task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -153,6 +157,7 @@ var _ = Describe("HandlerFunc", func() {
 })
 
 var _ = Describe("message retry timing", func() {
+	ctx := context.Background()
 	var q *memqueue.Queue
 	var task *taskq.Task
 	backoff := 100 * time.Millisecond
@@ -182,7 +187,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			_ = q.Add(task.WithArgs())
+			_ = q.Add(task.WithArgs(ctx))
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -200,7 +205,7 @@ var _ = Describe("message retry timing", func() {
 		var now time.Time
 
 		BeforeEach(func() {
-			msg := task.WithArgs()
+			msg := task.WithArgs(ctx)
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
@@ -220,6 +225,7 @@ var _ = Describe("message retry timing", func() {
 })
 
 var _ = Describe("failing queue with error handler", func() {
+	ctx := context.Background()
 	var q *memqueue.Queue
 	ch := make(chan bool, 10)
 
@@ -237,7 +243,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		q.Add(task.WithArgs())
+		q.Add(task.WithArgs(ctx))
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -250,6 +256,7 @@ var _ = Describe("failing queue with error handler", func() {
 })
 
 var _ = Describe("named message", func() {
+	ctx := context.Background()
 	var count int64
 
 	BeforeEach(func() {
@@ -272,7 +279,7 @@ var _ = Describe("named message", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer wg.Done()
-				msg := task.WithArgs()
+				msg := task.WithArgs(ctx)
 				msg.Name = name
 				q.Add(msg)
 			}()
@@ -290,6 +297,7 @@ var _ = Describe("named message", func() {
 })
 
 var _ = Describe("CallOnce", func() {
+	ctx := context.Background()
 	var now time.Time
 	delay := 3 * time.Second
 	ch := make(chan time.Time, 10)
@@ -316,7 +324,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				q.Add(task.OnceWithArgs(delay, slot(delay)))
+				q.Add(task.OnceWithArgs(ctx, delay, slot(delay)))
 			}()
 		}
 		wg.Wait()
@@ -333,6 +341,7 @@ var _ = Describe("CallOnce", func() {
 
 var _ = Describe("stress testing", func() {
 	const n = 10000
+	ctx := context.Background()
 	var count int64
 
 	BeforeEach(func() {
@@ -347,7 +356,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs())
+			q.Add(task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -362,6 +371,7 @@ var _ = Describe("stress testing", func() {
 
 var _ = Describe("stress testing failing queue", func() {
 	const n = 100000
+	ctx := context.Background()
 	var errorCount int64
 
 	BeforeEach(func() {
@@ -381,7 +391,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs())
+			q.Add(task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -395,6 +405,7 @@ var _ = Describe("stress testing failing queue", func() {
 })
 
 var _ = Describe("empty queue", func() {
+	ctx := context.Background()
 	var q *memqueue.Queue
 	var task *taskq.Task
 	var processed uint32
@@ -429,15 +440,15 @@ var _ = Describe("empty queue", func() {
 
 	testEmptyQueue := func() {
 		It("processes all messages", func() {
-			err := q.Consumer().ProcessAll(context.Background())
+			err := q.Consumer().ProcessAll(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("processes one message", func() {
-			err := q.Consumer().ProcessOne(context.Background())
+			err := q.Consumer().ProcessOne(ctx)
 			Expect(err).To(MatchError("taskq: queue is empty"))
 
-			err = q.Consumer().ProcessAll(context.Background())
+			err = q.Consumer().ProcessAll(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	}
@@ -453,7 +464,7 @@ var _ = Describe("empty queue", func() {
 		Context("when there are messages in the queue", func() {
 			BeforeEach(func() {
 				for i := 0; i < 3; i++ {
-					err := q.Add(task.WithArgs())
+					err := q.Add(task.WithArgs(ctx))
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})
@@ -461,7 +472,7 @@ var _ = Describe("empty queue", func() {
 			It("processes all messages", func() {
 				p := q.Consumer()
 
-				err := p.ProcessAll(context.Background())
+				err := p.ProcessAll(ctx)
 				Expect(err).NotTo(HaveOccurred())
 
 				n := atomic.LoadUint32(&processed)
@@ -471,13 +482,13 @@ var _ = Describe("empty queue", func() {
 			It("processes one message", func() {
 				p := q.Consumer()
 
-				err := p.ProcessOne(context.Background())
+				err := p.ProcessOne(ctx)
 				Expect(err).NotTo(HaveOccurred())
 
 				n := atomic.LoadUint32(&processed)
 				Expect(n).To(Equal(uint32(1)))
 
-				err = p.ProcessAll(context.Background())
+				err = p.ProcessAll(ctx)
 				Expect(err).NotTo(HaveOccurred())
 
 				n = atomic.LoadUint32(&processed)

@@ -7,7 +7,7 @@ import (
 )
 
 func WrapMessage(msg *taskq.Message) *taskq.Message {
-	msg0 := taskq.NewMessage(msg)
+	msg0 := taskq.NewMessage(msg.Ctx, msg)
 	msg0.Name = msg.Name
 	return msg0
 }
