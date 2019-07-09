@@ -806,7 +806,7 @@ func (c *Consumer) tune(ctx context.Context) {
 			internal.Logger.Printf("%s: added worker=%d", c, id)
 			c.tunerRollback = func() {
 				if c.removeWorker(id) {
-					internal.Logger.Printf("%s: remove added worker=%d", c, id)
+					internal.Logger.Printf("%s: removed recently added worker=%d", c, id)
 				}
 			}
 			c.tunerStats.reset()
@@ -845,7 +845,7 @@ func (c *Consumer) tunerAddFetcher() bool {
 	internal.Logger.Printf("%s: added fetcher=%d", c, id)
 	c.tunerRollback = func() {
 		if c.removeFetcher(id) {
-			internal.Logger.Printf("%s: remove added fetcher=%d", c, id)
+			internal.Logger.Printf("%s: removed recently added fetcher=%d", c, id)
 		}
 	}
 	c.tunerStats.reset()
