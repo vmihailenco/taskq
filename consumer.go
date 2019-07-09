@@ -36,6 +36,13 @@ type ConsumerStats struct {
 
 //------------------------------------------------------------------------------
 
+const (
+	stateInit = iota
+	stateStarted
+	stateStopping
+	stateFetchersStopped
+)
+
 // Consumer reserves messages from the queue, processes them,
 // and then either releases or deletes messages from the queue.
 type Consumer struct {
@@ -46,7 +53,7 @@ type Consumer struct {
 	limiter *limiter
 
 	startStopMu sync.Mutex
-	stopCh      chan struct{}
+	state       int32 // atomic
 
 	fetcherUnsupported int32
 	workerNumber       int32 // atomic
@@ -149,10 +156,17 @@ func (c *Consumer) Start(ctx context.Context) error {
 	c.startStopMu.Lock()
 	defer c.startStopMu.Unlock()
 
-	if c.stopCh != nil {
-		return errors.New("taksq: Consumer is already started")
+	switch atomic.LoadInt32(&c.state) {
+	case stateInit:
+		atomic.StoreInt32(&c.state, stateStarted)
+	case stateStarted:
+		return fmt.Errorf("taskq: Consumer is already started")
+	case stateStopping, stateFetchersStopped:
+		return fmt.Errorf("taskq: Consumer is stopping")
 	}
-	c.stopCh = make(chan struct{})
+
+	atomic.StoreInt32(&c.fetcherNumber, 0)
+	atomic.StoreInt32(&c.workerNumber, 0)
 
 	for i := 0; i < c.opt.MinWorkers; i++ {
 		c.addWorker(ctx)
@@ -178,20 +192,20 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 	c.startStopMu.Lock()
 	defer c.startStopMu.Unlock()
 
-	if c.stopCh == nil {
-		return errors.New("taksq: Consumer is not started")
-	}
-	select {
-	case <-c.stopCh:
-		return errors.New("taksq: Consumer is already stopped")
-	default:
+	switch atomic.LoadInt32(&c.state) {
+	case stateInit:
+		return fmt.Errorf("taskq: Consumer is not started")
+	case stateStarted:
+		atomic.StoreInt32(&c.state, stateStopping)
+	case stateStopping, stateFetchersStopped:
+		return fmt.Errorf("taskq: Consumer is stopping")
 	}
 
-	close(c.stopCh)
+	// Stop all fetchers.
+	atomic.StoreInt32(&c.fetcherNumber, -1)
 	defer func() {
-		c.stopCh = nil
-		atomic.StoreInt32(&c.fetcherNumber, 0)
-		atomic.StoreInt32(&c.workerNumber, 0)
+		atomic.StoreInt32(&c.workerNumber, -1)
+		atomic.StoreInt32(&c.state, stateInit)
 	}()
 
 	timer := time.NewTimer(timeout)
@@ -203,10 +217,16 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 		done <- struct{}{}
 	}()
 
+	var firstErr error
 	select {
 	case <-done:
 	case <-timer.C:
-		return fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
+		firstErr = fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
+	}
+
+	atomic.StoreInt32(&c.state, stateFetchersStopped)
+	if firstErr != nil {
+		return firstErr
 	}
 
 	go func() {
@@ -221,15 +241,6 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 	}
 
 	return nil
-}
-
-func (c *Consumer) stopped() bool {
-	select {
-	case <-c.stopCh:
-		return true
-	default:
-		return false
-	}
 }
 
 func (c *Consumer) paused() time.Duration {
@@ -368,7 +379,7 @@ func (c *Consumer) fetcher(fetcherID int32) {
 	fetchTimeout -= fetchTimeout / 10
 
 	for {
-		if c.stopped() || fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
+		if fetcherID >= atomic.LoadInt32(&c.fetcherNumber) {
 			return
 		}
 
@@ -392,6 +403,7 @@ func (c *Consumer) fetcher(fetcherID int32) {
 				"%s fetchMessages failed: %s (sleeping for dur=%s)",
 				c, err, backoff)
 			time.Sleep(backoff)
+			continue
 		}
 		if timeout {
 			c.removeFetcher(fetcherID)
@@ -403,7 +415,10 @@ func (c *Consumer) fetchMessages(
 	timer *time.Timer, timeout time.Duration,
 ) (bool, error) {
 	size := c.limiter.Reserve(c.opt.ReservationSize)
+
+	start := time.Now()
 	msgs, err := c.q.ReserveN(size, c.opt.WaitTimeout)
+	since := time.Since(start)
 	if err != nil {
 		return false, err
 	}
@@ -411,6 +426,8 @@ func (c *Consumer) fetchMessages(
 	if d := size - len(msgs); d > 0 {
 		c.limiter.Cancel(d)
 		c.tunerStats.incFetcherIdle(d)
+	} else if since > time.Second {
+		c.tunerStats.incFetcherIdle(1)
 	} else {
 		c.tunerStats.incFetcherBusy()
 	}
@@ -448,18 +465,19 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 	timer.Stop()
 
 	for {
+		if workerID >= atomic.LoadInt32(&c.workerNumber) {
+			return
+		}
 		if c.opt.WorkerLimit > 0 {
 			lock = c.lockWorker(lock, workerID)
-		} else if workerID >= atomic.LoadInt32(&c.workerNumber) {
-			return
 		}
 
-		msg, timeout := c.waitMessage(timer)
-		if timeout {
-			continue
-		}
+		msg := c.waitMessage(timer)
 		if msg == nil {
-			return
+			if atomic.LoadInt32(&c.state) >= stateFetchersStopped {
+				return
+			}
+			continue
 		}
 
 		msg.Ctx = ctx
@@ -467,13 +485,13 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 	}
 }
 
-func (c *Consumer) waitMessage(timer *time.Timer) (_ *Message, timeout bool) {
+func (c *Consumer) waitMessage(timer *time.Timer) *Message {
 	const workerIdleTimeout = time.Second
 
 	select {
 	case msg := <-c.buffer:
 		c.tunerStats.incWorkerBusy()
-		return msg, false
+		return msg
 	default:
 	}
 
@@ -489,12 +507,10 @@ func (c *Consumer) waitMessage(timer *time.Timer) (_ *Message, timeout bool) {
 		if !timer.Stop() {
 			<-timer.C
 		}
-		return msg, false
-	case <-c.stopCh:
-		return nil, false
+		return msg
 	case <-timer.C:
 		c.tunerStats.incWorkerIdle(2)
-		return nil, true
+		return nil
 	}
 }
 
@@ -692,6 +708,13 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 	timer.Stop()
 
 	for {
+		if atomic.LoadInt32(&c.state) >= stateStopping {
+			if lock != nil {
+				_ = lock.Release()
+			}
+			return nil
+		}
+
 		var err error
 		if lock == nil {
 			key := fmt.Sprintf("%s:worker:lock:%d", c.q.Name(), workerID)
@@ -706,19 +729,13 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 		if err != redislock.ErrNotObtained {
 			internal.Logger.Printf("redislock.Lock failed: %s", err)
 		}
-		lock = nil
+		if lock != nil {
+			_ = lock.Release()
+			lock = nil
+		}
 
 		timeout := time.Duration(500+rand.Intn(500)) * time.Millisecond
-		timer.Reset(timeout)
-
-		select {
-		case <-c.stopCh:
-			if !timer.Stop() {
-				<-timer.C
-			}
-			return lock
-		case <-timer.C:
-		}
+		time.Sleep(timeout)
 	}
 }
 
@@ -738,14 +755,12 @@ func (c *Consumer) String() string {
 }
 
 func (c *Consumer) autotune(ctx context.Context) {
-	timer := time.NewTicker(100 * time.Millisecond)
 	for {
-		select {
-		case <-timer.C:
-			c.tunerTick(ctx)
-		case <-c.stopCh:
-			return
+		if atomic.LoadInt32(&c.state) >= stateStopping {
+			break
 		}
+		c.tunerTick(ctx)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -778,7 +793,7 @@ func (c *Consumer) tune(ctx context.Context) {
 		}
 	}
 
-	if c.tunerStats.isStarving() {
+	if c.opt.RateLimit == 0 && c.tunerStats.isStarving() {
 		if c.tunerAddFetcher() {
 			return
 		}

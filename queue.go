@@ -88,10 +88,6 @@ func (opt *QueueOptions) Init() {
 		opt.PauseErrorsThreshold = 100
 	}
 
-	if opt.RateLimit == 0 {
-		opt.RateLimit = rate.Inf
-	}
-
 	if opt.ReservationSize == 0 {
 		opt.ReservationSize = 10
 	}
@@ -109,7 +105,7 @@ func (opt *QueueOptions) Init() {
 		opt.Storage = newRedisStorage(opt.Redis)
 	}
 
-	if opt.RateLimit != rate.Inf && opt.RateLimiter == nil && opt.Redis != nil {
+	if opt.RateLimit != 0 && opt.RateLimiter == nil && opt.Redis != nil {
 		limiter := redis_rate.NewLimiter(opt.Redis)
 		limiter.Fallback = rate.NewLimiter(opt.RateLimit, 1)
 		opt.RateLimiter = limiter

@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"log"
 
 	"github.com/vmihailenco/taskq/v2/examples/api_worker"
 )
 
 func main() {
-	err := api_worker.QueueFactory.StartConsumers()
+	flag.Parse()
+
+	c := context.Background()
+
+	err := api_worker.QueueFactory.StartConsumers(c)
 	if err != nil {
 		log.Fatal(err)
 	}

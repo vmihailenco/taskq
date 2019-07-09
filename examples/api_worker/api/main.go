@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/vmihailenco/taskq/v2/examples/api_worker"
 )
 
 func main() {
+	flag.Parse()
+
 	go api_worker.LogStats()
 
 	go func() {

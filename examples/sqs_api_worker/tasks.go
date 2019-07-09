@@ -22,11 +22,11 @@ var Redis = redis.NewClient(&redis.Options{
 
 var (
 	QueueFactory = azsqs.NewFactory(sqs.New(session.New()), os.Getenv("AWS_ACCOUNT_ID"))
-	MainQueue    = QueueFactory.NewQueue(&taskq.QueueOptions{
+	MainQueue    = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 		Name:  "api-worker",
 		Redis: Redis,
 	})
-	CountTask = taskq.NewTask(&taskq.TaskOptions{
+	CountTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "counter",
 		Handler: func() error {
 			IncrLocalCounter()

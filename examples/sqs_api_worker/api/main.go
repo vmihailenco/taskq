@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/vmihailenco/taskq/v2/examples/sqs_api_worker"
 )
 
 func main() {
+	flag.Parse()
+
 	go sqs_api_worker.LogStats()
 
 	go func() {
