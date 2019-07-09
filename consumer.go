@@ -223,7 +223,9 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 		firstErr = fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
 	}
 
-	atomic.StoreInt32(&c.state, stateFetchersStopped)
+	if !atomic.CompareAndSwapInt32(&c.state, stateStopping, stateFetchersStopped) {
+		panic("not reached")
+	}
 	if firstErr != nil {
 		return firstErr
 	}
@@ -884,7 +886,7 @@ type limiter struct {
 }
 
 func (l *limiter) Reserve(max int) int {
-	if l.limiter == nil {
+	if l.limiter == nil || l.limit == 0 || l.limit == rate.Inf {
 		return max
 	}
 
