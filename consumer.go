@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -257,9 +256,9 @@ func (c *Consumer) paused() time.Duration {
 }
 
 func (c *Consumer) addWorker(ctx context.Context) int32 {
-	for {
+	for i := 0; i < 100; i++ {
 		id := atomic.LoadInt32(&c.workerNumber)
-		if id >= int32(c.opt.MaxWorkers) {
+		if id == -1 || id >= int32(c.opt.MaxWorkers) {
 			return -1
 		}
 		if atomic.CompareAndSwapInt32(&c.workerNumber, id, id+1) {
@@ -271,6 +270,7 @@ func (c *Consumer) addWorker(ctx context.Context) int32 {
 			return id
 		}
 	}
+	panic("not reached")
 }
 
 func (c *Consumer) removeWorker(num int32) bool {
@@ -281,15 +281,16 @@ func (c *Consumer) addFetcher() int32 {
 	if atomic.LoadInt32(&c.fetcherUnsupported) == 1 {
 		return -1
 	}
-	for {
+	for i := 0; i < 100; i++ {
 		id := atomic.LoadInt32(&c.fetcherNumber)
-		if id >= int32(c.opt.MaxFetchers) {
+		if id == -1 || id >= int32(c.opt.MaxFetchers) {
 			return -1
 		}
 		if c.tryStartFetcher(id) {
 			return id
 		}
 	}
+	panic("not reached")
 }
 
 func (c *Consumer) tryStartFetcher(id int32) bool {
@@ -734,8 +735,7 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 			lock = nil
 		}
 
-		timeout := time.Duration(500+rand.Intn(500)) * time.Millisecond
-		time.Sleep(timeout)
+		time.Sleep(time.Second)
 	}
 }
 
