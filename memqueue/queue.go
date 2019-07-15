@@ -74,7 +74,12 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	if !atomic.CompareAndSwapInt32(&q._closed, 0, 1) {
 		return fmt.Errorf("taskq: %s is already closed", q)
 	}
+	err := q.WaitTimeout(timeout)
+	_ = q.consumer.StopTimeout(timeout)
+	return err
+}
 
+func (q *Queue) WaitTimeout(timeout time.Duration) error {
 	done := make(chan struct{}, 1)
 	go func() {
 		q.wg.Wait()
@@ -86,8 +91,6 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	case <-time.After(timeout):
 		return fmt.Errorf("taskq: %s: messages are not processed after %s", q.consumer, timeout)
 	}
-
-	_ = q.consumer.StopTimeout(timeout)
 
 	return nil
 }
