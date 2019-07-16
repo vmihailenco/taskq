@@ -801,26 +801,23 @@ func (c *Consumer) tune(ctx context.Context) {
 		}
 	}
 
-	if c.opt.WorkerLimit == 0 && c.tunerStats.isLoaded() {
-		if id := c.addWorker(ctx); id != -1 {
-			internal.Logger.Printf("%s: added worker=%d", c, id)
-			c.tunerRollback = func() {
-				if c.removeWorker(id) {
-					internal.Logger.Printf("%s: removed recently added worker=%d", c, id)
-				}
-			}
-			c.tunerStats.reset()
+	if c.opt.WorkerLimit == 0 {
+		if c.tunerStats.isLoaded() {
+			c.tunerAddWorker(ctx)
+		} else if c.tunerStats.workersStuck() {
+			internal.Logger.Printf("%s: all workers are stuck", c)
+			c.tunerAddWorker(ctx)
 		}
 		return
 	}
 
-	var reset bool
+	var actionTaken bool
 
 	if id := c.idleFetcher(); id != -1 {
 		if c.removeFetcher(id) {
 			internal.Logger.Printf("%s: removed idle fetcher=%d", c, id)
 		}
-		reset = true
+		actionTaken = true
 	}
 
 	if c.opt.WorkerLimit == 0 {
@@ -828,11 +825,11 @@ func (c *Consumer) tune(ctx context.Context) {
 			if c.removeWorker(id) {
 				internal.Logger.Printf("%s: removed idle worker=%d", c, id)
 			}
-			reset = true
+			actionTaken = true
 		}
 	}
 
-	if reset || c.tunerStats.ticks >= 100 {
+	if actionTaken || c.tunerStats.ticks >= 100 {
 		c.tunerStats.reset()
 	}
 }
@@ -850,6 +847,20 @@ func (c *Consumer) tunerAddFetcher() bool {
 	}
 	c.tunerStats.reset()
 	return true
+}
+
+func (c *Consumer) tunerAddWorker(ctx context.Context) {
+	id := c.addWorker(ctx)
+	if id == -1 {
+		return
+	}
+	internal.Logger.Printf("%s: added worker=%d", c, id)
+	c.tunerRollback = func() {
+		if c.removeWorker(id) {
+			internal.Logger.Printf("%s: removed recently added worker=%d", c, id)
+		}
+	}
+	c.tunerStats.reset()
 }
 
 func (c *Consumer) idleFetcher() int32 {
