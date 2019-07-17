@@ -22,6 +22,7 @@ const batchSize = 100
 
 type redisStreamClient interface {
 	Del(keys ...string) *redis.IntCmd
+	TxPipeline() redis.Pipeliner
 
 	XAdd(a *redis.XAddArgs) *redis.StringCmd
 	XDel(stream string, ids ...string) *redis.IntCmd
@@ -132,6 +133,10 @@ func (q *Queue) Len() (int, error) {
 
 // Add adds message to the queue.
 func (q *Queue) Add(msg *taskq.Message) error {
+	return q.add(q.redis, msg)
+}
+
+func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
@@ -150,13 +155,13 @@ func (q *Queue) Add(msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return q.redis.ZAdd(q.zset, &redis.Z{
+		return pipe.ZAdd(q.zset, &redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
 	}
 
-	return q.redis.XAdd(&redis.XAddArgs{
+	return pipe.XAdd(&redis.XAddArgs{
 		Stream: q.stream,
 		Values: map[string]interface{}{
 			"body": body,
@@ -203,13 +208,20 @@ func (q *Queue) createStreamGroup() {
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
-	err := q.redis.XDel(q.stream, msg.ID).Err()
+	// Make the delete and re-queue operation atomic in case we crash midway and lose a message
+	pipe := q.redis.TxPipeline()
+	err := pipe.XDel(q.stream, msg.ID).Err()
 	if err != nil {
 		return err
 	}
 
 	msg.ReservedCount++
-	return q.Add(msg)
+	err = q.add(pipe, msg)
+	if err != nil {
+		return err
+	}
+	_, err = pipe.Exec()
+	return err
 }
 
 // Delete deletes the message from the queue.
