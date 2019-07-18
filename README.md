@@ -24,14 +24,14 @@ go get github.com/vmihailenco/taskq/v2
 
 ## Quickstart
 
-I recommend to split your app into 2 parts:
-- API that accepts requests from customers and adds tasks to the queues.
-- Worker that fetches tasks from the queues and processes them.
+I recommend that you split your app into two parts:
+- An API that accepts requests from customers and adds tasks to the queues.
+- A Worker that fetches tasks from the queues and processes them.
 
 This way you can:
-- isolate API and worker from each other;
-- scale API and worker separately;
-- have different configs for API and worker (like timeouts).
+- Isolate API and worker from each other;
+- Scale API and worker separately;
+- Have different configs for API and worker (like timeouts).
 
 There is an [api_worker example](examples/api_worker) that demonstrates this approach using Redis as backend:
 
@@ -44,13 +44,15 @@ go run api/main.go
 You start by choosing backend to use - in our case Redis:
 
 ```go
+package api_worker
+
 var QueueFactory = redisq.NewFactory()
 ```
 
 Using that factory you create queue that contains task(s):
 
 ```go
-var MainQueue = QueueFactory.NewQueue(&taskq.QueueOptions{
+var MainQueue = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 	Name:  "api-worker",
 	Redis: Redis, // go-redis client
 })
@@ -59,7 +61,7 @@ var MainQueue = QueueFactory.NewQueue(&taskq.QueueOptions{
 Using the queue you create task with handler that does some useful work:
 
 ```go
-var CountTask = MainQueue.NewTask(&taskq.TaskOptions{
+var CountTask = MainQueue.RegisterTask(&taskq.TaskOptions{
 	Name: "counter",
 	Handler: func() error {
 		IncrLocalCounter()
@@ -72,7 +74,8 @@ Then in API you use the task to add messages/jobs to the queues:
 
 ```go
 for {
-	err := api_worker.CountTask.Call() // call task handler without any args
+	// call task handler without any args
+	err := api_worker.MainQueue.Add(api_worker.CountTask.WithArgs(context.Background())) 
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,7 +85,7 @@ for {
 And in worker you start processing the queue:
 
 ```go
-err := api_worker.MainQueue.Consumer().Start()
+err := api_worker.MainQueue.Start(context.Background())
 if err != nil {
 	log.Fatal(err)
 }
@@ -91,7 +94,7 @@ if err != nil {
 ## API overview
 
 ```go
-t := myQueue.NewTask(&taskq.TaskOptions{
+t := myQueue.RegisterTask(&taskq.TaskOptions{
 	Name:    "greeting",
 	Handler: func(name string) error {
 		fmt.Println("Hello", name)
@@ -100,21 +103,21 @@ t := myQueue.NewTask(&taskq.TaskOptions{
 })
 
 // Say "Hello World".
-t.Call("World")
+myQueue.Add(t.WithArgs(context.Background(), "World"))
 
 // Same using Message API.
-t.AddMessage(taskq.NewMessage("World"))
+myQueue.Add(t.WithMessage(taskq.NewMessage("World")))
 
 // Say "Hello World" with 1 hour delay.
 msg := taskq.NewMessage("World")
 msg.Delay = time.Hour
-t.AddMessage(msg)
+myQueue.Add(msg)
 
 // Say "Hello World" once.
 for i := 0; i < 100; i++ {
     msg := taskq.NewMessage("hello")
     msg.Name = "hello-world" // unique
-    t.Add(msg)
+    myQueue.Add(msg)
 }
 
 // Say "Hello World" once with 1 hour delay.
@@ -122,20 +125,44 @@ for i := 0; i < 100; i++ {
     msg := taskq.NewMessage("hello")
     msg.Name = "hello-world"
     msg.Delay = time.Hour
-    t.Add(msg)
+    myQueue.Add(msg)
 }
 
 // Say "Hello World" once in an hour.
 for i := 0; i < 100; i++ {
-    t.CallOnce(time.Hour, "hello")
+    myQueue.Add(t.OnceWithArgs(time.Hour, "hello"))
 }
 
 // Say "Hello World" for Europe region once in an hour.
 for i := 0; i < 100; i++ {
     msg := taskq.NewMessage("hello")
     msg.OnceWithArgs(time.Hour, "europe") // set delay and autogenerate message name
-    t.Add(msg)
+    myQueue.Add(msg)
 }
+```
+
+## Message deduplication
+If a `Message` has a `Name` then this will be used as unique identifier and messages with the same name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if not evicted from local cache after that period). Where `Name` is omitted then non deduplication occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the same arguments during `period'.
+
+## Contextual handlers
+If a task is registered with a handler that takes a Go `context.Context` as its first argument then when that handler is invoked it will be passed the same `Context` that was passed to `Consumer.Start(ctx)`. This can be used to transmit a signal to abort to all tasks being processed:
+
+```go
+var AbortableTask = MainQueue.RegisterTask(&taskq.TaskOptions{
+	Name: "SomethingLongwinded",
+	Handler: func(ctx context.Context) error {
+		for range time.Tick(time.Second) {
+			select {
+			    case <-ctx.Done():
+			    	return ctx.Err()
+			    default:
+			    	fmt.Println("Wee!")
+			}
+		}
+		return nil
+	},
+})
+
 ```
 
 ## Custom message delay
