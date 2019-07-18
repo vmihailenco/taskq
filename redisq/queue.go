@@ -296,9 +296,9 @@ func (q *Queue) scheduleDelayed() (int, error) {
 		return 0, err
 	}
 
-	// TODO: pipeline
+	pipe := q.redis.TxPipeline()
 	for _, body := range bodies {
-		err = q.redis.XAdd(&redis.XAddArgs{
+		err = pipe.XAdd(&redis.XAddArgs{
 			Stream: q.stream,
 			Values: map[string]interface{}{
 				"body": body,
@@ -308,10 +308,14 @@ func (q *Queue) scheduleDelayed() (int, error) {
 			return 0, err
 		}
 
-		err := q.redis.ZRem(q.zset, body).Err()
+		err := pipe.ZRem(q.zset, body).Err()
 		if err != nil {
 			return 0, err
 		}
+	}
+	_, err = pipe.Exec()
+	if err != nil {
+		return 0, err
 	}
 
 	return len(bodies), nil
