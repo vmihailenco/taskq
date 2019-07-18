@@ -41,6 +41,7 @@ github.com/valyala/gozstd v1.5.0 h1:OI7Z2e+GkvmmdRFiJeyuByhT/WMTLuRLa43Z2Tjzenw=
 github.com/valyala/gozstd v1.5.0/go.mod h1:oYOS+oJovjw9ewtrwEYb9+ybolEXd6pHyLMuAWN5zts=
 github.com/vmihailenco/msgpack v4.0.4+incompatible h1:dSLoQfGFAo3F6OoNhwUmLwVgaUXK79GlxNBwueZn0xI=
 github.com/vmihailenco/msgpack v4.0.4+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
+github.com/vmihailenco/taskq v1.8.2 h1:c/sfnPi2NF7/+8/XUEDmlhxlcvTxqkNPp5VEbfMSg+4=
 golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd h1:nTDtHvHSdCn1m6ITfMRqtOd/9+7a3s8RBNOZ3eYZzJA=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
