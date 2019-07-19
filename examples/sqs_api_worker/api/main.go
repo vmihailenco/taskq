@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 
@@ -14,7 +15,7 @@ func main() {
 
 	go func() {
 		for {
-			err := sqs_api_worker.MainQueue.Add(sqs_api_worker.CountTask.WithArgs())
+			err := sqs_api_worker.MainQueue.Add(sqs_api_worker.CountTask.WithArgs(context.Background()))
 			if err != nil {
 				log.Fatal(err)
 			}
