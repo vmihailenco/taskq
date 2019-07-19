@@ -9,6 +9,7 @@ import (
 )
 
 func BenchmarkCallAsync(b *testing.B) {
+	taskq.Tasks.Reset()
 	ctx := context.Background()
 
 	q := memqueue.NewQueue(&taskq.QueueOptions{
@@ -31,6 +32,7 @@ func BenchmarkCallAsync(b *testing.B) {
 }
 
 func BenchmarkNamedMessage(b *testing.B) {
+	taskq.Tasks.Reset()
 	ctx := context.Background()
 
 	q := memqueue.NewQueue(&taskq.QueueOptions{
