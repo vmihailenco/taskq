@@ -324,7 +324,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				q.Add(task.OnceWithArgs(ctx, delay, slot(delay)))
+				q.Add(task.WithArgs(ctx, slot(delay)).OnceInPeriod(delay))
 			}()
 		}
 		wg.Wait()
