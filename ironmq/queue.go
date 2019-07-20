@@ -126,7 +126,8 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return taskq.ErrDuplicate
 	}
 	msg = msgutil.WrapMessage(msg)
-	return q.addQueue.Add(q.addTask.WithMessage(msg))
+	msg.TaskName = q.addTask.Name()
+	return q.addQueue.Add(msg)
 }
 
 func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {

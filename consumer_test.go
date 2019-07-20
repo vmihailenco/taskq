@@ -357,7 +357,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				err := q.Add(task.OnceWithArgs(c, 500*time.Millisecond))
+				err := q.Add(task.WithArgs(c).OnceInPeriod(500 * time.Millisecond))
 				if err != nil && err != taskq.ErrDuplicate {
 					t.Fatal(err)
 				}

@@ -118,22 +118,9 @@ func (t *Task) HandleMessage(msg *Message) error {
 	return t.handler.HandleMessage(msg)
 }
 
-func (t *Task) WithMessage(msg *Message) *Message {
-	msg.TaskName = t.opt.Name
-	return msg
-}
-
 func (t *Task) WithArgs(ctx context.Context, args ...interface{}) *Message {
-	return t.newMessage(ctx, args...)
-}
-
-func (t *Task) newMessage(ctx context.Context, args ...interface{}) *Message {
-	return t.WithMessage(NewMessage(ctx, args...))
-}
-
-func (t *Task) OnceWithArgs(ctx context.Context, period time.Duration, args ...interface{}) *Message {
-	msg := t.newMessage(ctx, args...)
-	msg.OnceWithArgs(period, args...)
+	msg := NewMessage(ctx, args...)
+	msg.TaskName = t.opt.Name
 	return msg
 }
 

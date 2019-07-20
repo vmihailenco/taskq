@@ -61,9 +61,16 @@ func (m *Message) String() string {
 		m.ID, m.Name, m.ReservedCount)
 }
 
-func (m *Message) OnceWithArgs(period time.Duration, args ...interface{}) {
+// OnceInPeriod uses the period and the args to generate such a message name
+// that message with such args is added to the queue once in a given period.
+// If args are not provided then message args are used instead.
+func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Message {
+	if len(args) == 0 {
+		args = m.Args
+	}
 	m.Name = fmt.Sprintf("%s-%s-%d", hashArgs(args), period, timeSlot(period))
 	m.Delay = period + 5*time.Second
+	return m
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {

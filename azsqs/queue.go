@@ -141,7 +141,8 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return taskq.ErrDuplicate
 	}
 	msg = msgutil.WrapMessage(msg)
-	return q.addQueue.Add(q.addTask.WithMessage(msg))
+	msg.TaskName = q.addTask.Name()
+	return q.addQueue.Add(msg)
 }
 
 func (q *Queue) queueURL() string {
@@ -275,7 +276,8 @@ func (q *Queue) Release(msg *taskq.Message) error {
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
 	msg = msgutil.WrapMessage(msg)
-	return q.delQueue.Add(q.delTask.WithMessage(msg))
+	msg.TaskName = q.delTask.Name()
+	return q.delQueue.Add(msg)
 }
 
 // Purge deletes all messages from the queue using SQS API.
