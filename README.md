@@ -144,7 +144,15 @@ for i := 0; i < 100; i++ {
 ## Message deduplication
 If a `Message` has a `Name` then this will be used as unique identifier and messages with the same name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if not evicted from local cache after that period). Where `Name` is omitted then non deduplication occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the same arguments during `period'.
 
-## Contextual handlers
+## Handlers
+A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the `TaskOptions`. 
+
+There are three permitted types of signature:
+
+1. A zero-argument function
+2. A function whose arguments are assignable in type from those which are passed in the message
+3. A function which takes a single `*Message` argument
+
 If a task is registered with a handler that takes a Go `context.Context` as its first argument then when that handler is invoked it will be passed the same `Context` that was passed to `Consumer.Start(ctx)`. This can be used to transmit a signal to abort to all tasks being processed:
 
 ```go

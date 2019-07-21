@@ -28,8 +28,16 @@ type TaskOptions struct {
 	Name string
 
 	// Function called to process a message.
+	// There are three permitted types of signature:
+	// 1. A zero-argument function
+	// 2. A function whose arguments are assignable in type from those which are passed in the message
+	// 3. A function which takes a single `*Message` argument
+	// The handler function may also optionally take a Context as a first argument and may optionally return an error.
+	// If the handler takes a Context, when it is invoked it will be passed the same Context as that which was passed to
+	// `StartConsumer`. If the handler returns a non-nil error the message processing will fail and will be retried/.
 	Handler interface{}
-	// Function called to process failed message.
+	// Function called to process failed message after the specified number of retries have all failed.
+	// The FallbackHandler accepts the same types of function as the Handler.
 	FallbackHandler interface{}
 
 	// Optional function used by Consumer with defer statement
