@@ -134,20 +134,9 @@ func (c *Consumer) Stats() *ConsumerStats {
 }
 
 func (c *Consumer) Add(msg *Message) error {
-	if msg.Delay > 0 {
-		time.AfterFunc(msg.Delay, func() {
-			msg.Delay = 0
-			c.add(msg)
-		})
-	} else {
-		c.add(msg)
-	}
-	return nil
-}
-
-func (c *Consumer) add(msg *Message) {
 	_ = c.limiter.Reserve(1)
 	c.buffer <- msg
+	return nil
 }
 
 // Start starts consuming messages in the queue.

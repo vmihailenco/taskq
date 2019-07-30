@@ -239,7 +239,7 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 			if err != nil {
 				msg.Err = err
 			} else {
-				msg.Delay = until.Sub(time.Now())
+				msg.Delay = time.Until(until)
 				if msg.Delay < 0 {
 					msg.Delay = 0
 				}
@@ -296,18 +296,13 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	var firstErr error
-
 	if q.consumer != nil {
 		_ = q.consumer.StopTimeout(timeout)
 	}
 
-	err := q.addBatcher.Close()
-	if err != nil && firstErr == nil {
-		firstErr = err
-	}
+	firstErr := q.addBatcher.Close()
 
-	err = q.addQueue.CloseTimeout(timeout)
+	err := q.addQueue.CloseTimeout(timeout)
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}

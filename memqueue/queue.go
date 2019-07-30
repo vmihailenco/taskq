@@ -123,6 +123,14 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	if q.sync {
 		return q.consumer.Process(msg)
 	}
+
+	if msg.Delay > 0 {
+		time.AfterFunc(msg.Delay, func() {
+			msg.Delay = 0
+			_ = q.consumer.Add(msg)
+		})
+		return nil
+	}
 	return q.consumer.Add(msg)
 }
 

@@ -205,18 +205,13 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	var firstErr error
-
 	if q.consumer != nil {
 		_ = q.consumer.StopTimeout(timeout)
 	}
 
-	err := q.delBatcher.Close()
-	if err != nil && firstErr == nil {
-		firstErr = err
-	}
+	firstErr := q.delBatcher.Close()
 
-	err = q.delQueue.CloseTimeout(timeout)
+	err := q.delQueue.CloseTimeout(timeout)
 	if err != nil && firstErr == nil {
 		firstErr = err
 	}
