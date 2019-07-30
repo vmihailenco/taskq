@@ -56,6 +56,9 @@ type QueueOptions struct {
 	// Optional storage interface. The default is to use Redis.
 	Storage Storage
 
+	// Optional message handler. The default is the global Tasks registry.
+	Tasks TaskRegistry
+
 	inited bool
 }
 
@@ -109,6 +112,10 @@ func (opt *QueueOptions) Init() {
 		limiter := redis_rate.NewLimiter(opt.Redis)
 		limiter.Fallback = rate.NewLimiter(opt.RateLimit, 1)
 		opt.RateLimiter = limiter
+	}
+
+	if opt.Tasks == nil {
+		opt.Tasks = &Tasks
 	}
 }
 

@@ -72,7 +72,8 @@ type Consumer struct {
 	fails     uint32
 	retries   uint32
 
-	hooks []ConsumerHook
+	hooks         []ConsumerHook
+	handleMessage func(*Message) error
 }
 
 // New creates new Consumer for the queue using provided processing options.
@@ -89,6 +90,7 @@ func NewConsumer(q Queue) *Consumer {
 			limiter: opt.RateLimiter,
 			limit:   opt.RateLimit,
 		},
+		handleMessage: MessageHandler(opt.Tasks),
 	}
 	return p
 }
@@ -550,10 +552,6 @@ func (c *Consumer) Process(msg *Message) error {
 	return c.handleError(msg, msgErr)
 }
 
-func (c *Consumer) handleMessage(msg *Message) error {
-	return Tasks.HandleMessage(msg)
-}
-
 func (c *Consumer) handleError(msg *Message, err error) error {
 	if err == nil {
 		c.resetPause()
@@ -573,7 +571,7 @@ func (c *Consumer) Put(msg *Message) {
 		return
 	}
 
-	task := Tasks.Get(msg.TaskName)
+	task := c.opt.Tasks.Get(msg.TaskName)
 	var opt *TaskOptions
 	if task != nil {
 		opt = task.Options()

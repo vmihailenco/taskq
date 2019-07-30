@@ -86,22 +86,12 @@ type Task struct {
 }
 
 func RegisterTask(opt *TaskOptions) *Task {
-	opt.init()
-
-	t := &Task{
-		opt: opt,
-	}
-
-	t.handler = NewHandler(opt.Handler)
-	if opt.FallbackHandler != nil {
-		t.fallbackHandler = NewHandler(opt.FallbackHandler)
-	}
-
-	if err := Tasks.Register(t); err != nil {
+	task, err := Tasks.Register(opt)
+	if err != nil {
 		panic(err)
 	}
 
-	return t
+	return task
 }
 
 func (t *Task) Name() string {
