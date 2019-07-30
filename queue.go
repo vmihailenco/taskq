@@ -57,7 +57,7 @@ type QueueOptions struct {
 	Storage Storage
 
 	// Optional message handler. The default is the global Tasks registry.
-	Tasks Handler
+	Handler Handler
 
 	inited bool
 }
@@ -114,8 +114,8 @@ func (opt *QueueOptions) Init() {
 		opt.RateLimiter = limiter
 	}
 
-	if opt.Tasks == nil {
-		opt.Tasks = &Tasks
+	if opt.Handler == nil {
+		opt.Handler = &Tasks
 	}
 }
 

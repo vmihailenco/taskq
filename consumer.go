@@ -531,7 +531,7 @@ func (c *Consumer) Process(msg *Message) error {
 		return err
 	}
 
-	msgErr := c.opt.Tasks.HandleMessage(msg)
+	msgErr := c.opt.Handler.HandleMessage(msg)
 
 	err = c.afterProcessMessage(evt, msgErr)
 	if err != nil {
@@ -598,7 +598,7 @@ func (c *Consumer) delete(msg *Message) {
 		internal.Logger.Printf("task=%q handler failed after retry=%d: %s",
 			msg.TaskName, msg.ReservedCount, msg.Err)
 
-		err := c.opt.Tasks.HandleMessage(msg)
+		err := c.opt.Handler.HandleMessage(msg)
 		if err != nil {
 			internal.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
 		}

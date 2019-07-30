@@ -70,7 +70,7 @@ func (q *Queue) initAddQueue() {
 	q.addTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:            queueName + ":add-message",
 		Handler:         taskq.HandlerFunc(q.addBatcherAdd),
-		FallbackHandler: msgutil.UnwrapMessageHandler(q.opt.Tasks.HandleMessage),
+		FallbackHandler: msgutil.UnwrapMessageHandler(q.opt.Handler.HandleMessage),
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
 	})
