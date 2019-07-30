@@ -530,26 +530,25 @@ func (c *Consumer) Process(msg *Message) error {
 		c.Put(msg)
 		return err
 	}
+	msg.evt = evt
 
 	msgErr := c.opt.Handler.HandleMessage(msg)
-
-	err = c.afterProcessMessage(evt, msgErr)
-	if err != nil {
-		msg.Err = err
-		c.Put(msg)
-		return err
-	}
-
 	if msgErr == ErrAsyncTask {
 		return ErrAsyncTask
 	}
 
 	msg.Err = msgErr
 	c.Put(msg)
-	return msgErr
+	return msg.Err
 }
 
 func (c *Consumer) Put(msg *Message) {
+	err := c.afterProcessMessage(msg)
+	if err != nil {
+		msg.Err = err
+		return
+	}
+
 	if msg.Err == nil {
 		c.resetPause()
 		atomic.AddUint32(&c.processed, 1)
@@ -653,13 +652,12 @@ func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, err
 	return evt, nil
 }
 
-func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) error {
-	if evt == nil {
+func (c *Consumer) afterProcessMessage(msg *Message) error {
+	if msg.evt == nil {
 		return nil
 	}
-	evt.Err = err
 	for _, hook := range c.hooks {
-		err := hook.AfterProcessMessage(evt)
+		err := hook.AfterProcessMessage(msg.evt)
 		if err != nil {
 			return err
 		}

@@ -46,6 +46,7 @@ type Message struct {
 	TaskName string
 	Err      error `msgpack:"-"`
 
+	evt                *ProcessMessageEvent
 	marshalBinaryCache []byte
 }
 
