@@ -60,7 +60,7 @@ func (q *Queue) initAddQueue() {
 	q.addTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:            queueName + ":add-mesage",
 		Handler:         taskq.HandlerFunc(q.add),
-		FallbackHandler: msgutil.UnwrapMessageHandler(taskq.MessageHandler(q.opt.Tasks)),
+		FallbackHandler: msgutil.UnwrapMessageHandler(q.opt.Tasks.HandleMessage),
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
 	})
@@ -157,11 +157,11 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 
 		b, err := internal.DecodeString(mqMsg.Body)
 		if err != nil {
-			msg.StickyErr = err
+			msg.Err = err
 		} else {
 			err = msg.UnmarshalBinary(b)
 			if err != nil {
-				msg.StickyErr = err
+				msg.Err = err
 			}
 		}
 

@@ -70,7 +70,7 @@ func (q *Queue) initAddQueue() {
 	q.addTask = taskq.RegisterTask(&taskq.TaskOptions{
 		Name:            queueName + ":add-message",
 		Handler:         taskq.HandlerFunc(q.addBatcherAdd),
-		FallbackHandler: msgutil.UnwrapMessageHandler(taskq.MessageHandler(q.opt.Tasks)),
+		FallbackHandler: msgutil.UnwrapMessageHandler(q.opt.Tasks.HandleMessage),
 		RetryLimit:      3,
 		MinBackoff:      time.Second,
 	})
@@ -215,11 +215,11 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 		if *sqsMsg.Body != "_" {
 			b, err := internal.DecodeString(*sqsMsg.Body)
 			if err != nil {
-				msg.StickyErr = err
+				msg.Err = err
 			} else {
 				err = msg.UnmarshalBinary(b)
 				if err != nil {
-					msg.StickyErr = err
+					msg.Err = err
 				}
 			}
 		}
@@ -230,14 +230,14 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 			var err error
 			msg.ReservedCount, err = strconv.Atoi(*v)
 			if err != nil {
-				msg.StickyErr = err
+				msg.Err = err
 			}
 		}
 
 		if v, ok := sqsMsg.MessageAttributes[delayUntilAttr]; ok {
 			until, err := time.Parse(time.RFC3339, *v.StringValue)
 			if err != nil {
-				msg.StickyErr = err
+				msg.Err = err
 			} else {
 				msg.Delay = until.Sub(time.Now())
 				if msg.Delay < 0 {
@@ -348,7 +348,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 		b, err := msg.MarshalBinary()
 		if err != nil {
-			msg.StickyErr = err
+			msg.Err = err
 			internal.Logger.Printf("azsqs: Message.MarshalBinary failed: %s", err)
 			continue
 		}
@@ -387,7 +387,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 	if err != nil {
 		awsErr, ok := err.(awserr.Error)
 		if ok && awsErr.Code() == "ErrCodeBatchRequestTooLong" && len(msgs) == 1 {
-			msgs[0].StickyErr = err
+			msgs[0].Err = err
 			msgs[0].ReservedCount = 9999 // don't retry
 			return err
 		}
@@ -406,7 +406,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 
 		msg := findMessageById(msgs, tos(entry.Id))
 		if msg != nil {
-			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
 			internal.Logger.Printf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}
@@ -490,7 +490,7 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 
 		msg := findMessageById(msgs, tos(entry.Id))
 		if msg != nil {
-			msg.StickyErr = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
+			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
 			internal.Logger.Printf("azsqs: can't find message with id=%s", tos(entry.Id))
 		}

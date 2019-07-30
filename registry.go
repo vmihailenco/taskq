@@ -7,26 +7,6 @@ import (
 
 var Tasks TaskMap
 
-type TaskRegistry interface {
-	Get(name string) *Task
-}
-
-func MessageHandler(registry TaskRegistry) func(msg *Message) error {
-	return func(msg *Message) error {
-		task := registry.Get(msg.TaskName)
-		if task == nil {
-			return fmt.Errorf("taskq: unknown task=%q", msg.TaskName)
-		}
-
-		opt := task.Options()
-		if opt.DeferFunc != nil {
-			defer opt.DeferFunc()
-		}
-
-		return task.HandleMessage(msg)
-	}
-}
-
 type TaskMap struct {
 	m sync.Map
 }
@@ -73,4 +53,37 @@ func (r *TaskMap) Range(fn func(name string, task *Task) bool) {
 	r.m.Range(func(key, value interface{}) bool {
 		return fn(key.(string), value.(*Task))
 	})
+}
+
+func (r *TaskMap) HandleMessage(msg *Message) error {
+	task := r.Get(msg.TaskName)
+	if task == nil {
+		err := fmt.Errorf("taskq: unknown task=%q", msg.TaskName)
+		return r.retry(msg, err, unknownTaskOpt)
+	}
+
+	opt := task.Options()
+	if opt.DeferFunc != nil {
+		defer opt.DeferFunc()
+	}
+
+	msgErr := task.HandleMessage(msg)
+	if msgErr == nil {
+		return nil
+	}
+
+	return r.retry(msg, msgErr, opt)
+}
+
+func (r *TaskMap) retry(msg *Message, msgErr error, opt *TaskOptions) error {
+	if msg.ReservedCount < opt.RetryLimit {
+		msg.Delay = exponentialBackoff(
+			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
+		if delayer, ok := msgErr.(Delayer); ok {
+			msg.Delay = delayer.Delay()
+		}
+	} else {
+		msg.Delay = -1 // don't retry
+	}
+	return msgErr
 }

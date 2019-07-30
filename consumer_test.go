@@ -105,7 +105,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	})
 
 	taskq.SetUnknownTaskOptions(&taskq.TaskOptions{
-		Name:       "unknown",
+		Name:       "_",
 		RetryLimit: 1,
 	})
 

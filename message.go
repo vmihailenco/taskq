@@ -43,8 +43,8 @@ type Message struct {
 	// The number of times the message has been reserved or released.
 	ReservedCount int `msgpack:",omitempty"`
 
-	TaskName  string
-	StickyErr error `msgpack:"-"`
+	TaskName string
+	Err      error `msgpack:"-"`
 
 	marshalBinaryCache []byte
 }

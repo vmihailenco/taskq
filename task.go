@@ -107,7 +107,7 @@ func (t *Task) Options() *TaskOptions {
 }
 
 func (t *Task) HandleMessage(msg *Message) error {
-	if msg.StickyErr != nil {
+	if msg.Err != nil {
 		if t.fallbackHandler != nil {
 			return t.fallbackHandler.HandleMessage(msg)
 		}

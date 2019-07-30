@@ -196,7 +196,7 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 
 		err = unmarshalMessage(msg, xmsg)
 		if err != nil {
-			msg.StickyErr = err
+			msg.Err = err
 		}
 	}
 

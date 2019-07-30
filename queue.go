@@ -57,7 +57,7 @@ type QueueOptions struct {
 	Storage Storage
 
 	// Optional message handler. The default is the global Tasks registry.
-	Tasks TaskRegistry
+	Tasks Handler
 
 	inited bool
 }

@@ -131,6 +131,8 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
+	//TODO: copy?
+	msg.Err = nil
 	return q.enqueueMessage(msg)
 }
 

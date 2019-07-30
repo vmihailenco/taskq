@@ -72,8 +72,7 @@ type Consumer struct {
 	fails     uint32
 	retries   uint32
 
-	hooks         []ConsumerHook
-	handleMessage func(*Message) error
+	hooks []ConsumerHook
 }
 
 // New creates new Consumer for the queue using provided processing options.
@@ -90,7 +89,6 @@ func NewConsumer(q Queue) *Consumer {
 			limiter: opt.RateLimiter,
 			limit:   opt.RateLimit,
 		},
-		handleMessage: MessageHandler(opt.Tasks),
 	}
 	return p
 }
@@ -532,73 +530,57 @@ func (c *Consumer) Process(msg *Message) error {
 		return nil
 	}
 
-	if msg.StickyErr != nil {
+	if msg.Err != nil {
 		c.Put(msg)
-		return msg.StickyErr
+		return msg.Err
 	}
 
 	evt, err := c.beforeProcessMessage(msg)
 	if err != nil {
-		return c.handleError(msg, err)
-	}
-
-	msgErr := c.handleMessage(msg)
-
-	err = c.afterProcessMessage(evt, msgErr)
-	if err != nil {
-		return c.handleError(msg, err)
-	}
-
-	return c.handleError(msg, msgErr)
-}
-
-func (c *Consumer) handleError(msg *Message, err error) error {
-	if err == nil {
-		c.resetPause()
-	}
-	if err != ErrAsyncTask {
-		msg.StickyErr = err
+		msg.Err = err
 		c.Put(msg)
+		return err
 	}
-	return err
+
+	msg.Err = c.opt.Tasks.HandleMessage(msg)
+
+	err = c.afterProcessMessage(evt)
+	if err != nil {
+		msg.Err = err
+		c.Put(msg)
+		return err
+	}
+
+	c.Put(msg)
+	return msg.Err
 }
 
 func (c *Consumer) Put(msg *Message) {
-	if msg.StickyErr == nil {
+	if msg.Err == nil {
+		c.resetPause()
 		atomic.AddUint32(&c.processed, 1)
 		c.tunerStats.incProcessed()
 		c.delete(msg)
 		return
 	}
-
-	task := c.opt.Tasks.Get(msg.TaskName)
-	var opt *TaskOptions
-	if task != nil {
-		opt = task.Options()
-	} else {
-		opt = unknownTaskOpt
+	if msg.Err == ErrAsyncTask {
+		msg.Err = nil
+		return
 	}
 
 	atomic.AddUint32(&c.errCount, 1)
-	if msg.ReservedCount < opt.RetryLimit {
-		msg.Delay = exponentialBackoff(
-			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
-		if msg.StickyErr != nil {
-			if delayer, ok := msg.StickyErr.(Delayer); ok {
-				msg.Delay = delayer.Delay()
-			}
-		}
-
-		atomic.AddUint32(&c.retries, 1)
-		c.release(msg)
-	} else {
+	if msg.Delay == -1 {
 		atomic.AddUint32(&c.fails, 1)
 		c.delete(msg)
+		return
 	}
+
+	atomic.AddUint32(&c.retries, 1)
+	c.release(msg)
 }
 
 func (c *Consumer) release(msg *Message) {
-	if msg.StickyErr != nil {
+	if msg.Err != nil {
 		new := uint32(msg.Delay / time.Second)
 		for new > 0 {
 			old := atomic.LoadUint32(&c.delaySec)
@@ -611,10 +593,9 @@ func (c *Consumer) release(msg *Message) {
 		}
 
 		internal.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
-			msg.TaskName, msg.ReservedCount, msg.Delay, msg.StickyErr)
+			msg.TaskName, msg.ReservedCount, msg.Delay, msg.Err)
 	}
 
-	msg.StickyErr = nil
 	err := c.q.Release(msg)
 	if err != nil {
 		internal.Logger.Printf("task=%q Release failed: %s", msg.TaskName, err)
@@ -623,17 +604,16 @@ func (c *Consumer) release(msg *Message) {
 }
 
 func (c *Consumer) delete(msg *Message) {
-	if msg.StickyErr != nil {
+	if msg.Err != nil {
 		internal.Logger.Printf("task=%q handler failed after retry=%d: %s",
-			msg.TaskName, msg.ReservedCount, msg.StickyErr)
+			msg.TaskName, msg.ReservedCount, msg.Err)
 
-		err := c.handleMessage(msg)
+		err := c.opt.Tasks.HandleMessage(msg)
 		if err != nil {
 			internal.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
 		}
 	}
 
-	msg.StickyErr = nil
 	err := c.q.Delete(msg)
 	if err != nil {
 		internal.Logger.Printf("taks=%q Delete failed: %s", msg.TaskName, err)
@@ -656,7 +636,6 @@ func (c *Consumer) Purge() error {
 type ProcessMessageEvent struct {
 	Message   *Message
 	StartTime time.Time
-	Error     error
 
 	Stash map[interface{}]interface{}
 }
@@ -683,11 +662,10 @@ func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, err
 	return evt, nil
 }
 
-func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) error {
+func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent) error {
 	if evt == nil {
 		return nil
 	}
-	evt.Error = err
 	for _, hook := range c.hooks {
 		err := hook.AfterProcessMessage(evt)
 		if err != nil {
