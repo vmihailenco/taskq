@@ -531,17 +531,22 @@ func (c *Consumer) Process(msg *Message) error {
 		return err
 	}
 
-	msg.Err = c.opt.Tasks.HandleMessage(msg)
+	msgErr := c.opt.Tasks.HandleMessage(msg)
 
-	err = c.afterProcessMessage(evt)
+	err = c.afterProcessMessage(evt, msgErr)
 	if err != nil {
 		msg.Err = err
 		c.Put(msg)
 		return err
 	}
 
+	if msgErr == ErrAsyncTask {
+		return ErrAsyncTask
+	}
+
+	msg.Err = msgErr
 	c.Put(msg)
-	return msg.Err
+	return msgErr
 }
 
 func (c *Consumer) Put(msg *Message) {
@@ -550,10 +555,6 @@ func (c *Consumer) Put(msg *Message) {
 		atomic.AddUint32(&c.processed, 1)
 		c.tunerStats.incProcessed()
 		c.delete(msg)
-		return
-	}
-	if msg.Err == ErrAsyncTask {
-		msg.Err = nil
 		return
 	}
 
@@ -625,6 +626,7 @@ func (c *Consumer) Purge() error {
 type ProcessMessageEvent struct {
 	Message   *Message
 	StartTime time.Time
+	Err       error
 
 	Stash map[interface{}]interface{}
 }
@@ -651,10 +653,11 @@ func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, err
 	return evt, nil
 }
 
-func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent) error {
+func (c *Consumer) afterProcessMessage(evt *ProcessMessageEvent, err error) error {
 	if evt == nil {
 		return nil
 	}
+	evt.Err = err
 	for _, hook := range c.hooks {
 		err := hook.AfterProcessMessage(evt)
 		if err != nil {
