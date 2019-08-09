@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/vmihailenco/msgpack"
+	"github.com/vmihailenco/msgpack/v4"
 )
 
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
