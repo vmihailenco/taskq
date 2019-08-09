@@ -4,8 +4,8 @@ go 1.13
 
 require (
 	github.com/aws/aws-sdk-go v1.19.21
-	github.com/go-redis/redis v0.0.0-20190719092155-6bc7daa5b1e8
-	github.com/go-redis/redis_rate v6.5.0+incompatible
+	github.com/go-redis/redis/v7 v7.0.0-beta
+	github.com/go-redis/redis_rate/v7 v7.0.1
 	github.com/hashicorp/golang-lru v0.5.3
 	github.com/iron-io/iron_go3 v0.0.0-20171208104426-f14ff828153c
 	github.com/jeffh/go.bdd v0.0.0-20120717032931-88f798ee0c74 // indirect

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/redisq"

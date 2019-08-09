@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-redis/redis_rate"
+	"github.com/go-redis/redis_rate/v7"
 	"golang.org/x/time/rate"
 )
 

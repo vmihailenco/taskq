@@ -4,10 +4,10 @@ github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
-github.com/go-redis/redis v0.0.0-20190719092155-6bc7daa5b1e8 h1:+fE3DwORl28yutMsVT36NnW52u8el5F3Ye9bgXZtokc=
-github.com/go-redis/redis v0.0.0-20190719092155-6bc7daa5b1e8/go.mod h1:nuQKdm6S7SnV28NJEN2ZNbKpddAM1O76Z2LMJcIxJVM=
-github.com/go-redis/redis_rate v6.5.0+incompatible h1:K/G+KaoJgO3kbkLLbfdg0kzJsHhhk0gVGTMgstKgbsM=
-github.com/go-redis/redis_rate v6.5.0+incompatible/go.mod h1:Jxe7BhQuVncH6fUQ2rwoAkc8SesjCGIWkm6fNRQo4Qg=
+github.com/go-redis/redis/v7 v7.0.0-beta h1:sm826nuE9AVZl06YSag54VTSpbGdIUMXCXXOHh48nFU=
+github.com/go-redis/redis/v7 v7.0.0-beta/go.mod h1:dohSoK1cSNPaisjbZhSk7RYyPhVx2k+4sAbJdPK5KPs=
+github.com/go-redis/redis_rate/v7 v7.0.1 h1:qpJUfKFkEF2zQSD1GnlC3oeZMd+E7ym55HU49BZKqbY=
+github.com/go-redis/redis_rate/v7 v7.0.1/go.mod h1:IWxoSa694TQvppZ53Y5yZtqSfHKflOx+xtSw1TsSoT4=
 github.com/golang/protobuf v1.2.0 h1:P3YflyNX/ehuJFLhxviNdFxQPkGK5cDcApsge1SqnvM=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=

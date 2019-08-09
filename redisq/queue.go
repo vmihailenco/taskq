@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 	uuid "github.com/satori/go.uuid"
 
 	"github.com/vmihailenco/taskq/v2"
