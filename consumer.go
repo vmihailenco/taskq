@@ -842,7 +842,7 @@ func (c *Consumer) idleFetcher() int32 {
 
 func (c *Consumer) idleWorker() int32 {
 	num := atomic.LoadInt32(&c.workerNumber)
-	if num <= 1 {
+	if num <= int32(c.opt.MinWorkers) {
 		return -1
 	}
 	if c.tunerStats.hasIdleWorker(num) {
@@ -1013,7 +1013,7 @@ func hasIdleUnit(idle, busy uint32, num int32) bool {
 }
 
 func (s *tunerStats) isStarving() bool {
-	if s.starving+s.loaded < 5 || float32(s.starving)/float32(s.loaded) < 2 {
+	if s.starving+s.loaded < 5 || float64(s.starving)/float64(s.loaded) < 2 {
 		return false
 	}
 	idle := s.getFetcherIdle()
@@ -1022,7 +1022,7 @@ func (s *tunerStats) isStarving() bool {
 }
 
 func (s *tunerStats) isLoaded() bool {
-	if s.starving+s.loaded < 5 || float32(s.loaded)/float32(s.starving) < 2 {
+	if s.starving+s.loaded < 5 || float64(s.loaded)/float64(s.starving) < 2 {
 		return false
 	}
 	idle := s.getWorkerIdle()

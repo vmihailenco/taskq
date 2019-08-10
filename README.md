@@ -5,6 +5,8 @@
 
 ## Installation
 
+taskq requires a Go version with [Modules](https://github.com/golang/go/wiki/Modules) support and uses import versioning. So please make sure to initialize a Go module before installing taskq:
+
 ```bash
 go get github.com/vmihailenco/taskq/v2
 ```
@@ -61,7 +63,7 @@ var MainQueue = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 Using the queue you create task with handler that does some useful work:
 
 ```go
-var CountTask = MainQueue.RegisterTask(&taskq.TaskOptions{
+var CountTask = taskq.RegisterTask(&taskq.TaskOptions{
 	Name: "counter",
 	Handler: func() error {
 		IncrLocalCounter()
@@ -73,9 +75,10 @@ var CountTask = MainQueue.RegisterTask(&taskq.TaskOptions{
 Then in API you use the task to add messages/jobs to the queues:
 
 ```go
+ctx := context.Background()
 for {
 	// call task handler without any args
-	err := api_worker.MainQueue.Add(api_worker.CountTask.WithArgs(context.Background())) 
+	err := api_worker.MainQueue.Add(api_worker.CountTask.WithArgs(ctx))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,24 +108,21 @@ t := myQueue.RegisterTask(&taskq.TaskOptions{
 // Say "Hello World".
 myQueue.Add(t.WithArgs(context.Background(), "World"))
 
-// Same using Message API.
-myQueue.Add(t.WithMessage(taskq.NewMessage("World")))
-
 // Say "Hello World" with 1 hour delay.
-msg := taskq.NewMessage("World")
+msg := t.WithArgs(ctx, "World")
 msg.Delay = time.Hour
 myQueue.Add(msg)
 
 // Say "Hello World" once.
 for i := 0; i < 100; i++ {
-    msg := taskq.NewMessage("hello")
+    msg := t.WithArgs(ctx, "hello")
     msg.Name = "hello-world" // unique
     myQueue.Add(msg)
 }
 
 // Say "Hello World" once with 1 hour delay.
 for i := 0; i < 100; i++ {
-    msg := taskq.NewMessage("hello")
+    msg := t.WithArgs(ctx, "hello")
     msg.Name = "hello-world"
     msg.Delay = time.Hour
     myQueue.Add(msg)
@@ -130,13 +130,13 @@ for i := 0; i < 100; i++ {
 
 // Say "Hello World" once in an hour.
 for i := 0; i < 100; i++ {
-    myQueue.Add(t.OnceWithArgs(time.Hour, "hello"))
+    msg := t.WithArgs(ctx, "hello").OnceInPeriod(time.Hour)
+    myQueue.Add(msg)
 }
 
 // Say "Hello World" for Europe region once in an hour.
 for i := 0; i < 100; i++ {
-    msg := taskq.NewMessage("hello")
-    msg.OnceWithArgs(time.Hour, "europe") // set delay and autogenerate message name
+    msg := t.WithArgs(ctx, "hello").OnceInPeriod(time.Hour, "world", "europe")
     myQueue.Add(msg)
 }
 ```
@@ -145,7 +145,7 @@ for i := 0; i < 100; i++ {
 If a `Message` has a `Name` then this will be used as unique identifier and messages with the same name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if not evicted from local cache after that period). Where `Name` is omitted then non deduplication occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the same arguments during `period'.
 
 ## Handlers
-A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the `TaskOptions`. 
+A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the `TaskOptions`.
 
 There are three permitted types of signature:
 
