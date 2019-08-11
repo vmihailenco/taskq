@@ -10,6 +10,7 @@ import (
 
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/internal"
+	"github.com/vmihailenco/taskq/v2/internal/msgutil"
 )
 
 type Queue struct {
@@ -173,5 +174,5 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	return q.opt.Storage.Exists("taskq:" + q.opt.Name + ":" + msg.Name)
+	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
 }

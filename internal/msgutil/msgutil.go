@@ -39,3 +39,7 @@ func UnwrapMessageHandler(fn interface{}) taskq.HandlerFunc {
 		return h(msg)
 	})
 }
+
+func FullMessageName(q taskq.Queue, msg *taskq.Message) string {
+	return "taskq:" + q.Name() + ":" + msg.TaskName + ":" + msg.Name
+}

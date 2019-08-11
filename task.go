@@ -1,13 +1,9 @@
 package taskq
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"hash/fnv"
 	"time"
-
-	"github.com/vmihailenco/msgpack/v4"
 )
 
 var unknownTaskOpt *TaskOptions
@@ -120,26 +116,4 @@ func (t *Task) WithArgs(ctx context.Context, args ...interface{}) *Message {
 	msg := NewMessage(ctx, args...)
 	msg.TaskName = t.opt.Name
 	return msg
-}
-
-func timeSlot(period time.Duration) int64 {
-	if period <= 0 {
-		return 0
-	}
-	return time.Now().UnixNano() / int64(period)
-}
-
-func hashArgs(args []interface{}) []byte {
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
-	_ = enc.EncodeMulti(args...)
-	b := buf.Bytes()
-
-	if len(b) <= 64 {
-		return b
-	}
-
-	h := fnv.New128a()
-	_, _ = h.Write(b)
-	return h.Sum(nil)
 }
