@@ -106,38 +106,41 @@ t := myQueue.RegisterTask(&taskq.TaskOptions{
 })
 
 // Say "Hello World".
-myQueue.Add(t.WithArgs(context.Background(), "World"))
+err := myQueue.Add(t.WithArgs(context.Background(), "World"))
+if err != nil {
+    panic(err)
+}
 
 // Say "Hello World" with 1 hour delay.
 msg := t.WithArgs(ctx, "World")
 msg.Delay = time.Hour
-myQueue.Add(msg)
+_ = myQueue.Add(msg)
 
 // Say "Hello World" once.
 for i := 0; i < 100; i++ {
-    msg := t.WithArgs(ctx, "hello")
+    msg := t.WithArgs(ctx, "World")
     msg.Name = "hello-world" // unique
-    myQueue.Add(msg)
+    _ = myQueue.Add(msg)
 }
 
 // Say "Hello World" once with 1 hour delay.
 for i := 0; i < 100; i++ {
-    msg := t.WithArgs(ctx, "hello")
+    msg := t.WithArgs(ctx, "World")
     msg.Name = "hello-world"
     msg.Delay = time.Hour
-    myQueue.Add(msg)
+    _ = myQueue.Add(msg)
 }
 
 // Say "Hello World" once in an hour.
 for i := 0; i < 100; i++ {
-    msg := t.WithArgs(ctx, "hello").OnceInPeriod(time.Hour)
-    myQueue.Add(msg)
+    msg := t.WithArgs(ctx, "World").OnceInPeriod(time.Hour)
+    _ = myQueue.Add(msg)
 }
 
 // Say "Hello World" for Europe region once in an hour.
 for i := 0; i < 100; i++ {
-    msg := t.WithArgs(ctx, "hello").OnceInPeriod(time.Hour, "world", "europe")
-    myQueue.Add(msg)
+    msg := t.WithArgs(ctx, "World").OnceInPeriod(time.Hour, "World", "europe")
+    _ = myQueue.Add(msg)
 }
 ```
 
