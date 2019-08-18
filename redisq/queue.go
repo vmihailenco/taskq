@@ -80,8 +80,8 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 
 		redis: red,
 
-		zset:                redisPrefix + opt.Name + ":zset",
-		stream:              redisPrefix + opt.Name + ":stream",
+		zset:                redisPrefix + "{" + opt.Name + "}:zset",
+		stream:              redisPrefix + "{" + opt.Name + "}:stream",
 		streamGroup:         "taskq",
 		streamConsumer:      consumer(),
 		schedulerLockPrefix: redisPrefix + opt.Name + ":scheduler-lock:",
@@ -299,20 +299,13 @@ func (q *Queue) scheduleDelayed() (int, error) {
 
 	pipe := q.redis.TxPipeline()
 	for _, body := range bodies {
-		err = pipe.XAdd(&redis.XAddArgs{
+		pipe.XAdd(&redis.XAddArgs{
 			Stream: q.stream,
 			Values: map[string]interface{}{
 				"body": body,
 			},
-		}).Err()
-		if err != nil {
-			return 0, err
-		}
-
-		err := pipe.ZRem(q.zset, body).Err()
-		if err != nil {
-			return 0, err
-		}
+		})
+		pipe.ZRem(q.zset, body)
 	}
 	_, err = pipe.Exec()
 	if err != nil {
