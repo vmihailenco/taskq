@@ -76,6 +76,12 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Messa
 	return m
 }
 
+// SetDelay sets message delay.
+func (m *Message) SetDelay(delay time.Duration) *Message {
+	m.Delay = delay
+	return m
+}
+
 func hashArgs(args []interface{}) []byte {
 	var buf bytes.Buffer
 	enc := msgpack.NewEncoder(&buf)
