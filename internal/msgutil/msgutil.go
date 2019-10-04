@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v2/internal"
 )
 
 func WrapMessage(msg *taskq.Message) *taskq.Message {
@@ -41,5 +42,9 @@ func UnwrapMessageHandler(fn interface{}) taskq.HandlerFunc {
 }
 
 func FullMessageName(q taskq.Queue, msg *taskq.Message) string {
-	return "taskq:" + q.Name() + ":" + msg.TaskName + ":" + msg.Name
+	b := make([]byte, 0, 32+32+10)
+	b = append(b, "tq:"...)
+	b = append(b, msg.Name...)
+	b = append(b, internal.Hash(q.Name(), msg.TaskName, msg.Name)...)
+	return string(b)
 }

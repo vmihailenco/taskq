@@ -1,11 +1,9 @@
 package taskq
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"time"
 
 	"github.com/valyala/gozstd"
@@ -71,7 +69,7 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Messa
 	if len(args) == 0 {
 		args = m.Args
 	}
-	m.Name = fmt.Sprintf("%s-%s-%d", hashArgs(args), period, timeSlot(period))
+	m.Name = uniqMessageName(period, args)
 	m.Delay = period + 5*time.Second
 	return m
 }
@@ -82,26 +80,17 @@ func (m *Message) SetDelay(delay time.Duration) *Message {
 	return m
 }
 
-func hashArgs(args []interface{}) []byte {
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
-	_ = enc.EncodeMulti(args...)
-	b := buf.Bytes()
-
-	if len(b) <= 32 {
-		return b
-	}
-
-	h := fnv.New128a()
-	_, _ = h.Write(b)
-	return h.Sum(nil)
+func uniqMessageName(period time.Duration, args []interface{}) string {
+	args = append(args, period, timeSlot(period))
+	b := internal.Hash(args...)
+	return string(b)
 }
 
 func timeSlot(period time.Duration) int64 {
 	if period <= 0 {
 		return 0
 	}
-	return time.Now().UnixNano() / int64(period)
+	return time.Now().Unix() / int64(period)
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
