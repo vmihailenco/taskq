@@ -92,7 +92,7 @@ func timeSlot(period time.Duration) int64 {
 	if period <= 0 {
 		return 0
 	}
-	return time.Now().Unix() / int64(period)
+	return time.Now().UnixNano() / int64(period)
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {

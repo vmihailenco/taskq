@@ -369,7 +369,8 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	exists := q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	return exists
 }
 
 func (q *Queue) withRedisLock(name string, fn func() error) error {
