@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v7"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/internal"
@@ -146,7 +146,8 @@ func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 	}
 
 	if msg.ID == "" {
-		msg.ID = uuid.NewV4().String()
+		u := uuid.New()
+		msg.ID = string(u[:])
 	}
 
 	body, err := msg.MarshalBinary()

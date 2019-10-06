@@ -1,8 +1,10 @@
 package msgutil
 
 import (
+	"encoding/binary"
 	"fmt"
 
+	"github.com/dgryski/go-farm"
 	"github.com/vmihailenco/taskq/v2"
 	"github.com/vmihailenco/taskq/v2/internal"
 )
@@ -42,9 +44,25 @@ func UnwrapMessageHandler(fn interface{}) taskq.HandlerFunc {
 }
 
 func FullMessageName(q taskq.Queue, msg *taskq.Message) string {
-	b := make([]byte, 0, 32+32+10)
-	b = append(b, "tq:"...)
-	b = append(b, msg.Name...)
-	b = append(b, internal.Hash(q.Name(), msg.TaskName, msg.Name)...)
-	return string(b)
+	ln := len(q.Name()) + len(msg.TaskName)
+	data := make([]byte, 0, ln+len(msg.Name))
+	data = append(data, q.Name()...)
+	data = append(data, msg.TaskName...)
+	data = append(data, msg.Name...)
+
+	b := make([]byte, 3+8+8)
+	copy(b, "tq:")
+
+	// Hash message name.
+	h := farm.Hash64(data[ln:])
+	binary.BigEndian.PutUint64(b[3:11], h)
+
+	// Hash queue name and use it as a seed.
+	seed := farm.Hash64(data[:ln])
+
+	// Hash everything using the seed.
+	h = farm.Hash64WithSeed(data, seed)
+	binary.BigEndian.PutUint64(b[11:19], h)
+
+	return internal.BytesToString(b)
 }

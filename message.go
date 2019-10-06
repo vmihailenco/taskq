@@ -69,7 +69,15 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Messa
 	if len(args) == 0 {
 		args = m.Args
 	}
-	m.Name = uniqMessageName(period, args)
+
+	args = append(args, period, timeSlot(period))
+	b, err := msgpack.Marshal(args)
+	if err != nil {
+		m.Err = err
+	} else {
+		m.Name = internal.BytesToString(b)
+	}
+
 	m.Delay = period + 5*time.Second
 	return m
 }
@@ -78,12 +86,6 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Messa
 func (m *Message) SetDelay(delay time.Duration) *Message {
 	m.Delay = delay
 	return m
-}
-
-func uniqMessageName(period time.Duration, args []interface{}) string {
-	args = append(args, period, timeSlot(period))
-	b := internal.Hash(args...)
-	return string(b)
 }
 
 func timeSlot(period time.Duration) int64 {
