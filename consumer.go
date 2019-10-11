@@ -770,11 +770,13 @@ func (c *Consumer) tune(ctx context.Context) {
 	if c.opt.WorkerLimit == 0 {
 		if c.tunerStats.isLoaded() {
 			c.tunerAddWorker(ctx)
-		} else if c.tunerStats.workersStuck() {
+			return
+		}
+		if c.tunerStats.workersStuck() {
 			internal.Logger.Printf("%s: all workers are stuck", c)
 			c.tunerAddWorker(ctx)
+			return
 		}
-		return
 	}
 
 	var actionTaken bool
