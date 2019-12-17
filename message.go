@@ -2,6 +2,7 @@ package taskq
 
 import (
 	"context"
+	"encoding"
 	"errors"
 	"fmt"
 	"time"
@@ -114,6 +115,10 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 	return b, nil
 }
 
+type messageRaw Message
+
+var _ encoding.BinaryMarshaler = (*Message)(nil)
+
 func (m *Message) MarshalBinary() ([]byte, error) {
 	if m.TaskName == "" {
 		return nil, internal.ErrTaskNameRequired
@@ -135,7 +140,7 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 		}
 	}
 
-	b, err := msgpack.Marshal(m)
+	b, err := msgpack.Marshal((*messageRaw)(m))
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +149,10 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
+var _ encoding.BinaryUnmarshaler = (*Message)(nil)
+
 func (m *Message) UnmarshalBinary(b []byte) error {
-	err := msgpack.Unmarshal(b, m)
+	err := msgpack.Unmarshal(b, (*messageRaw)(m))
 	if err != nil {
 		return err
 	}
