@@ -268,7 +268,7 @@ func (c *Consumer) addWorker(ctx context.Context, id int32) bool {
 	return false
 }
 
-func (c *Consumer) removeWorker(id int32) bool {
+func (c *Consumer) removeWorker(id int32) bool { //nolint:unused
 	return atomic.CompareAndSwapInt32(&c.numWorker, id+1, id)
 }
 
