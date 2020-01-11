@@ -41,8 +41,8 @@ type ConsumerStats struct {
 const (
 	stateInit = iota
 	stateStarted
-	stateStopping
-	stateFetchersStopped
+	stateStoppingFetchers
+	stateStoppingWorkers
 )
 
 // Consumer reserves messages from the queue, processes them,
@@ -147,21 +147,9 @@ func (c *Consumer) Add(msg *Message) error {
 
 // Start starts consuming messages in the queue.
 func (c *Consumer) Start(ctx context.Context) error {
-	c.startStopMu.Lock()
-	defer c.startStopMu.Unlock()
-
-	switch atomic.LoadInt32(&c.state) {
-	case stateInit:
-		atomic.StoreInt32(&c.state, stateStarted)
-		c.stopCh = make(chan struct{})
-	case stateStarted:
-		return fmt.Errorf("taskq: Consumer is already started")
-	case stateStopping, stateFetchersStopped:
-		return fmt.Errorf("taskq: Consumer is stopping")
+	if err := c.start(); err != nil {
+		return err
 	}
-
-	atomic.StoreInt32(&c.numFetcher, 0)
-	atomic.StoreInt32(&c.numWorker, 0)
 
 	if c.opt.MinNumWorker < c.opt.MaxNumWorker {
 		c.cfgs = newConfigRoulette(c.opt)
@@ -183,6 +171,26 @@ func (c *Consumer) Start(ctx context.Context) error {
 	return nil
 }
 
+func (c *Consumer) start() error {
+	c.startStopMu.Lock()
+	defer c.startStopMu.Unlock()
+
+	switch atomic.LoadInt32(&c.state) {
+	case stateInit:
+		atomic.StoreInt32(&c.state, stateStarted)
+		c.stopCh = make(chan struct{})
+	case stateStarted:
+		return fmt.Errorf("taskq: Consumer is already started")
+	case stateStoppingFetchers, stateStoppingWorkers:
+		return fmt.Errorf("taskq: Consumer is stopping")
+	}
+
+	atomic.StoreInt32(&c.numFetcher, 0)
+	atomic.StoreInt32(&c.numWorker, 0)
+
+	return nil
+}
+
 // Stop is StopTimeout with 30 seconds timeout.
 func (c *Consumer) Stop() error {
 	return c.StopTimeout(stopTimeout)
@@ -198,9 +206,9 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 	case stateInit:
 		return fmt.Errorf("taskq: Consumer is not started")
 	case stateStarted:
-		atomic.StoreInt32(&c.state, stateStopping)
+		atomic.StoreInt32(&c.state, stateStoppingFetchers)
 		close(c.stopCh)
-	case stateStopping, stateFetchersStopped:
+	case stateStoppingFetchers, stateStoppingWorkers:
 		return fmt.Errorf("taskq: Consumer is stopping")
 	}
 
@@ -227,7 +235,7 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 		firstErr = fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
 	}
 
-	if !atomic.CompareAndSwapInt32(&c.state, stateStopping, stateFetchersStopped) {
+	if !atomic.CompareAndSwapInt32(&c.state, stateStoppingFetchers, stateStoppingWorkers) {
 		panic("not reached")
 	}
 	if firstErr != nil {
@@ -257,6 +265,9 @@ func (c *Consumer) paused() time.Duration {
 }
 
 func (c *Consumer) addWorker(ctx context.Context, id int32) bool {
+	c.startStopMu.Lock()
+	defer c.startStopMu.Unlock()
+
 	if atomic.CompareAndSwapInt32(&c.numWorker, id, id+1) {
 		c.workersWG.Add(1)
 		go func() {
@@ -273,6 +284,9 @@ func (c *Consumer) removeWorker(id int32) bool { //nolint:unused
 }
 
 func (c *Consumer) addFetcher(id int32) bool {
+	c.startStopMu.Lock()
+	defer c.startStopMu.Unlock()
+
 	if atomic.CompareAndSwapInt32(&c.numFetcher, id, id+1) {
 		c.fetchersWG.Add(1)
 		go func() {
@@ -282,6 +296,12 @@ func (c *Consumer) addFetcher(id int32) bool {
 		return true
 	}
 	return false
+}
+
+func (c *Consumer) ensureFetcher() {
+	if atomic.LoadInt32(&c.numFetcher) == 0 {
+		c.addFetcher(0)
+	}
 }
 
 func (c *Consumer) removeFetcher(num int32) bool {
@@ -449,7 +469,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 
 		msg := c.waitMessage(timer)
 		if msg == nil {
-			if atomic.LoadInt32(&c.state) >= stateFetchersStopped {
+			if atomic.LoadInt32(&c.state) >= stateStoppingWorkers {
 				return
 			}
 			continue
@@ -469,7 +489,7 @@ func (c *Consumer) waitMessage(timer *time.Timer) *Message {
 	default:
 	}
 
-	_ = c.addFetcher(0)
+	c.ensureFetcher()
 
 	timer.Reset(workerIdleTimeout)
 	select {
