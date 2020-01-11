@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/msgutil"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v3/internal/msgutil"
 )
 
 type Queue struct {
@@ -109,7 +109,8 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return internal.ErrTaskNameRequired
 	}
 	if q.isDuplicate(msg) {
-		return taskq.ErrDuplicate
+		msg.Err = taskq.ErrDuplicate
+		return nil
 	}
 	q.wg.Add(1)
 	return q.enqueueMessage(msg)

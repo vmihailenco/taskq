@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-redis/redis/v7"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/redisq"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
 var Redis = redis.NewClient(&redis.Options{
@@ -28,6 +28,7 @@ var (
 		Name: "counter",
 		Handler: func() error {
 			IncrLocalCounter()
+			time.Sleep(time.Millisecond)
 			return nil
 		},
 	})

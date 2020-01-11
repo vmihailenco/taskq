@@ -9,8 +9,7 @@ import (
 
 	"github.com/go-redis/redis/v7"
 	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/vmihailenco/taskq/v2/internal"
-	"golang.org/x/time/rate"
+	"github.com/vmihailenco/taskq/v3/internal"
 )
 
 func init() {
@@ -69,10 +68,6 @@ func (s redisStorage) Exists(key string) bool {
 		return true
 	}
 	return !val
-}
-
-type RateLimiter interface {
-	AllowRate(name string, limit rate.Limit) (delay time.Duration, allow bool)
 }
 
 //------------------------------------------------------------------------------

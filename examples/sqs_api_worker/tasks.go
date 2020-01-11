@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/go-redis/redis/v7"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/azsqs"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/azsqs"
 )
 
 var Redis = redis.NewClient(&redis.Options{

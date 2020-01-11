@@ -7,10 +7,9 @@ import (
 	"math"
 	"time"
 
-	"golang.org/x/time/rate"
-
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/memqueue"
+	"github.com/go-redis/redis_rate/v8"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 func timeSince(start time.Time) time.Duration {
@@ -77,7 +76,7 @@ func Example_rateLimit() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name:      "test",
 		Redis:     redisRing(),
-		RateLimit: rate.Every(time.Second),
+		RateLimit: redis_rate.PerSecond(1),
 	})
 	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name:    "Example_rateLimit",
@@ -102,7 +101,7 @@ func Example_once() {
 	q := memqueue.NewQueue(&taskq.QueueOptions{
 		Name:      "test",
 		Redis:     redisRing(),
-		RateLimit: rate.Every(time.Second),
+		RateLimit: redis_rate.PerSecond(1),
 	})
 	task := taskq.RegisterTask(&taskq.TaskOptions{
 		Name: "Example_once",

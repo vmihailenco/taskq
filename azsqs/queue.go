@@ -12,11 +12,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/base"
-	"github.com/vmihailenco/taskq/v2/internal/msgutil"
-	"github.com/vmihailenco/taskq/v2/memqueue"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v3/internal/base"
+	"github.com/vmihailenco/taskq/v3/internal/msgutil"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 const msgSizeLimit = 262144
@@ -138,7 +138,8 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return internal.ErrTaskNameRequired
 	}
 	if q.isDuplicate(msg) {
-		return taskq.ErrDuplicate
+		msg.Err = taskq.ErrDuplicate
+		return nil
 	}
 	msg = msgutil.WrapMessage(msg)
 	msg.TaskName = q.addTask.Name()
@@ -399,7 +400,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 			continue
 		}
 
-		msg := findMessageById(msgs, tos(entry.Id))
+		msg := findMessageByID(msgs, tos(entry.Id))
 		if msg != nil {
 			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
@@ -483,7 +484,7 @@ func (q *Queue) deleteBatch(msgs []*taskq.Message) error {
 			continue
 		}
 
-		msg := findMessageById(msgs, tos(entry.Id))
+		msg := findMessageByID(msgs, tos(entry.Id))
 		if msg != nil {
 			msg.Err = fmt.Errorf("%s: %s", tos(entry.Code), tos(entry.Message))
 		} else {
@@ -513,7 +514,7 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
 }
 
-func findMessageById(msgs []*taskq.Message, id string) *taskq.Message {
+func findMessageByID(msgs []*taskq.Message, id string) *taskq.Message {
 	i, err := strconv.Atoi(id)
 	if err != nil {
 		return nil

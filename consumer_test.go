@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v7"
-	"golang.org/x/time/rate"
+	"github.com/go-redis/redis_rate/v8"
 
-	"github.com/vmihailenco/taskq/v2"
+	"github.com/vmihailenco/taskq/v3"
 )
 
 const waitTimeout = time.Second
@@ -49,6 +49,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	ch := make(chan time.Time)
@@ -97,6 +98,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	_ = taskq.RegisterTask(&taskq.TaskOptions{
@@ -136,6 +138,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	ch := make(chan time.Time)
@@ -186,6 +189,7 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -235,6 +239,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -284,6 +289,7 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -307,7 +313,7 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 			msg := task.WithArgs(c, "world")
 			msg.Name = "the-name"
 			err := q.Add(msg)
-			if err != nil && err != taskq.ErrDuplicate {
+			if err != nil {
 				t.Fatal(err)
 			}
 		}()
@@ -344,6 +350,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -358,7 +365,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
 				err := q.Add(task.WithArgs(c).OnceInPeriod(500 * time.Millisecond))
-				if err != nil && err != taskq.ErrDuplicate {
+				if err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -402,6 +409,7 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -436,10 +444,11 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
-	opt.RateLimit = rate.Every(time.Second)
+	opt.RateLimit = redis_rate.PerSecond(1)
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	var count int64
@@ -488,6 +497,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
@@ -528,6 +538,7 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	opt.WorkerLimit = 1
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
@@ -566,6 +577,7 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	opt.Redis = redisRing()
 
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 
 	ch := make(chan time.Time, 10)
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -615,6 +627,7 @@ func testBatchConsumer(
 
 	opt.WaitTimeout = waitTimeout
 	q := factory.RegisterQueue(opt)
+	defer q.Close()
 	purge(t, q)
 
 	task := taskq.RegisterTask(&taskq.TaskOptions{

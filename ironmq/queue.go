@@ -9,11 +9,11 @@ import (
 	"github.com/iron-io/iron_go3/api"
 	"github.com/iron-io/iron_go3/mq"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/base"
-	"github.com/vmihailenco/taskq/v2/internal/msgutil"
-	"github.com/vmihailenco/taskq/v2/memqueue"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v3/internal/base"
+	"github.com/vmihailenco/taskq/v3/internal/msgutil"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 type Queue struct {
@@ -123,7 +123,8 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return internal.ErrTaskNameRequired
 	}
 	if q.isDuplicate(msg) {
-		return taskq.ErrDuplicate
+		msg.Err = taskq.ErrDuplicate
+		return nil
 	}
 	msg = msgutil.WrapMessage(msg)
 	msg.TaskName = q.addTask.Name()

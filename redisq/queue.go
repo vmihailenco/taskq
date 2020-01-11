@@ -13,10 +13,10 @@ import (
 	"github.com/go-redis/redis/v7"
 	"github.com/google/uuid"
 
-	"github.com/vmihailenco/taskq/v2"
-	"github.com/vmihailenco/taskq/v2/internal"
-	"github.com/vmihailenco/taskq/v2/internal/msgutil"
-	"github.com/vmihailenco/taskq/v2/internal/redislock"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v3/internal/msgutil"
+	"github.com/vmihailenco/taskq/v3/internal/redislock"
 )
 
 const batchSize = 100
@@ -104,7 +104,8 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 
 func consumer() string {
 	s, _ := os.Hostname()
-	s += "-pid" + strconv.Itoa(os.Getpid())
+	s += ":pid:" + strconv.Itoa(os.Getpid())
+	s += ":" + strconv.Itoa(rand.Int())
 	return s
 }
 
@@ -142,7 +143,8 @@ func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 		return internal.ErrTaskNameRequired
 	}
 	if q.isDuplicate(msg) {
-		return taskq.ErrDuplicate
+		msg.Err = taskq.ErrDuplicate
+		return nil
 	}
 
 	if msg.ID == "" {
@@ -210,7 +212,8 @@ func (q *Queue) createStreamGroup() {
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
-	// Make the delete and re-queue operation atomic in case we crash midway and lose a message
+	// Make the delete and re-queue operation atomic in case we crash midway
+	// and lose a message.
 	pipe := q.redis.TxPipeline()
 	err := pipe.XDel(q.stream, msg.ID).Err()
 	if err != nil {
@@ -222,6 +225,7 @@ func (q *Queue) Release(msg *taskq.Message) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = pipe.Exec()
 	return err
 }
@@ -245,7 +249,9 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	atomic.StoreUint32(&q._closed, 1)
+	if !atomic.CompareAndSwapUint32(&q._closed, 0, 1) {
+		return nil
+	}
 
 	if q.consumer != nil {
 		_ = q.consumer.StopTimeout(timeout)
@@ -379,13 +385,13 @@ func (q *Queue) withRedisLock(name string, fn func() error) error {
 		return err
 	}
 
-	err = fn()
+	defer func() {
+		if err := lock.Release(); err != nil {
+			internal.Logger.Printf("redislock.Release failed: %s", err)
+		}
+	}()
 
-	if err := lock.Release(); err != nil {
-		internal.Logger.Printf("redislock.Release failed: %s", err)
-	}
-
-	return err
+	return fn()
 }
 
 func unixMs(tm time.Time) int64 {

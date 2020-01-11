@@ -5,8 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-redis/redis_rate/v7"
-	"golang.org/x/time/rate"
+	"github.com/go-redis/redis_rate/v8"
 )
 
 type QueueOptions struct {
@@ -15,16 +14,16 @@ type QueueOptions struct {
 
 	// Minimum number of goroutines processing messages.
 	// Default is 1.
-	MinWorkers int
+	MinNumWorker int32
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
-	MaxWorkers int
+	MaxNumWorker int32
 	// Global limit of concurrently running workers across all servers.
-	// Overrides MaxWorkers.
-	WorkerLimit int
+	// Overrides MaxNumWorker.
+	WorkerLimit int32
 	// Maximum number of goroutines fetching messages.
 	// Default is 16 * number of CPUs.
-	MaxFetchers int
+	MaxNumFetcher int32
 
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
@@ -45,10 +44,10 @@ type QueueOptions struct {
 	PauseErrorsThreshold int
 
 	// Processing rate limit.
-	RateLimit rate.Limit
+	RateLimit *redis_rate.Limit
 
 	// Optional rate limiter interface. The default is to use Redis.
-	RateLimiter RateLimiter
+	RateLimiter *redis_rate.Limiter
 
 	// Redis client that is used for storing metadata.
 	Redis Redis
@@ -72,16 +71,17 @@ func (opt *QueueOptions) Init() {
 		panic("QueueOptions.Name is required")
 	}
 	if opt.WorkerLimit > 0 {
-		opt.MaxWorkers = opt.WorkerLimit
+		opt.MinNumWorker = opt.WorkerLimit
+		opt.MaxNumWorker = opt.WorkerLimit
 	}
-	if opt.MinWorkers == 0 {
-		opt.MinWorkers = 1
+	if opt.MinNumWorker == 0 {
+		opt.MinNumWorker = 1
 	}
-	if opt.MaxWorkers == 0 {
-		opt.MaxWorkers = 32 * runtime.NumCPU()
+	if opt.MaxNumWorker == 0 {
+		opt.MaxNumWorker = 32 * int32(runtime.NumCPU())
 	}
-	if opt.MaxFetchers == 0 {
-		opt.MaxFetchers = 8 * runtime.NumCPU()
+	if opt.MaxNumFetcher == 0 {
+		opt.MaxNumFetcher = 8 * int32(runtime.NumCPU())
 	}
 
 	switch opt.PauseErrorsThreshold {
@@ -108,9 +108,8 @@ func (opt *QueueOptions) Init() {
 		opt.Storage = newRedisStorage(opt.Redis)
 	}
 
-	if opt.RateLimit != 0 && opt.RateLimiter == nil && opt.Redis != nil {
+	if opt.RateLimit != nil && opt.RateLimiter == nil && opt.Redis != nil {
 		limiter := redis_rate.NewLimiter(opt.Redis)
-		limiter.Fallback = rate.NewLimiter(opt.RateLimit, 1)
 		opt.RateLimiter = limiter
 	}
 

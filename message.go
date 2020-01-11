@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/gozstd"
 	"github.com/vmihailenco/msgpack/v4"
 
-	"github.com/vmihailenco/taskq/v2/internal"
+	"github.com/vmihailenco/taskq/v3/internal"
 )
 
 // ErrDuplicate is returned when adding duplicate message to the queue.
@@ -21,7 +21,7 @@ type Message struct {
 	Ctx context.Context `msgpack:"-"`
 
 	// SQS/IronMQ message id.
-	ID string `msgpack:",omitempty"`
+	ID string `msgpack:"1,omitempty,alias:ID"`
 
 	// Optional name for the message. Messages with the same name
 	// are processed only once.
@@ -35,17 +35,17 @@ type Message struct {
 	Args []interface{} `msgpack:"-"`
 
 	// Binary representation of the args.
-	ArgsCompression string `msgpack:",omitempty"`
-	ArgsBin         []byte
+	ArgsCompression string `msgpack:"2,omitempty,alias:ArgsCompression"`
+	ArgsBin         []byte `msgpack:"3,alias:ArgsBin"`
 
 	// SQS/IronMQ reservation id that is used to release/delete the message.
 	ReservationID string `msgpack:"-"`
 
 	// The number of times the message has been reserved or released.
-	ReservedCount int `msgpack:",omitempty"`
+	ReservedCount int `msgpack:"4,omitempty,alias:ReservedCount"`
 
-	TaskName string
-	Err      error `msgpack:"-"`
+	TaskName string `msgpack:"5,alias:TaskName"`
+	Err      error  `msgpack:"-"`
 
 	evt                *ProcessMessageEvent
 	marshalBinaryCache []byte
@@ -59,8 +59,14 @@ func NewMessage(ctx context.Context, args ...interface{}) *Message {
 }
 
 func (m *Message) String() string {
-	return fmt.Sprintf("Message<Id=%q Name=%q ReservedCount=%d>",
+	return fmt.Sprintf("Message<ID=%q Name=%q ReservedCount=%d>",
 		m.ID, m.Name, m.ReservedCount)
+}
+
+// WithDelay sets the message delay.
+func (m *Message) WithDelay(delay time.Duration) *Message {
+	m.Delay = delay
+	return m
 }
 
 // OnceInPeriod uses the period and the args to generate such a message name
@@ -70,30 +76,31 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Messa
 	if len(args) == 0 {
 		args = m.Args
 	}
-
 	args = append(args, period, timeSlot(period))
+	m.setNameFromArgs(args)
+
+	return m.WithDelay(period)
+}
+
+func (m *Message) OnceWithDelay(delay time.Duration) *Message {
+	m.setNameFromArgs(m.Args)
+	return m.WithDelay(delay)
+}
+
+func (m *Message) OnceWithSchedule(tm time.Time) *Message {
+	if delay := time.Until(tm); delay > 0 {
+		return m.OnceWithDelay(delay)
+	}
+	return m.OnceInPeriod(0)
+}
+
+func (m *Message) setNameFromArgs(args []interface{}) {
 	b, err := msgpack.Marshal(args)
 	if err != nil {
 		m.Err = err
 	} else {
 		m.Name = internal.BytesToString(b)
 	}
-
-	m.Delay = period + 5*time.Second
-	return m
-}
-
-// SetDelay sets message delay.
-func (m *Message) SetDelay(delay time.Duration) *Message {
-	m.Delay = delay
-	return m
-}
-
-func timeSlot(period time.Duration) int64 {
-	if period <= 0 {
-		return 0
-	}
-	return time.Now().UnixNano() / int64(period)
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
@@ -171,4 +178,11 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	}
 
 	return nil
+}
+
+func timeSlot(period time.Duration) int64 {
+	if period <= 0 {
+		return 0
+	}
+	return time.Now().UnixNano() / int64(period)
 }
