@@ -2,12 +2,12 @@ package taskq
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
 	"runtime"
 	"time"
 
 	"github.com/capnm/sysinfo"
+	"github.com/vmihailenco/taskq/v3/internal"
 )
 
 const numSelectedThreshold = 20
@@ -218,8 +218,10 @@ func (r *configRoulette) checkScores(queueEmpty bool) {
 		return
 	}
 
-	for _, cfg := range r.cfgs {
-		log.Println("taskq: " + cfg.String())
+	if false {
+		for _, cfg := range r.cfgs {
+			internal.Logger.Println("taskq: " + cfg.String())
+		}
 	}
 	r.resetConfigs(r.bestCfg, queueEmpty)
 }
@@ -246,7 +248,7 @@ func (r *configRoulette) genConfigs(bestCfg *consumerConfig, queueEmpty bool) {
 	r.addConfig(r.oldBestCfg)
 
 	if !hasFreeSystemResources() {
-		log.Println("taskq: system does not have enough free resources")
+		internal.Logger.Println("taskq: system does not have enough free resources")
 		return
 	}
 
@@ -322,7 +324,6 @@ func hasFreeSystemResources() bool {
 
 	// at least 200MB of RAM is free
 	if free < 2e5 {
-		log.Println()
 		return false
 	}
 

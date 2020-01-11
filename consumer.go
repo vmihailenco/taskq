@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -386,7 +385,6 @@ func (c *Consumer) fetcher(fetcherID int32) {
 			continue
 		}
 		if timeout {
-			log.Println("remove")
 			c.removeFetcher(fetcherID)
 		}
 	}
@@ -554,7 +552,7 @@ func (c *Consumer) updateTiming(taskName string, x time.Duration) {
 func (c *Consumer) timing() time.Duration {
 	var mean int64
 	c.timings.Range(func(_, value interface{}) bool {
-		x := *value.(*int64)
+		x := atomic.LoadInt64(value.(*int64))
 		if mean != 0 {
 			mean = (mean + x) / 2
 		} else {
@@ -822,7 +820,7 @@ func (c *Consumer) replaceConfig(ctx context.Context, cfg *consumerConfig) {
 		} else {
 			for id := numFetcher; id < cfg.NumFetcher; id++ {
 				if !c.addFetcher(id) {
-					log.Printf("taskq: addFetcher id=%d failed", id)
+					internal.Logger.Printf("taskq: addFetcher id=%d failed", id)
 				}
 			}
 		}
@@ -835,7 +833,7 @@ func (c *Consumer) replaceConfig(ctx context.Context, cfg *consumerConfig) {
 	} else {
 		for id := numWorker; id < cfg.NumWorker; id++ {
 			if !c.addWorker(ctx, id) {
-				log.Printf("taskq: addWorker id=%d failed", id)
+				internal.Logger.Printf("taskq: addWorker id=%d failed", id)
 			}
 		}
 	}
