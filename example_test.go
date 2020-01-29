@@ -112,8 +112,11 @@ func Example_once() {
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
+		msg := task.WithArgs(ctx, "world")
 		// Call once in a second.
-		_ = q.Add(task.WithArgs(ctx, "world").OnceInPeriod(time.Second))
+		msg.OnceInPeriod(time.Second)
+
+		_ = q.Add(msg)
 	}
 
 	// Wait for all messages to be processed.

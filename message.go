@@ -63,35 +63,34 @@ func (m *Message) String() string {
 		m.ID, m.Name, m.ReservedCount)
 }
 
-// WithDelay sets the message delay.
-func (m *Message) WithDelay(delay time.Duration) *Message {
+// SetDelay sets the message delay.
+func (m *Message) SetDelay(delay time.Duration) {
 	m.Delay = delay
-	return m
 }
 
 // OnceInPeriod uses the period and the args to generate such a message name
 // that message with such args is added to the queue once in a given period.
 // If args are not provided then message args are used instead.
-func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) *Message {
+func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) {
 	if len(args) == 0 {
 		args = m.Args
 	}
 	args = append(args, period, timeSlot(period))
 	m.setNameFromArgs(args)
-
-	return m.WithDelay(period)
+	m.SetDelay(period)
 }
 
-func (m *Message) OnceWithDelay(delay time.Duration) *Message {
+func (m *Message) OnceWithDelay(delay time.Duration) {
 	m.setNameFromArgs(m.Args)
-	return m.WithDelay(delay)
+	m.SetDelay(delay)
 }
 
-func (m *Message) OnceWithSchedule(tm time.Time) *Message {
+func (m *Message) OnceWithSchedule(tm time.Time) {
 	if delay := time.Until(tm); delay > 0 {
-		return m.OnceWithDelay(delay)
+		m.OnceWithDelay(delay)
+	} else {
+		m.OnceInPeriod(0)
 	}
-	return m.OnceInPeriod(0)
 }
 
 func (m *Message) setNameFromArgs(args []interface{}) {
