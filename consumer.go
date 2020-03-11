@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis_rate/v8"
+	"github.com/go-redis/redis_rate/v9"
 
 	"github.com/vmihailenco/taskq/v3/internal"
 	"github.com/vmihailenco/taskq/v3/internal/redislock"
@@ -140,7 +140,7 @@ func (c *Consumer) Stats() *ConsumerStats {
 }
 
 func (c *Consumer) Add(msg *Message) error {
-	_ = c.limiter.Reserve(1)
+	_ = c.limiter.Reserve(msg.Ctx, 1)
 	c.buffer <- msg
 	return nil
 }
@@ -283,7 +283,7 @@ func (c *Consumer) removeWorker(id int32) bool { //nolint:unused
 	return atomic.CompareAndSwapInt32(&c.numWorker, id+1, id)
 }
 
-func (c *Consumer) addFetcher(id int32) bool {
+func (c *Consumer) addFetcher(ctx context.Context, id int32) bool {
 	c.startStopMu.Lock()
 	defer c.startStopMu.Unlock()
 
@@ -291,16 +291,16 @@ func (c *Consumer) addFetcher(id int32) bool {
 		c.fetchersWG.Add(1)
 		go func() {
 			defer c.fetchersWG.Done()
-			c.fetcher(id)
+			c.fetcher(ctx, id)
 		}()
 		return true
 	}
 	return false
 }
 
-func (c *Consumer) ensureFetcher() {
+func (c *Consumer) ensureFetcher(ctx context.Context) {
 	if atomic.LoadInt32(&c.numFetcher) == 0 {
-		c.addFetcher(0)
+		c.addFetcher(ctx, 0)
 	}
 }
 
@@ -339,7 +339,7 @@ func (c *Consumer) ProcessAll(ctx context.Context) error {
 
 // ProcessOne processes at most one message in the queue.
 func (c *Consumer) ProcessOne(ctx context.Context) error {
-	msg, err := c.reserveOne()
+	msg, err := c.reserveOne(ctx)
 	if err != nil {
 		return err
 	}
@@ -349,14 +349,14 @@ func (c *Consumer) ProcessOne(ctx context.Context) error {
 	return c.Process(msg)
 }
 
-func (c *Consumer) reserveOne() (*Message, error) {
+func (c *Consumer) reserveOne(ctx context.Context) (*Message, error) {
 	select {
 	case msg := <-c.buffer:
 		return msg, nil
 	default:
 	}
 
-	msgs, err := c.q.ReserveN(1, c.opt.WaitTimeout)
+	msgs, err := c.q.ReserveN(ctx, 1, c.opt.WaitTimeout)
 	if err != nil && err != internal.ErrNotSupported {
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func (c *Consumer) reserveOne() (*Message, error) {
 	return &msgs[0], nil
 }
 
-func (c *Consumer) fetcher(fetcherID int32) {
+func (c *Consumer) fetcher(ctx context.Context, fetcherID int32) {
 	timer := time.NewTimer(time.Minute)
 	timer.Stop()
 
@@ -390,7 +390,7 @@ func (c *Consumer) fetcher(fetcherID int32) {
 			continue
 		}
 
-		timeout, err := c.fetchMessages(timer, fetchTimeout)
+		timeout, err := c.fetchMessages(ctx, timer, fetchTimeout)
 		if err != nil {
 			if err == internal.ErrNotSupported {
 				atomic.StoreInt32(&c.numFetcher, -1)
@@ -411,11 +411,11 @@ func (c *Consumer) fetcher(fetcherID int32) {
 }
 
 func (c *Consumer) fetchMessages(
-	timer *time.Timer, timeout time.Duration,
+	ctx context.Context, timer *time.Timer, timeout time.Duration,
 ) (bool, error) {
-	size := c.limiter.Reserve(c.opt.ReservationSize)
+	size := c.limiter.Reserve(ctx, c.opt.ReservationSize)
 
-	msgs, err := c.q.ReserveN(size, c.opt.WaitTimeout)
+	msgs, err := c.q.ReserveN(ctx, size, c.opt.WaitTimeout)
 	if err != nil {
 		return false, err
 	}
@@ -452,7 +452,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 	var lock *redislock.Lock
 	defer func() {
 		if lock != nil {
-			_ = lock.Release()
+			_ = lock.Release(ctx)
 		}
 	}()
 
@@ -464,10 +464,10 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 			return
 		}
 		if c.opt.WorkerLimit > 0 {
-			lock = c.lockWorker(lock, workerID)
+			lock = c.lockWorker(ctx, lock, workerID)
 		}
 
-		msg := c.waitMessage(timer)
+		msg := c.waitMessage(ctx, timer)
 		if msg == nil {
 			if atomic.LoadInt32(&c.state) >= stateStoppingWorkers {
 				return
@@ -480,7 +480,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 	}
 }
 
-func (c *Consumer) waitMessage(timer *time.Timer) *Message {
+func (c *Consumer) waitMessage(ctx context.Context, timer *time.Timer) *Message {
 	const workerIdleTimeout = time.Second
 
 	select {
@@ -489,7 +489,7 @@ func (c *Consumer) waitMessage(timer *time.Timer) *Message {
 	default:
 	}
 
-	c.ensureFetcher()
+	c.ensureFetcher(ctx)
 
 	timer.Reset(workerIdleTimeout)
 	select {
@@ -698,7 +698,11 @@ func (c *Consumer) resetPause() {
 	atomic.StoreUint32(&c.consecutiveNumErr, 0)
 }
 
-func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.Lock {
+func (c *Consumer) lockWorker(
+	ctx context.Context,
+	lock *redislock.Lock,
+	workerID int32,
+) *redislock.Lock {
 	lockTimeout := c.opt.ReservationTimeout + 10*time.Second
 
 	timer := time.NewTimer(time.Minute)
@@ -708,9 +712,9 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 		var err error
 		if lock == nil {
 			key := fmt.Sprintf("%s:worker:lock:%d", c.q.Name(), workerID)
-			lock, err = redislock.Obtain(c.opt.Redis, key, lockTimeout, nil)
+			lock, err = redislock.Obtain(ctx, c.opt.Redis, key, lockTimeout, nil)
 		} else {
-			err = lock.Refresh(lockTimeout, nil)
+			err = lock.Refresh(ctx, lockTimeout, nil)
 		}
 		if err == nil {
 			return lock
@@ -720,7 +724,7 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 			internal.Logger.Printf("redislock.Lock failed: %s", err)
 		}
 		if lock != nil {
-			_ = lock.Release()
+			_ = lock.Release(ctx)
 			lock = nil
 		}
 
@@ -729,7 +733,7 @@ func (c *Consumer) lockWorker(lock *redislock.Lock, workerID int32) *redislock.L
 		case <-timer.C:
 		case <-c.stopCh:
 			if lock != nil {
-				_ = lock.Release()
+				_ = lock.Release(ctx)
 			}
 			return nil
 		}
@@ -839,7 +843,7 @@ func (c *Consumer) replaceConfig(ctx context.Context, cfg *consumerConfig) {
 			atomic.StoreInt32(&c.numFetcher, cfg.NumFetcher)
 		} else {
 			for id := numFetcher; id < cfg.NumFetcher; id++ {
-				if !c.addFetcher(id) {
+				if !c.addFetcher(ctx, id) {
 					internal.Logger.Printf("taskq: addFetcher id=%d failed", id)
 				}
 			}
@@ -874,7 +878,7 @@ type limiter struct {
 	cancelled    uint32 // atomic
 }
 
-func (l *limiter) Reserve(max int) int {
+func (l *limiter) Reserve(ctx context.Context, max int) int {
 	if l.limiter == nil || l.limit == nil {
 		return max
 	}
@@ -899,7 +903,7 @@ func (l *limiter) Reserve(max int) int {
 
 	var size int
 	for {
-		res, err := l.limiter.Allow(l.bucket, l.limit)
+		res, err := l.limiter.Allow(ctx, l.bucket, l.limit)
 		if err != nil {
 			//TODO: ??
 			time.Sleep(100 * time.Millisecond)

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v7"
-	"github.com/go-redis/redis_rate/v8"
+	"github.com/go-redis/redis/v8"
+	"github.com/go-redis/redis_rate/v9"
 
 	"github.com/vmihailenco/taskq/v3"
 )
@@ -39,7 +39,7 @@ func redisRing() *redis.Ring {
 			Addrs: map[string]string{"0": ":6379"},
 		})
 	})
-	_ = ring.FlushDB().Err()
+	_ = ring.FlushDB(context.TODO()).Err()
 	return ring
 }
 

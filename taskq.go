@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v7"
+	"github.com/go-redis/redis/v8"
 	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/vmihailenco/taskq/v3/internal"
 )
@@ -31,19 +31,19 @@ type Factory interface {
 }
 
 type Redis interface {
-	Del(keys ...string) *redis.IntCmd
-	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
-	Pipelined(func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
+	Del(ctx context.Context, keys ...string) *redis.IntCmd
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
+	Pipelined(ctx context.Context, fn func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 
 	// Required by redislock
-	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
-	EvalSha(sha1 string, keys []string, args ...interface{}) *redis.Cmd
-	ScriptExists(scripts ...string) *redis.BoolSliceCmd
-	ScriptLoad(script string) *redis.StringCmd
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+	EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
+	ScriptExists(ctx context.Context, scripts ...string) *redis.BoolSliceCmd
+	ScriptLoad(ctx context.Context, script string) *redis.StringCmd
 }
 
 type Storage interface {
-	Exists(key string) bool
+	Exists(ctx context.Context, key string) bool
 }
 
 type redisStorage struct {
@@ -58,12 +58,12 @@ func newRedisStorage(redis Redis) redisStorage {
 	}
 }
 
-func (s redisStorage) Exists(key string) bool {
+func (s redisStorage) Exists(ctx context.Context, key string) bool {
 	if localCacheExists(key) {
 		return true
 	}
 
-	val, err := s.redis.SetNX(key, "", 24*time.Hour).Result()
+	val, err := s.redis.SetNX(ctx, key, "", 24*time.Hour).Result()
 	if err != nil {
 		return true
 	}

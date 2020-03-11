@@ -1,6 +1,7 @@
 package azsqs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -193,7 +194,9 @@ func (q *Queue) getQueueURL() (string, error) {
 	return *out.QueueUrl, nil
 }
 
-func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(
+	ctx context.Context, n int, waitTimeout time.Duration,
+) ([]taskq.Message, error) {
 	if n > 10 {
 		n = 10
 	}
@@ -511,7 +514,7 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	return q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 }
 
 func findMessageByID(msgs []*taskq.Message, id string) *taskq.Message {

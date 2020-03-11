@@ -136,7 +136,9 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	return q.consumer.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(
+	ctx context.Context, n int, waitTimeout time.Duration,
+) ([]taskq.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 
@@ -175,5 +177,5 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	return q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 }

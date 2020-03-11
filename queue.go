@@ -1,11 +1,12 @@
 package taskq
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"time"
 
-	"github.com/go-redis/redis_rate/v8"
+	"github.com/go-redis/redis_rate/v9"
 )
 
 type QueueOptions struct {
@@ -128,7 +129,7 @@ type Queue interface {
 
 	Len() (int, error)
 	Add(msg *Message) error
-	ReserveN(n int, waitTimeout time.Duration) ([]Message, error)
+	ReserveN(ctx context.Context, n int, waitTimeout time.Duration) ([]Message, error)
 	Release(msg *Message) error
 	Delete(msg *Message) error
 	Purge() error

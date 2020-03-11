@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v7"
+	"github.com/go-redis/redis/v8"
 )
 
 var (
@@ -29,11 +29,11 @@ var (
 
 // RedisClient is a minimal client interface.
 type RedisClient interface {
-	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
-	Eval(script string, keys []string, args ...interface{}) *redis.Cmd
-	EvalSha(sha1 string, keys []string, args ...interface{}) *redis.Cmd
-	ScriptExists(scripts ...string) *redis.BoolSliceCmd
-	ScriptLoad(script string) *redis.StringCmd
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+	EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
+	ScriptExists(ctx context.Context, scripts ...string) *redis.BoolSliceCmd
+	ScriptLoad(ctx context.Context, script string) *redis.StringCmd
 }
 
 // Client wraps a redis client.
@@ -48,9 +48,14 @@ func New(client RedisClient) *Client {
 	return &Client{client: client}
 }
 
-// Obtain tries to otain a new lock using a key with the given TTL.
+// Obtain tries to obtain a new lock using a key with the given TTL.
 // May return ErrNotObtained if not successful.
-func (c *Client) Obtain(key string, ttl time.Duration, opt *Options) (*Lock, error) {
+func (c *Client) Obtain(
+	ctx context.Context,
+	key string,
+	ttl time.Duration,
+	opt *Options,
+) (*Lock, error) {
 	// Create a random token
 	token, err := c.randomToken()
 	if err != nil {
@@ -58,39 +63,42 @@ func (c *Client) Obtain(key string, ttl time.Duration, opt *Options) (*Lock, err
 	}
 
 	value := token + opt.getMetadata()
-	ctx := opt.getContext()
+	retry := opt.getRetryStrategy()
 
-	var backoff *time.Timer
-	for i, attempts := 0, opt.getRetryCount()+1; i < attempts; i++ {
-		ok, err := c.obtain(key, value, ttl)
+	var timer *time.Timer
+	for deadline := time.Now().Add(ttl); time.Now().Before(deadline); {
+
+		ok, err := c.obtain(ctx, key, value, ttl)
 		if err != nil {
 			return nil, err
 		} else if ok {
 			return &Lock{client: c, key: key, value: value}, nil
 		}
 
-		if backoff == nil {
-			backoff = time.NewTimer(opt.getRetryBackoff())
-			defer backoff.Stop()
+		backoff := retry.NextBackoff()
+		if backoff < 1 {
+			break
+		}
+
+		if timer == nil {
+			timer = time.NewTimer(backoff)
+			defer timer.Stop()
 		} else {
-			backoff.Reset(opt.getRetryBackoff())
+			timer.Reset(backoff)
 		}
 
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-backoff.C:
+		case <-timer.C:
 		}
 	}
+
 	return nil, ErrNotObtained
 }
 
-func (c *Client) obtain(key, value string, ttl time.Duration) (bool, error) {
-	ok, err := c.client.SetNX(key, value, ttl).Result()
-	if err == redis.Nil {
-		err = nil
-	}
-	return ok, err
+func (c *Client) obtain(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	return c.client.SetNX(ctx, key, value, ttl).Result()
 }
 
 func (c *Client) randomToken() (string, error) {
@@ -109,7 +117,7 @@ func (c *Client) randomToken() (string, error) {
 
 // --------------------------------------------------------------------
 
-// Lock represents an ontained, distributed lock.
+// Lock represents an obtained, distributed lock.
 type Lock struct {
 	client *Client
 	key    string
@@ -117,8 +125,14 @@ type Lock struct {
 }
 
 // Obtain is a short-cut for New(...).Obtain(...).
-func Obtain(client RedisClient, key string, ttl time.Duration, opt *Options) (*Lock, error) {
-	return New(client).Obtain(key, ttl, opt)
+func Obtain(
+	ctx context.Context,
+	client RedisClient,
+	key string,
+	ttl time.Duration,
+	opt *Options,
+) (*Lock, error) {
+	return New(client).Obtain(ctx, key, ttl, opt)
 }
 
 // Key returns the redis key used by the lock.
@@ -137,8 +151,8 @@ func (l *Lock) Metadata() string {
 }
 
 // TTL returns the remaining time-to-live. Returns 0 if the lock has expired.
-func (l *Lock) TTL() (time.Duration, error) {
-	res, err := luaPTTL.Run(l.client.client, []string{l.key}, l.value).Result()
+func (l *Lock) TTL(ctx context.Context) (time.Duration, error) {
+	res, err := luaPTTL.Run(ctx, l.client.client, []string{l.key}, l.value).Result()
 	if err == redis.Nil {
 		return 0, nil
 	} else if err != nil {
@@ -153,9 +167,9 @@ func (l *Lock) TTL() (time.Duration, error) {
 
 // Refresh extends the lock with a new TTL.
 // May return ErrNotObtained if refresh is unsuccessful.
-func (l *Lock) Refresh(ttl time.Duration, opt *Options) error {
+func (l *Lock) Refresh(ctx context.Context, ttl time.Duration, opt *Options) error {
 	ttlVal := strconv.FormatInt(int64(ttl/time.Millisecond), 10)
-	status, err := luaRefresh.Run(l.client.client, []string{l.key}, l.value, ttlVal).Result()
+	status, err := luaRefresh.Run(ctx, l.client.client, []string{l.key}, l.value, ttlVal).Result()
 	if err != nil {
 		return err
 	} else if status == int64(1) {
@@ -166,8 +180,8 @@ func (l *Lock) Refresh(ttl time.Duration, opt *Options) error {
 
 // Release manually releases the lock.
 // May return ErrLockNotHeld.
-func (l *Lock) Release() error {
-	res, err := luaRelease.Run(l.client.client, []string{l.key}, l.value).Result()
+func (l *Lock) Release(ctx context.Context) error {
+	res, err := luaRelease.Run(ctx, l.client.client, []string{l.key}, l.value).Result()
 	if err == redis.Nil {
 		return ErrLockNotHeld
 	} else if err != nil {
@@ -184,33 +198,12 @@ func (l *Lock) Release() error {
 
 // Options describe the options for the lock
 type Options struct {
-	// The number of time the acquisition of a lock will be retried.
-	// Default: 0 = do not retry
-	RetryCount int
-
-	// RetryBackoff is the amount of time to wait between retries.
-	// Default: 100ms
-	RetryBackoff time.Duration
+	// RetryStrategy allows to customise the lock retry strategy.
+	// Default: do not retry
+	RetryStrategy RetryStrategy
 
 	// Metadata string is appended to the lock token.
 	Metadata string
-
-	// Optional context for Obtain timeout and cancellation control.
-	Context context.Context
-}
-
-func (o *Options) getRetryCount() int {
-	if o != nil && o.RetryCount > 0 {
-		return o.RetryCount
-	}
-	return 0
-}
-
-func (o *Options) getRetryBackoff() time.Duration {
-	if o != nil && o.RetryBackoff > 0 {
-		return o.RetryBackoff
-	}
-	return 100 * time.Millisecond
 }
 
 func (o *Options) getMetadata() string {
@@ -220,9 +213,81 @@ func (o *Options) getMetadata() string {
 	return ""
 }
 
-func (o *Options) getContext() context.Context {
-	if o != nil && o.Context != nil {
-		return o.Context
+func (o *Options) getRetryStrategy() RetryStrategy {
+	if o != nil && o.RetryStrategy != nil {
+		return o.RetryStrategy
 	}
-	return context.Background()
+	return NoRetry()
+}
+
+// --------------------------------------------------------------------
+
+// RetryStrategy allows to customise the lock retry strategy.
+type RetryStrategy interface {
+	// NextBackoff returns the next backoff duration.
+	NextBackoff() time.Duration
+}
+
+type linearBackoff time.Duration
+
+// LinearBackoff allows retries regularly with customized intervals
+func LinearBackoff(backoff time.Duration) RetryStrategy {
+	return linearBackoff(backoff)
+}
+
+// NoRetry acquire the lock only once.
+func NoRetry() RetryStrategy {
+	return linearBackoff(0)
+}
+
+func (r linearBackoff) NextBackoff() time.Duration {
+	return time.Duration(r)
+}
+
+type limitedRetry struct {
+	s RetryStrategy
+
+	cnt, max int
+}
+
+// LimitRetry limits the number of retries to max attempts.
+func LimitRetry(s RetryStrategy, max int) RetryStrategy {
+	return &limitedRetry{s: s, max: max}
+}
+
+func (r *limitedRetry) NextBackoff() time.Duration {
+	if r.cnt >= r.max {
+		return 0
+	}
+	r.cnt++
+	return r.s.NextBackoff()
+}
+
+type exponentialBackoff struct {
+	cnt uint
+
+	min, max time.Duration
+}
+
+// ExponentialBackoff strategy is an optimization strategy with a retry time of 2**n milliseconds (n means number of times).
+// You can set a minimum and maximum value, the recommended minimum value is not less than 16ms.
+func ExponentialBackoff(min, max time.Duration) RetryStrategy {
+	return &exponentialBackoff{min: min, max: max}
+}
+
+func (r *exponentialBackoff) NextBackoff() time.Duration {
+	r.cnt++
+
+	ms := 2 << 25
+	if r.cnt < 25 {
+		ms = 2 << r.cnt
+	}
+
+	if d := time.Duration(ms) * time.Millisecond; d < r.min {
+		return r.min
+	} else if r.max != 0 && d > r.max {
+		return r.max
+	} else {
+		return d
+	}
 }

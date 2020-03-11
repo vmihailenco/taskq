@@ -1,6 +1,7 @@
 package ironmq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -131,7 +132,9 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	return q.addQueue.Add(msg)
 }
 
-func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(
+	ctx context.Context, n int, waitTimeout time.Duration,
+) ([]taskq.Message, error) {
 	if n > 100 {
 		n = 100
 	}
@@ -285,7 +288,7 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	return q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	return q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 }
 
 func retry(fn func() error) error {

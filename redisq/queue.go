@@ -1,6 +1,7 @@
 package redisq
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v7"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 
 	"github.com/vmihailenco/taskq/v3"
@@ -22,23 +23,23 @@ import (
 const batchSize = 100
 
 type redisStreamClient interface {
-	Del(keys ...string) *redis.IntCmd
+	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	TxPipeline() redis.Pipeliner
 
-	XAdd(a *redis.XAddArgs) *redis.StringCmd
-	XDel(stream string, ids ...string) *redis.IntCmd
-	XLen(stream string) *redis.IntCmd
-	XRangeN(stream, start, stop string, count int64) *redis.XMessageSliceCmd
-	XGroupCreateMkStream(stream, group, start string) *redis.StatusCmd
-	XReadGroup(a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
-	XAck(stream, group string, ids ...string) *redis.IntCmd
-	XPendingExt(a *redis.XPendingExtArgs) *redis.XPendingExtCmd
-	XTrim(key string, maxLen int64) *redis.IntCmd
-	XGroupDelConsumer(stream, group, consumer string) *redis.IntCmd
+	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
+	XDel(ctx context.Context, stream string, ids ...string) *redis.IntCmd
+	XLen(ctx context.Context, stream string) *redis.IntCmd
+	XRangeN(ctx context.Context, stream, start, stop string, count int64) *redis.XMessageSliceCmd
+	XGroupCreateMkStream(ctx context.Context, stream, group, start string) *redis.StatusCmd
+	XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
+	XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd
+	XPendingExt(ctx context.Context, a *redis.XPendingExtArgs) *redis.XPendingExtCmd
+	XTrim(ctx context.Context, key string, maxLen int64) *redis.IntCmd
+	XGroupDelConsumer(ctx context.Context, stream, group, consumer string) *redis.IntCmd
 
-	ZAdd(key string, members ...*redis.Z) *redis.IntCmd
-	ZRangeByScore(key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
-	ZRem(key string, members ...interface{}) *redis.IntCmd
+	ZAdd(ctx context.Context, key string, members ...*redis.Z) *redis.IntCmd
+	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
+	ZRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
 }
 
 type Queue struct {
@@ -129,7 +130,7 @@ func (q *Queue) Consumer() *taskq.Consumer {
 }
 
 func (q *Queue) Len() (int, error) {
-	n, err := q.redis.XLen(q.stream).Result()
+	n, err := q.redis.XLen(context.TODO(), q.stream).Result()
 	return int(n), err
 }
 
@@ -159,13 +160,13 @@ func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return pipe.ZAdd(q.zset, &redis.Z{
+		return pipe.ZAdd(msg.Ctx, q.zset, &redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
 	}
 
-	return pipe.XAdd(&redis.XAddArgs{
+	return pipe.XAdd(msg.Ctx, &redis.XAddArgs{
 		Stream: q.stream,
 		Values: map[string]interface{}{
 			"body": body,
@@ -173,8 +174,10 @@ func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 	}).Err()
 }
 
-func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, error) {
-	streams, err := q.redis.XReadGroup(&redis.XReadGroupArgs{
+func (q *Queue) ReserveN(
+	ctx context.Context, n int, waitTimeout time.Duration,
+) ([]taskq.Message, error) {
+	streams, err := q.redis.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Streams:  []string{q.stream, ">"},
 		Group:    q.streamGroup,
 		Consumer: q.streamConsumer,
@@ -186,8 +189,8 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 			return nil, nil
 		}
 		if strings.HasPrefix(err.Error(), "NOGROUP") {
-			q.createStreamGroup()
-			return q.ReserveN(n, waitTimeout)
+			q.createStreamGroup(ctx)
+			return q.ReserveN(ctx, n, waitTimeout)
 		}
 		return nil, err
 	}
@@ -207,15 +210,15 @@ func (q *Queue) ReserveN(n int, waitTimeout time.Duration) ([]taskq.Message, err
 	return msgs, nil
 }
 
-func (q *Queue) createStreamGroup() {
-	_ = q.redis.XGroupCreateMkStream(q.stream, q.streamGroup, "0").Err()
+func (q *Queue) createStreamGroup(ctx context.Context) {
+	_ = q.redis.XGroupCreateMkStream(ctx, q.stream, q.streamGroup, "0").Err()
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
 	// Make the delete and re-queue operation atomic in case we crash midway
 	// and lose a message.
 	pipe := q.redis.TxPipeline()
-	err := pipe.XDel(q.stream, msg.ID).Err()
+	err := pipe.XDel(msg.Ctx, q.stream, msg.ID).Err()
 	if err != nil {
 		return err
 	}
@@ -226,19 +229,20 @@ func (q *Queue) Release(msg *taskq.Message) error {
 		return err
 	}
 
-	_, err = pipe.Exec()
+	_, err = pipe.Exec(msg.Ctx)
 	return err
 }
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
-	return q.redis.XAck(q.stream, q.streamGroup, msg.ID).Err()
+	return q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err()
 }
 
 // Purge deletes all messages from the queue.
 func (q *Queue) Purge() error {
-	_ = q.redis.Del(q.zset).Err()
-	_ = q.redis.XTrim(q.stream, 0).Err()
+	ctx := context.TODO()
+	_ = q.redis.Del(ctx, q.zset).Err()
+	_ = q.redis.XTrim(ctx, q.stream, 0).Err()
 	return nil
 }
 
@@ -257,7 +261,8 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 		_ = q.consumer.StopTimeout(timeout)
 	}
 
-	_ = q.redis.XGroupDelConsumer(q.stream, q.streamGroup, q.streamConsumer).Err()
+	_ = q.redis.XGroupDelConsumer(
+		context.TODO(), q.stream, q.streamGroup, q.streamConsumer).Err()
 
 	return nil
 }
@@ -266,16 +271,18 @@ func (q *Queue) closed() bool {
 	return atomic.LoadUint32(&q._closed) == 1
 }
 
-func (q *Queue) scheduler(name string, fn func() (int, error)) {
+func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)) {
 	for {
 		if q.closed() {
 			break
 		}
 
+		ctx := context.TODO()
+
 		var n int
-		err := q.withRedisLock(q.schedulerLockPrefix+name, func() error {
+		err := q.withRedisLock(ctx, q.schedulerLockPrefix+name, func(ctx context.Context) error {
 			var err error
-			n, err = fn()
+			n, err = fn(ctx)
 			return err
 		})
 		if err != nil && err != redislock.ErrNotObtained {
@@ -292,10 +299,10 @@ func (q *Queue) schedulerBackoff() time.Duration {
 	return time.Duration(n) * time.Millisecond
 }
 
-func (q *Queue) scheduleDelayed() (int, error) {
+func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 	tm := time.Now()
 	max := strconv.FormatInt(unixMs(tm), 10)
-	bodies, err := q.redis.ZRangeByScore(q.zset, &redis.ZRangeBy{
+	bodies, err := q.redis.ZRangeByScore(ctx, q.zset, &redis.ZRangeBy{
 		Min:   "-inf",
 		Max:   max,
 		Count: batchSize,
@@ -306,15 +313,15 @@ func (q *Queue) scheduleDelayed() (int, error) {
 
 	pipe := q.redis.TxPipeline()
 	for _, body := range bodies {
-		pipe.XAdd(&redis.XAddArgs{
+		pipe.XAdd(ctx, &redis.XAddArgs{
 			Stream: q.stream,
 			Values: map[string]interface{}{
 				"body": body,
 			},
 		})
-		pipe.ZRem(q.zset, body)
+		pipe.ZRem(ctx, q.zset, body)
 	}
-	_, err = pipe.Exec()
+	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -322,11 +329,11 @@ func (q *Queue) scheduleDelayed() (int, error) {
 	return len(bodies), nil
 }
 
-func (q *Queue) schedulePending() (int, error) {
+func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 	tm := time.Now().Add(q.opt.ReservationTimeout)
 	start := strconv.FormatInt(unixMs(tm), 10)
 
-	pending, err := q.redis.XPendingExt(&redis.XPendingExtArgs{
+	pending, err := q.redis.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: q.stream,
 		Group:  q.streamGroup,
 		Start:  start,
@@ -335,7 +342,7 @@ func (q *Queue) schedulePending() (int, error) {
 	}).Result()
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "NOGROUP") {
-			q.createStreamGroup()
+			q.createStreamGroup(ctx)
 			return 0, nil
 		}
 		return 0, err
@@ -345,7 +352,7 @@ func (q *Queue) schedulePending() (int, error) {
 		xmsgInfo := &pending[i]
 		id := xmsgInfo.ID
 
-		xmsgs, err := q.redis.XRangeN(q.stream, id, id, 1).Result()
+		xmsgs, err := q.redis.XRangeN(ctx, q.stream, id, id, 1).Result()
 		if err != nil {
 			return 0, err
 		}
@@ -375,23 +382,25 @@ func (q *Queue) isDuplicate(msg *taskq.Message) bool {
 	if msg.Name == "" {
 		return false
 	}
-	exists := q.opt.Storage.Exists(msgutil.FullMessageName(q, msg))
+	exists := q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 	return exists
 }
 
-func (q *Queue) withRedisLock(name string, fn func() error) error {
-	lock, err := redislock.Obtain(q.opt.Redis, name, time.Minute, nil)
+func (q *Queue) withRedisLock(
+	ctx context.Context, name string, fn func(ctx context.Context) error,
+) error {
+	lock, err := redislock.Obtain(ctx, q.opt.Redis, name, time.Minute, nil)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		if err := lock.Release(); err != nil {
+		if err := lock.Release(ctx); err != nil {
 			internal.Logger.Printf("redislock.Release failed: %s", err)
 		}
 	}()
 
-	return fn()
+	return fn(ctx)
 }
 
 func unixMs(tm time.Time) int64 {
