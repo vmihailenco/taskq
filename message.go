@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/s2"
-	"github.com/valyala/gozstd"
+	"github.com/klauspost/compress/zstd"
 	"github.com/vmihailenco/msgpack/v4"
 
 	"github.com/vmihailenco/taskq/v3/internal"
@@ -175,12 +175,14 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+var zdec, _ = zstd.NewReader(nil)
+
 func decompress(dst, src []byte, compression string) ([]byte, error) {
 	switch compression {
 	case "":
 		return src, nil
 	case "zstd":
-		return gozstd.Decompress(dst, src)
+		return zdec.DecodeAll(dst, src)
 	case "s2":
 		return s2.Decode(dst, src)
 	default:
