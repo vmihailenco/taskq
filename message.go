@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/klauspost/compress/s2"
 	"github.com/valyala/gozstd"
 	"github.com/vmihailenco/msgpack/v4"
 
@@ -31,7 +32,7 @@ type Message struct {
 	// before executing the message.
 	Delay time.Duration `msgpack:"-"`
 
-	// Function args passed to the handler.
+	// Args passed to the handler.
 	Args []interface{} `msgpack:"-"`
 
 	// Binary representation of the args.
@@ -108,7 +109,7 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 			return m.ArgsBin, nil
 		}
 		if m.Args == nil {
-			return gozstd.Decompress(nil, m.ArgsBin)
+			return decompress(nil, m.ArgsBin, m.ArgsCompression)
 		}
 	}
 
@@ -139,9 +140,9 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 	}
 
 	if m.ArgsCompression == "" && len(m.ArgsBin) >= 512 {
-		compressed := gozstd.Compress(nil, m.ArgsBin)
+		compressed := s2.Encode(nil, m.ArgsBin)
 		if len(compressed) < len(m.ArgsBin) {
-			m.ArgsCompression = "zstd"
+			m.ArgsCompression = "s2"
 			m.ArgsBin = compressed
 		}
 	}
@@ -163,20 +164,28 @@ func (m *Message) UnmarshalBinary(b []byte) error {
 		return err
 	}
 
-	switch m.ArgsCompression {
-	case "":
-	case "zstd":
-		b, err = gozstd.Decompress(nil, m.ArgsBin)
-		if err != nil {
-			return err
-		}
-		m.ArgsCompression = ""
-		m.ArgsBin = b
-	default:
-		return fmt.Errorf("taskq: unsupported compression=%s", m.ArgsCompression)
+	b, err = decompress(nil, m.ArgsBin, m.ArgsCompression)
+	if err != nil {
+		return err
 	}
 
+	m.ArgsCompression = ""
+	m.ArgsBin = b
+
 	return nil
+}
+
+func decompress(dst, src []byte, compression string) ([]byte, error) {
+	switch compression {
+	case "":
+		return src, nil
+	case "zstd":
+		return gozstd.Decompress(dst, src)
+	case "s2":
+		return s2.Decode(dst, src)
+	default:
+		return nil, fmt.Errorf("taskq: unsupported compression=%s", compression)
+	}
 }
 
 func timeSlot(period time.Duration) int64 {
