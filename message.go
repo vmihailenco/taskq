@@ -3,6 +3,7 @@ package taskq
 import (
 	"context"
 	"encoding"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"time"
@@ -73,16 +74,12 @@ func (m *Message) SetDelay(delay time.Duration) {
 // that message with such args is added to the queue once in a given period.
 // If args are not provided then message args are used instead.
 func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) {
-	if len(args) == 0 {
-		args = m.Args
-	}
-	args = append(args, period, timeSlot(period))
-	m.setNameFromArgs(args)
+	m.setNameFromArgs(period, args...)
 	m.SetDelay(period)
 }
 
 func (m *Message) OnceWithDelay(delay time.Duration) {
-	m.setNameFromArgs(m.Args)
+	m.setNameFromArgs(0)
 	m.SetDelay(delay)
 }
 
@@ -94,13 +91,17 @@ func (m *Message) OnceWithSchedule(tm time.Time) {
 	}
 }
 
-func (m *Message) setNameFromArgs(args []interface{}) {
-	b, err := msgpack.Marshal(args)
-	if err != nil {
-		m.Err = err
+func (m *Message) setNameFromArgs(period time.Duration, args ...interface{}) {
+	var b []byte
+	if len(args) > 0 {
+		b, _ = msgpack.Marshal(args)
 	} else {
-		m.Name = internal.BytesToString(b)
+		b, _ = m.MarshalArgs()
 	}
+	if period > 0 {
+		b = appendTimeSlot(b, period)
+	}
+	m.Name = internal.BytesToString(b)
 }
 
 func (m *Message) MarshalArgs() ([]byte, error) {
@@ -188,6 +189,14 @@ func decompress(dst, src []byte, compression string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("taskq: unsupported compression=%s", compression)
 	}
+}
+
+func appendTimeSlot(b []byte, period time.Duration) []byte {
+	l := len(b)
+	b = append(b, make([]byte, 16)...)
+	binary.LittleEndian.PutUint64(b[l:], uint64(period))
+	binary.LittleEndian.PutUint64(b[l+8:], uint64(timeSlot(period)))
+	return b
 }
 
 func timeSlot(period time.Duration) int64 {
