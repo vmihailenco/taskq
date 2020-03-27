@@ -150,7 +150,7 @@ func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
 
 	if msg.ID == "" {
 		u := uuid.New()
-		msg.ID = string(u[:])
+		msg.ID = internal.BytesToString(u[:])
 	}
 
 	body, err := msg.MarshalBinary()

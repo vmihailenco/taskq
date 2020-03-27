@@ -143,9 +143,10 @@ func (q *Queue) ReserveN(
 }
 
 func (q *Queue) Release(msg *taskq.Message) error {
-	//TODO: copy?
-	msg.Err = nil
-	return q.enqueueMessage(msg)
+	// Shallow copy.
+	clone := *msg
+	clone.Err = nil
+	return q.enqueueMessage(&clone)
 }
 
 func (q *Queue) Delete(msg *taskq.Message) error {
