@@ -901,28 +901,19 @@ func (l *limiter) Reserve(ctx context.Context, max int) int {
 		}
 	}
 
-	var size int
 	for {
-		res, err := l.limiter.Allow(ctx, l.bucket, l.limit)
+		res, err := l.limiter.AllowAtMostN(ctx, l.bucket, l.limit, max)
 		if err != nil {
-			//TODO: ??
 			time.Sleep(100 * time.Millisecond)
-		}
-
-		if res.Allowed {
-			size++
-			if size == max {
-				atomic.AddUint32(&l.allowedCount, 1)
-				return size
-			}
 			continue
-		} else {
-			atomic.StoreUint32(&l.allowedCount, 0)
 		}
 
-		if size > 0 {
-			return size
+		if res.Allowed > 0 {
+			atomic.AddUint32(&l.allowedCount, 1)
+			return res.Allowed
 		}
+
+		atomic.StoreUint32(&l.allowedCount, 0)
 		time.Sleep(res.RetryAfter)
 	}
 }
