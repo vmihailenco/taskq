@@ -10,7 +10,7 @@ import (
 
 	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
-	"github.com/vmihailenco/msgpack/v4"
+	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/vmihailenco/taskq/v3/internal"
 )
