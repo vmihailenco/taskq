@@ -7,7 +7,7 @@ require (
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b
 	github.com/go-redis/redis/v8 v8.0.0-alpha.1
-	github.com/go-redis/redis_rate/v9 v9.0.0-alpha.3
+	github.com/go-redis/redis_rate/v9 v9.0.0-alpha.4
 	github.com/golang/protobuf v1.3.5 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/golang-lru v0.5.4
@@ -18,8 +18,9 @@ require (
 	github.com/onsi/ginkgo v1.10.1
 	github.com/onsi/gomega v1.7.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/vmihailenco/msgpack/v5 v5.0.0-alpha.0
+	github.com/vmihailenco/msgpack/v5 v5.0.0-alpha.2
 	go.opentelemetry.io/otel v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e // indirect
-	golang.org/x/tools v0.0.0-20200402223321-bcf690261a44 // indirect
+	golang.org/x/tools v0.0.0-20200406213809-066fd1390ee0 // indirect
+	google.golang.org/grpc v1.28.1 // indirect
 )

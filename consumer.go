@@ -902,7 +902,7 @@ func (l *limiter) Reserve(ctx context.Context, max int) int {
 	}
 
 	for {
-		res, err := l.limiter.AllowAtMostN(ctx, l.bucket, l.limit, max)
+		res, err := l.limiter.AllowAtMost(ctx, l.bucket, l.limit, max)
 		if err != nil {
 			time.Sleep(100 * time.Millisecond)
 			continue
