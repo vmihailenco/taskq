@@ -654,7 +654,6 @@ func (c *Consumer) Purge() error {
 type ProcessMessageEvent struct {
 	Message   *Message
 	StartTime time.Time
-	Err       error
 
 	Stash map[interface{}]interface{}
 }
