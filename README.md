@@ -1,36 +1,38 @@
 # Golang asynchronous task/job queue with Redis, SQS, IronMQ, and in-memory backends
 
 [![Build Status](https://travis-ci.org/vmihailenco/taskq.svg)](https://travis-ci.org/vmihailenco/taskq)
-[![GoDoc](https://godoc.org/github.com/vmihailenco/taskq?status.svg)](https://godoc.org/github.com/vmihailenco/taskq)
+[![GoDoc](https://godoc.org/github.com/vmihailenco/taskq?status.svg)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
 
 ## Installation
 
 taskq requires a Go version with [Modules](https://github.com/golang/go/wiki/Modules) support and uses import versioning. So please make sure to initialize a Go module before installing taskq:
 
 ```bash
-go get github.com/vmihailenco/taskq/v2
+go get github.com/vmihailenco/taskq/v3
 ```
 
 ## Features
 
- - Redis, SQS, IronMQ, and in-memory backends.
- - Automatically scaling number of goroutines used to fetch (fetcher) and process messages (worker).
- - Global rate limiting.
- - Global limit of workers.
- - Call once - deduplicating messages with same name.
- - Automatic retries with exponential backoffs.
- - Automatic pausing when all messages in queue fail.
- - Fallback handler for processing failed messages.
- - Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
- - Automatic message compression using zstd.
+- Redis, SQS, IronMQ, and in-memory backends.
+- Automatically scaling number of goroutines used to fetch (fetcher) and process messages (worker).
+- Global rate limiting.
+- Global limit of workers.
+- Call once - deduplicating messages with same name.
+- Automatic retries with exponential backoffs.
+- Automatic pausing when all messages in queue fail.
+- Fallback handler for processing failed messages.
+- Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
+- Automatic message compression using zstd.
 
 ## Quickstart
 
 I recommend that you split your app into two parts:
+
 - An API that accepts requests from customers and adds tasks to the queues.
 - A Worker that fetches tasks from the queues and processes them.
 
 This way you can:
+
 - Isolate API and worker from each other;
 - Scale API and worker separately;
 - Have different configs for API and worker (like timeouts).
@@ -145,9 +147,11 @@ for i := 0; i < 100; i++ {
 ```
 
 ## Message deduplication
+
 If a `Message` has a `Name` then this will be used as unique identifier and messages with the same name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if not evicted from local cache after that period). Where `Name` is omitted then non deduplication occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the same arguments during `period'.
 
 ## Handlers
+
 A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the `TaskOptions`.
 
 There are three permitted types of signature:
