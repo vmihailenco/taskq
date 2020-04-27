@@ -22,6 +22,9 @@ type Queue struct {
 	wg       sync.WaitGroup
 	consumer *taskq.Consumer
 
+	timerLock sync.Mutex
+	timerMap  map[*taskq.Message]*time.Timer
+
 	_closed int32
 }
 
@@ -31,7 +34,8 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := &Queue{
-		opt: opt,
+		opt:      opt,
+		timerMap: make(map[*taskq.Message]*time.Timer),
 	}
 	q.consumer = taskq.NewConsumer(q)
 	if err := q.consumer.Start(context.Background()); err != nil {
@@ -127,10 +131,30 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	}
 
 	if msg.Delay > 0 {
-		time.AfterFunc(msg.Delay, func() {
+		q.timerLock.Lock()
+		defer q.timerLock.Unlock()
+		timer := time.AfterFunc(msg.Delay, func() {
+			// Remove our entry from the map
+			q.timerLock.Lock()
+			_, ok := q.timerMap[msg]
+			if ok {
+				delete(q.timerMap, msg)
+			} else {
+				// A purge must have happened while we were waiting
+				q.timerLock.Unlock()
+				return
+			}
+			q.timerLock.Unlock()
+
+			// If the queue closed while we were waiting, just return
+			if q.closed() {
+				q.wg.Done()
+				return
+			}
 			msg.Delay = 0
 			_ = q.consumer.Add(msg)
 		})
+		q.timerMap[msg] = timer
 		return nil
 	}
 	return q.consumer.Add(msg)
@@ -150,6 +174,14 @@ func (q *Queue) Release(msg *taskq.Message) error {
 }
 
 func (q *Queue) Delete(msg *taskq.Message) error {
+	q.timerLock.Lock()
+	defer q.timerLock.Unlock()
+	timer, ok := q.timerMap[msg]
+	if ok {
+		timer.Stop()
+		delete(q.timerMap, msg)
+	}
+
 	q.wg.Done()
 	return nil
 }
@@ -167,7 +199,19 @@ func (q *Queue) DeleteBatch(msgs []*taskq.Message) error {
 }
 
 func (q *Queue) Purge() error {
-	return q.consumer.Purge()
+	// Purge any messages already in the consumer
+	err := q.consumer.Purge()
+
+	// Stop all delayed items
+	q.timerLock.Lock()
+	defer q.timerLock.Unlock()
+	for _, v := range q.timerMap {
+		v.Stop()
+		q.wg.Done()
+	}
+	q.timerMap = make(map[*taskq.Message]*time.Timer)
+
+	return err
 }
 
 func (q *Queue) closed() bool {
