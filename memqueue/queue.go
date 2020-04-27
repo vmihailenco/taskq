@@ -13,6 +13,64 @@ import (
 	"github.com/vmihailenco/taskq/v3/internal/msgutil"
 )
 
+type scheduler struct {
+	timerLock sync.Mutex
+	timerMap  map[*taskq.Message]*time.Timer
+}
+
+func (q *scheduler) Schedule(msg *taskq.Message, fn func()) {
+	q.timerLock.Lock()
+	defer q.timerLock.Unlock()
+
+	timer := time.AfterFunc(msg.Delay, func() {
+		// Remove our entry from the map
+		q.timerLock.Lock()
+		delete(q.timerMap, msg)
+		q.timerLock.Unlock()
+
+		fn()
+	})
+
+	if q.timerMap == nil {
+		q.timerMap = make(map[*taskq.Message]*time.Timer)
+	}
+	q.timerMap[msg] = timer
+}
+
+func (q *scheduler) Remove(msg *taskq.Message) {
+	q.timerLock.Lock()
+	defer q.timerLock.Unlock()
+
+	timer, ok := q.timerMap[msg]
+	if ok {
+		timer.Stop()
+		delete(q.timerMap, msg)
+	}
+}
+
+func (q *scheduler) Purge() int {
+	q.timerLock.Lock()
+	defer q.timerLock.Unlock()
+
+	// Stop all delayed items
+	for _, timer := range q.timerMap {
+		timer.Stop()
+	}
+
+	n := len(q.timerMap)
+	q.timerMap = nil
+
+	return n
+}
+
+//------------------------------------------------------------------------------
+
+const (
+	stateRunning = 0
+	stateClosing = 1
+	stateClosed  = 2
+)
+
 type Queue struct {
 	opt *taskq.QueueOptions
 
@@ -22,10 +80,9 @@ type Queue struct {
 	wg       sync.WaitGroup
 	consumer *taskq.Consumer
 
-	timerLock sync.Mutex
-	timerMap  map[*taskq.Message]*time.Timer
+	scheduler scheduler
 
-	_closed int32
+	_state int32
 }
 
 var _ taskq.Queue = (*Queue)(nil)
@@ -34,9 +91,9 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := &Queue{
-		opt:      opt,
-		timerMap: make(map[*taskq.Message]*time.Timer),
+		opt: opt,
 	}
+
 	q.consumer = taskq.NewConsumer(q)
 	if err := q.consumer.Start(context.Background()); err != nil {
 		panic(err)
@@ -76,11 +133,18 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapInt32(&q._closed, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&q._state, stateRunning, stateClosing) {
 		return fmt.Errorf("taskq: %s is already closed", q)
 	}
 	err := q.WaitTimeout(timeout)
+
+	if !atomic.CompareAndSwapInt32(&q._state, stateClosing, stateClosed) {
+		panic("not reached")
+	}
+
 	_ = q.consumer.StopTimeout(timeout)
+	_ = q.Purge()
+
 	return err
 }
 
@@ -131,21 +195,7 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	}
 
 	if msg.Delay > 0 {
-		q.timerLock.Lock()
-		defer q.timerLock.Unlock()
-		timer := time.AfterFunc(msg.Delay, func() {
-			// Remove our entry from the map
-			q.timerLock.Lock()
-			_, ok := q.timerMap[msg]
-			if ok {
-				delete(q.timerMap, msg)
-			} else {
-				// A purge must have happened while we were waiting
-				q.timerLock.Unlock()
-				return
-			}
-			q.timerLock.Unlock()
-
+		q.scheduler.Schedule(msg, func() {
 			// If the queue closed while we were waiting, just return
 			if q.closed() {
 				q.wg.Done()
@@ -154,7 +204,6 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 			msg.Delay = 0
 			_ = q.consumer.Add(msg)
 		})
-		q.timerMap[msg] = timer
 		return nil
 	}
 	return q.consumer.Add(msg)
@@ -174,14 +223,7 @@ func (q *Queue) Release(msg *taskq.Message) error {
 }
 
 func (q *Queue) Delete(msg *taskq.Message) error {
-	q.timerLock.Lock()
-	defer q.timerLock.Unlock()
-	timer, ok := q.timerMap[msg]
-	if ok {
-		timer.Stop()
-		delete(q.timerMap, msg)
-	}
-
+	q.scheduler.Remove(msg)
 	q.wg.Done()
 	return nil
 }
@@ -202,20 +244,16 @@ func (q *Queue) Purge() error {
 	// Purge any messages already in the consumer
 	err := q.consumer.Purge()
 
-	// Stop all delayed items
-	q.timerLock.Lock()
-	defer q.timerLock.Unlock()
-	for _, v := range q.timerMap {
-		v.Stop()
+	numPurged := q.scheduler.Purge()
+	for i := 0; i < numPurged; i++ {
 		q.wg.Done()
 	}
-	q.timerMap = make(map[*taskq.Message]*time.Timer)
 
 	return err
 }
 
 func (q *Queue) closed() bool {
-	return atomic.LoadInt32(&q._closed) == 1
+	return atomic.LoadInt32(&q._state) == stateClosed
 }
 
 func (q *Queue) isDuplicate(msg *taskq.Message) bool {
