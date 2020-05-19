@@ -7,7 +7,7 @@ require (
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20191112170834-c2139c5d712b
 	github.com/go-redis/redis/v8 v8.0.0-beta.1
-	github.com/go-redis/redis_rate/v9 v9.0.0-alpha.4
+	github.com/go-redis/redis_rate/v9 v9.0.0-beta.1
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/hashicorp/golang-lru v0.5.4
@@ -19,7 +19,7 @@ require (
 	github.com/onsi/gomega v1.7.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0-alpha.2
-	golang.org/x/net v0.0.0-20200513185701-a91f0712d120 // indirect
+	golang.org/x/net v0.0.0-20200519113804-d87ec0cfa476 // indirect
 	golang.org/x/tools v0.0.0-20200519015757-0d0afa43d58a // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 )
