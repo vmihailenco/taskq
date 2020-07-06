@@ -530,6 +530,7 @@ func (c *Consumer) Process(msg *Message) error {
 		c.Put(msg)
 		return err
 	}
+
 	msg.evt = evt
 
 	start := time.Now()
@@ -537,6 +538,7 @@ func (c *Consumer) Process(msg *Message) error {
 	if msgErr == ErrAsyncTask {
 		return ErrAsyncTask
 	}
+
 	c.updateTiming(msg.TaskName, time.Since(start))
 
 	msg.Err = msgErr
@@ -584,10 +586,8 @@ func (c *Consumer) timing() time.Duration {
 }
 
 func (c *Consumer) Put(msg *Message) {
-	err := c.afterProcessMessage(msg)
-	if err != nil {
+	if err := c.afterProcessMessage(msg); err != nil {
 		msg.Err = err
-		return
 	}
 
 	if msg.Err == nil {
@@ -667,16 +667,18 @@ func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, err
 	if len(c.hooks) == 0 {
 		return nil, nil
 	}
+
 	evt := &ProcessMessageEvent{
 		Message:   msg,
 		StartTime: time.Now(),
 	}
+
 	for _, hook := range c.hooks {
-		err := hook.BeforeProcessMessage(evt)
-		if err != nil {
+		if err := hook.BeforeProcessMessage(evt); err != nil {
 			return nil, err
 		}
 	}
+
 	return evt, nil
 }
 
@@ -684,13 +686,14 @@ func (c *Consumer) afterProcessMessage(msg *Message) error {
 	if msg.evt == nil {
 		return nil
 	}
+
+	var firstErr error
 	for _, hook := range c.hooks {
-		err := hook.AfterProcessMessage(msg.evt)
-		if err != nil {
-			return err
+		if err := hook.AfterProcessMessage(msg.evt); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func (c *Consumer) resetPause() {

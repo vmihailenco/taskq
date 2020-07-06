@@ -43,7 +43,7 @@ func NewBatcher(consumer *taskq.Consumer, opt *BatcherOptions) *Batcher {
 	return &b
 }
 
-func (b *Batcher) wait() {
+func (b *Batcher) flush() {
 	if len(b.batch) > 0 {
 		b.process(b.batch)
 		b.batch = nil
@@ -104,7 +104,7 @@ func (b *Batcher) process(batch []*taskq.Message) {
 
 func (b *Batcher) onTimeout() {
 	b.mu.Lock()
-	b.wait()
+	b.flush()
 	b.mu.Unlock()
 }
 
@@ -118,7 +118,7 @@ func (b *Batcher) Close() error {
 	b.closed = true
 
 	b.stopTimer()
-	b.wait()
+	b.flush()
 
 	return nil
 }
