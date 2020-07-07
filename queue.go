@@ -45,9 +45,9 @@ type QueueOptions struct {
 	PauseErrorsThreshold int
 
 	// Processing rate limit.
-	RateLimit *redis_rate.Limit
+	RateLimit redis_rate.Limit
 
-	// Optional rate limiter interface. The default is to use Redis.
+	// Optional rate limiter. The default is to use Redis.
 	RateLimiter *redis_rate.Limiter
 
 	// Redis client that is used for storing metadata.
@@ -109,9 +109,8 @@ func (opt *QueueOptions) Init() {
 		opt.Storage = newRedisStorage(opt.Redis)
 	}
 
-	if opt.RateLimit != nil && opt.RateLimiter == nil && opt.Redis != nil {
-		limiter := redis_rate.NewLimiter(opt.Redis)
-		opt.RateLimiter = limiter
+	if !opt.RateLimit.IsZero() && opt.RateLimiter == nil && opt.Redis != nil {
+		opt.RateLimiter = redis_rate.NewLimiter(opt.Redis)
 	}
 
 	if opt.Handler == nil {

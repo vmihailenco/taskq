@@ -874,14 +874,14 @@ func (c *Consumer) replaceConfig(ctx context.Context, cfg *consumerConfig) {
 type limiter struct {
 	bucket  string
 	limiter *redis_rate.Limiter
-	limit   *redis_rate.Limit
+	limit   redis_rate.Limit
 
 	allowedCount uint32 // atomic
 	cancelled    uint32 // atomic
 }
 
 func (l *limiter) Reserve(ctx context.Context, max int) int {
-	if l.limiter == nil || l.limit == nil {
+	if l.limiter == nil || l.limit.IsZero() {
 		return max
 	}
 
