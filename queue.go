@@ -71,15 +71,17 @@ func (opt *QueueOptions) Init() {
 	if opt.Name == "" {
 		panic("QueueOptions.Name is required")
 	}
+
 	if opt.WorkerLimit > 0 {
 		opt.MinNumWorker = opt.WorkerLimit
 		opt.MaxNumWorker = opt.WorkerLimit
-	}
-	if opt.MinNumWorker == 0 {
-		opt.MinNumWorker = 1
-	}
-	if opt.MaxNumWorker == 0 {
-		opt.MaxNumWorker = 32 * int32(runtime.NumCPU())
+	} else {
+		if opt.MinNumWorker == 0 {
+			opt.MinNumWorker = 1
+		}
+		if opt.MaxNumWorker == 0 {
+			opt.MaxNumWorker = 32 * int32(runtime.NumCPU())
+		}
 	}
 	if opt.MaxNumFetcher == 0 {
 		opt.MaxNumFetcher = 8 * int32(runtime.NumCPU())

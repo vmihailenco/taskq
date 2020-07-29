@@ -1,11 +1,8 @@
 package taskqext
 
 import (
-	"reflect"
-
 	"github.com/vmihailenco/taskq/v3"
 	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/api/kv"
 	"go.opentelemetry.io/otel/api/trace"
 	"google.golang.org/grpc/codes"
 )
@@ -29,10 +26,7 @@ func (h *OpenTelemetryHook) AfterProcessMessage(evt *taskq.ProcessMessageEvent) 
 
 	if err := evt.Message.Err; err != nil {
 		span.SetStatus(codes.Internal, "")
-		span.AddEvent(ctx, "error",
-			kv.String("error.type", reflect.TypeOf(err).String()),
-			kv.String("error.message", err.Error()),
-		)
+		span.RecordError(ctx, err)
 	}
 
 	return nil
