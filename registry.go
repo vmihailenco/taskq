@@ -3,6 +3,7 @@ package taskq
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 var Tasks TaskMap
@@ -58,8 +59,8 @@ func (r *TaskMap) Range(fn func(name string, task *Task) bool) {
 func (r *TaskMap) HandleMessage(msg *Message) error {
 	task := r.Get(msg.TaskName)
 	if task == nil {
-		err := fmt.Errorf("taskq: unknown task=%q", msg.TaskName)
-		return r.retry(msg, err, unknownTaskOpt)
+		msg.Delay = r.delay(msg, nil, unknownTaskOpt)
+		return fmt.Errorf("taskq: unknown task=%q", msg.TaskName)
 	}
 
 	opt := task.Options()
@@ -72,18 +73,16 @@ func (r *TaskMap) HandleMessage(msg *Message) error {
 		return nil
 	}
 
-	return r.retry(msg, msgErr, opt)
+	msg.Delay = r.delay(msg, msgErr, opt)
+	return msgErr
 }
 
-func (r *TaskMap) retry(msg *Message, msgErr error, opt *TaskOptions) error {
-	if msg.ReservedCount < opt.RetryLimit {
-		msg.Delay = exponentialBackoff(
-			opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
-		if delayer, ok := msgErr.(Delayer); ok {
-			msg.Delay = delayer.Delay()
-		}
-	} else {
-		msg.Delay = -1 // don't retry
+func (r *TaskMap) delay(msg *Message, msgErr error, opt *TaskOptions) time.Duration {
+	if msg.ReservedCount >= opt.RetryLimit {
+		return 0
 	}
-	return msgErr
+	if delayer, ok := msgErr.(Delayer); ok {
+		return delayer.Delay()
+	}
+	return exponentialBackoff(opt.MinBackoff, opt.MaxBackoff, msg.ReservedCount)
 }

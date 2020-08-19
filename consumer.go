@@ -520,6 +520,7 @@ func (c *Consumer) Process(msg *Message) error {
 	}
 
 	if msg.Err != nil {
+		msg.Delay = -1
 		c.Put(msg)
 		return msg.Err
 	}
@@ -598,7 +599,7 @@ func (c *Consumer) Put(msg *Message) {
 	}
 
 	atomic.AddUint32(&c.consecutiveNumErr, 1)
-	if msg.Delay == -1 {
+	if msg.Delay <= 0 {
 		atomic.AddUint32(&c.fails, 1)
 		c.delete(msg)
 		return
