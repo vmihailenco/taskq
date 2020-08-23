@@ -83,11 +83,10 @@ func (m *Message) OnceWithDelay(delay time.Duration) {
 	m.SetDelay(delay)
 }
 
-func (m *Message) OnceWithSchedule(tm time.Time) {
+func (m *Message) OnceWithSchedule(tm time.Time, period time.Duration) {
+	m.setNameFromArgs(period)
 	if delay := time.Until(tm); delay > 0 {
-		m.OnceWithDelay(delay)
-	} else {
-		m.OnceInPeriod(0)
+		m.SetDelay(delay)
 	}
 }
 
