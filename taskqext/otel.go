@@ -4,7 +4,7 @@ import (
 	"github.com/vmihailenco/taskq/v3"
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/trace"
-	"google.golang.org/grpc/codes"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type OpenTelemetryHook struct{}
