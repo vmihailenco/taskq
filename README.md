@@ -3,9 +3,8 @@
 [![Build Status](https://travis-ci.org/vmihailenco/taskq.svg)](https://travis-ci.org/vmihailenco/taskq)
 [![GoDoc](https://godoc.org/github.com/vmihailenco/taskq?status.svg)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
 
-## Sponsors
-
-- [**Uptrace.dev** - distributed traces and metrics](https://uptrace.dev)
+> :heart:
+> [**Uptrace.dev** - distributed traces, logs, and errors](https://uptrace.dev)
 
 ## Installation
 
