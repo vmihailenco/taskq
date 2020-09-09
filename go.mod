@@ -8,7 +8,7 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
 	github.com/go-redis/redis/v8 v8.0.0-beta.10
 	github.com/go-redis/redis_rate/v9 v9.0.1
-	github.com/google/uuid v1.1.1
+	github.com/google/uuid v1.1.2
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/iron-io/iron_go3 v0.0.0-20190916120531-a4a7f74b73ac
 	github.com/jeffh/go.bdd v0.0.0-20120717032931-88f798ee0c74 // indirect
