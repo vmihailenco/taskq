@@ -20,6 +20,6 @@ require (
 	go.opentelemetry.io/otel v0.11.0
 	golang.org/x/net v0.0.0-20200822124328-c89045814202 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/grpc v1.31.1
+	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.25.0 // indirect
 )
