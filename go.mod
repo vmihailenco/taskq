@@ -13,7 +13,7 @@ require (
 	github.com/iron-io/iron_go3 v0.0.0-20190916120531-a4a7f74b73ac
 	github.com/jeffh/go.bdd v0.0.0-20120717032931-88f798ee0c74 // indirect
 	github.com/klauspost/compress v1.11.0
-	github.com/onsi/ginkgo v1.14.0
+	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0-beta.1
