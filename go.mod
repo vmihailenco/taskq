@@ -3,7 +3,7 @@ module github.com/vmihailenco/taskq/v3
 go 1.11
 
 require (
-	github.com/aws/aws-sdk-go v1.34.19
+	github.com/aws/aws-sdk-go v1.34.20
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
 	github.com/go-redis/redis/v8 v8.0.0-beta.10
