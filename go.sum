@@ -10,6 +10,8 @@ github.com/aws/aws-sdk-go v1.34.19 h1:x3MMvAJ1nfWviixEduchBSs65DgY5Y2pA2/NAcxVGO
 github.com/aws/aws-sdk-go v1.34.19/go.mod h1:5zCpMtNQVjRREroY7sYe8lOMRSxkhG6MZveU8YkpAk0=
 github.com/aws/aws-sdk-go v1.34.20 h1:D9otznteZZyN5pRyFETqveYia/85Xzk7+RaPGB1I9fE=
 github.com/aws/aws-sdk-go v1.34.20/go.mod h1:5zCpMtNQVjRREroY7sYe8lOMRSxkhG6MZveU8YkpAk0=
+github.com/aws/aws-sdk-go v1.34.21 h1:M97FXuiJgDHwD4mXhrIZ7RJ4xXV6uZVPvIC2qb+HfYE=
+github.com/aws/aws-sdk-go v1.34.21/go.mod h1:5zCpMtNQVjRREroY7sYe8lOMRSxkhG6MZveU8YkpAk0=
 github.com/benbjohnson/clock v1.0.0 h1:78Jk/r6m4wCi6sndMpty7A//t4dw/RW5fV4ZgDVfX1w=
 github.com/benbjohnson/clock v1.0.0/go.mod h1:bGMdMPoPVvcYyt1gHDf4J2KE153Yf9BuiUKYMaxlTDM=
 github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3 h1:IHZ1Le1ejzkmS7Si7dIzJvYDWe+BIoNmqMnfWHBZSVw=
