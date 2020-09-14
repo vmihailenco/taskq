@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go v1.34.21
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
-	github.com/go-redis/redis/v8 v8.0.0-beta.11
+	github.com/go-redis/redis/v8 v8.0.0
 	github.com/go-redis/redis_rate/v9 v9.0.1
 	github.com/google/uuid v1.1.2
 	github.com/hashicorp/golang-lru v0.5.4
@@ -18,8 +18,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0-beta.1
 	go.opentelemetry.io/otel v0.11.0
-	golang.org/x/net v0.0.0-20200822124328-c89045814202 // indirect
+	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
-	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.25.0 // indirect
 )
