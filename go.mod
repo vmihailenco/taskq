@@ -3,7 +3,7 @@ module github.com/vmihailenco/taskq/v3
 go 1.11
 
 require (
-	github.com/aws/aws-sdk-go v1.34.21
+	github.com/aws/aws-sdk-go v1.34.24
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
 	github.com/go-redis/redis/v8 v8.0.0
@@ -20,5 +20,6 @@ require (
 	go.opentelemetry.io/otel v0.11.0
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
+	google.golang.org/grpc v1.29.1 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 )
