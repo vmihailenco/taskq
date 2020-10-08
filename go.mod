@@ -17,7 +17,7 @@ require (
 	github.com/onsi/gomega v1.10.2
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0-beta.1
-	go.opentelemetry.io/otel v0.11.0
+	go.opentelemetry.io/otel v0.13.0
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/grpc v1.29.1 // indirect
