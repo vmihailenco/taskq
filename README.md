@@ -29,27 +29,27 @@ go get github.com/vmihailenco/taskq/v3
 
 ## Quickstart
 
-I recommend that you split your app into two parts:
+I recommend that you split your app into the two parts:
 
 - An API that accepts requests from customers and adds tasks to the queues.
 - A Worker that fetches tasks from the queues and processes them.
 
 This way you can:
 
-- Isolate API and worker from each other;
-- Scale API and worker separately;
+- Isolate API and worker from each other.
+- Scale API and worker separately.
 - Have different configs for API and worker (like timeouts).
 
 There is an [api_worker example](example/api_worker) that demonstrates this approach using Redis as
-backend:
+a backend:
 
 ```bash
 cd example/api_worker
-go run worker/main.go
-go run api/main.go
+go run worker/worker.go
+go run api/api.go
 ```
 
-You start by choosing backend to use - in our case Redis:
+You start by choosing a backend to use - in our case Redis:
 
 ```go
 package api_worker
@@ -57,7 +57,7 @@ package api_worker
 var QueueFactory = redisq.NewFactory()
 ```
 
-Using that factory you create queue that contains task(s):
+Using that factory you create a queue that contains tasks:
 
 ```go
 var MainQueue = QueueFactory.RegisterQueue(&taskq.QueueOptions{
@@ -66,7 +66,7 @@ var MainQueue = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 })
 ```
 
-Using the queue you create task with handler that does some useful work:
+Using the queue you create a task with handler that does some useful work:
 
 ```go
 var CountTask = taskq.RegisterTask(&taskq.TaskOptions{
@@ -78,7 +78,7 @@ var CountTask = taskq.RegisterTask(&taskq.TaskOptions{
 })
 ```
 
-Then in API you use the task to add messages/jobs to the queues:
+Then in an API binary you use tasks to add messages/jobs to queues:
 
 ```go
 ctx := context.Background()
@@ -91,7 +91,7 @@ for {
 }
 ```
 
-And in worker you start processing the queue:
+And in a worker binary you start processing queues:
 
 ```go
 err := api_worker.MainQueue.Start(context.Background())
