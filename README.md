@@ -40,11 +40,11 @@ This way you can:
 - Scale API and worker separately;
 - Have different configs for API and worker (like timeouts).
 
-There is an [api_worker example](examples/api_worker) that demonstrates this approach using Redis as
+There is an [api_worker example](example/api_worker) that demonstrates this approach using Redis as
 backend:
 
 ```bash
-cd examples/api_worker
+cd example/api_worker
 go run worker/main.go
 go run api/main.go
 ```
