@@ -235,7 +235,7 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
-	return q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err()
+	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
 }
 
 // Purge deletes all messages from the queue.
