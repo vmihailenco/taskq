@@ -14,10 +14,10 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 
+	"github.com/bsm/redislock"
 	"github.com/vmihailenco/taskq/v3"
 	"github.com/vmihailenco/taskq/v3/internal"
 	"github.com/vmihailenco/taskq/v3/internal/msgutil"
-	"github.com/vmihailenco/taskq/v3/internal/redislock"
 )
 
 const batchSize = 100

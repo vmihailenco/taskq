@@ -4,6 +4,7 @@ go 1.11
 
 require (
 	github.com/aws/aws-sdk-go v1.34.26
+	github.com/bsm/redislock v0.7.0
 	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
 	github.com/go-redis/redis/v8 v8.3.0
