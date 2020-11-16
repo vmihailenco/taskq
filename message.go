@@ -80,16 +80,13 @@ func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) {
 
 func (m *Message) OnceWithDelay(delay time.Duration) {
 	m.setNameFromArgs(0)
-	m.SetDelay(delay)
+	if delay > 0 {
+		m.SetDelay(delay)
+	}
 }
 
-func (m *Message) OnceWithSchedule(tm time.Time, period time.Duration) {
-	if delay := time.Until(tm); delay > 0 {
-		m.setNameFromArgs(0)
-		m.SetDelay(delay)
-	} else {
-		m.setNameFromArgs(period)
-	}
+func (m *Message) OnceWithSchedule(tm time.Time) {
+	m.OnceWithDelay(time.Until(tm))
 }
 
 func (m *Message) setNameFromArgs(period time.Duration, args ...interface{}) {
@@ -161,12 +158,11 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 var _ encoding.BinaryUnmarshaler = (*Message)(nil)
 
 func (m *Message) UnmarshalBinary(b []byte) error {
-	err := msgpack.Unmarshal(b, (*messageRaw)(m))
-	if err != nil {
+	if err := msgpack.Unmarshal(b, (*messageRaw)(m)); err != nil {
 		return err
 	}
 
-	b, err = decompress(nil, m.ArgsBin, m.ArgsCompression)
+	b, err := decompress(nil, m.ArgsBin, m.ArgsCompression)
 	if err != nil {
 		return err
 	}

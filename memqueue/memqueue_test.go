@@ -311,7 +311,7 @@ var _ = Describe("CallOnce", func() {
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
-			Handler: func(slot int64) error {
+			Handler: func() error {
 				ch <- time.Now()
 				return nil
 			},
@@ -324,7 +324,7 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				msg := task.WithArgs(ctx, slot(delay))
+				msg := task.WithArgs(ctx)
 				msg.OnceInPeriod(delay)
 
 				q.Add(msg)
@@ -337,7 +337,7 @@ var _ = Describe("CallOnce", func() {
 	})
 
 	It("processes message once with delay", func() {
-		Expect(ch).To(Receive(BeTemporally(">", now.Add(delay), time.Second)))
+		Eventually(ch).Should(Receive(BeTemporally(">", now.Add(delay), time.Second)))
 		Consistently(ch).ShouldNot(Receive())
 	})
 })
