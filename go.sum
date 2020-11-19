@@ -29,8 +29,12 @@ github.com/go-redis/redis/v8 v8.0.0/go.mod h1:isLoQT/NFSP7V67lyvM9GmdvLdyZ7pEhsX
 github.com/go-redis/redis/v8 v8.1.0/go.mod h1:isLoQT/NFSP7V67lyvM9GmdvLdyZ7pEhsXvvyQtnQTo=
 github.com/go-redis/redis/v8 v8.3.3 h1:e0CL9fsFDK92pkIJH2XAeS/NwO2VuIOAoJvI6yktZFk=
 github.com/go-redis/redis/v8 v8.3.3/go.mod h1:jszGxBCez8QA1HWSmQxJO9Y82kNibbUmeYhKWrBejTU=
+github.com/go-redis/redis/v8 v8.3.4 h1:ZF7juZS2wzxloqMKslTutWJ05IQrnchCSk1HD4d4Vbs=
+github.com/go-redis/redis/v8 v8.3.4/go.mod h1:jszGxBCez8QA1HWSmQxJO9Y82kNibbUmeYhKWrBejTU=
 github.com/go-redis/redis_rate/v9 v9.0.2 h1:Uwj0zTwwODzmL5E3UeN78jnyFxN41itYgkkCfqNYc7w=
 github.com/go-redis/redis_rate/v9 v9.0.2/go.mod h1:Vrl8qDpRb7bHcLyr7OXVtKKww4bD8dLL9gmUdA6XClg=
+github.com/go-redis/redis_rate/v9 v9.1.0 h1:5FOi8UWgxTQ2KlvUg25xPdv2UBxyeRIJJtMZJhBF78U=
+github.com/go-redis/redis_rate/v9 v9.1.0/go.mod h1:jjU9YxOSZ3cz0yj1QJVAJiy5ueKmL9o4AySJHcKyTSE=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
