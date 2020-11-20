@@ -4,5 +4,5 @@ go 1.16
 
 require (
 	github.com/vmihailenco/taskq/v3 v3.2.1
-	go.opentelemetry.io/otel v0.13.0
+	go.opentelemetry.io/otel v0.14.0
 )

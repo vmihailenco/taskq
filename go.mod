@@ -19,7 +19,7 @@ require (
 	github.com/onsi/gomega v1.10.3
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0
-	go.opentelemetry.io/otel v0.13.0
+	go.opentelemetry.io/otel v0.14.0
 	golang.org/x/net v0.0.0-20201027133719-8eef5233e2a1 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 )
