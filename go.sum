@@ -25,12 +25,11 @@ github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMo
 github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWoS4=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/go-gl/glfw/v3.3/glfw v0.0.0-20200222043503-6f7a984d4dc4/go.mod h1:tQ2UAYgL5IevRw8kRxooKSPJfGvJ9fJQFa0TUsXzTg8=
-github.com/go-redis/redis/v8 v8.0.0/go.mod h1:isLoQT/NFSP7V67lyvM9GmdvLdyZ7pEhsXvvyQtnQTo=
 github.com/go-redis/redis/v8 v8.1.0/go.mod h1:isLoQT/NFSP7V67lyvM9GmdvLdyZ7pEhsXvvyQtnQTo=
-github.com/go-redis/redis/v8 v8.3.3 h1:e0CL9fsFDK92pkIJH2XAeS/NwO2VuIOAoJvI6yktZFk=
-github.com/go-redis/redis/v8 v8.3.3/go.mod h1:jszGxBCez8QA1HWSmQxJO9Y82kNibbUmeYhKWrBejTU=
-github.com/go-redis/redis_rate/v9 v9.0.2 h1:Uwj0zTwwODzmL5E3UeN78jnyFxN41itYgkkCfqNYc7w=
-github.com/go-redis/redis_rate/v9 v9.0.2/go.mod h1:Vrl8qDpRb7bHcLyr7OXVtKKww4bD8dLL9gmUdA6XClg=
+github.com/go-redis/redis/v8 v8.3.4 h1:ZF7juZS2wzxloqMKslTutWJ05IQrnchCSk1HD4d4Vbs=
+github.com/go-redis/redis/v8 v8.3.4/go.mod h1:jszGxBCez8QA1HWSmQxJO9Y82kNibbUmeYhKWrBejTU=
+github.com/go-redis/redis_rate/v9 v9.1.0 h1:5FOi8UWgxTQ2KlvUg25xPdv2UBxyeRIJJtMZJhBF78U=
+github.com/go-redis/redis_rate/v9 v9.1.0/go.mod h1:jjU9YxOSZ3cz0yj1QJVAJiy5ueKmL9o4AySJHcKyTSE=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
@@ -93,8 +92,8 @@ github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdh
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.6.1 h1:hDPOHmpOpP40lSULcqw7IrRb/u7w6RpDC9399XyoNd0=
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
-github.com/vmihailenco/msgpack/v5 v5.0.0-rc.3 h1:MVl9NN4riAFKUZNpE1aKZS+V02CHC4GNnsh4Bx6wNB0=
-github.com/vmihailenco/msgpack/v5 v5.0.0-rc.3/go.mod h1:HVxBVPUK/+fZMonk4bi1islLa8V3cfnBug0+4dykPzo=
+github.com/vmihailenco/msgpack/v5 v5.0.0 h1:nCaMMPEyfgwkGc/Y0GreJPhuvzqCqW+Ufq5lY7zLO2c=
+github.com/vmihailenco/msgpack/v5 v5.0.0/go.mod h1:HVxBVPUK/+fZMonk4bi1islLa8V3cfnBug0+4dykPzo=
 github.com/vmihailenco/tagparser v0.1.2 h1:gnjoVuB/kljJ5wICEEOpx98oXMWPLj22G67Vbd1qPqc=
 github.com/vmihailenco/tagparser v0.1.2/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgqMEUPoW2WPyhdI=
 go.opentelemetry.io/otel v0.11.0/go.mod h1:G8UCk+KooF2HLkgo8RHX9epABH/aRGYET7gQOqBVdB0=

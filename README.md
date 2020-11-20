@@ -7,10 +7,17 @@
 
 ## Installation
 
-taskq requires a Go version with [Modules](https://github.com/golang/go/wiki/Modules) support and
-uses import versioning. So please make sure to initialize a Go module before installing taskq:
+taskq supports 2 last Go versions and requires a Go version with
+[modules](https://github.com/golang/go/wiki/Modules) support. So make sure to initialize a Go
+module:
 
-```bash
+```shell
+go mod init github.com/my/repo
+```
+
+And then install taskq/v3 (note _v3_ in the import; omitting it is a popular mistake):
+
+```shell
 go get github.com/vmihailenco/taskq/v3
 ```
 
@@ -220,10 +227,10 @@ taskq supports tracing out-of-the-box using [OpenTelemetry](https://opentelemetr
 instrument a queue, use the following code:
 
 ```go
-import "github.com/vmihailenco/taskq/v3/taskqext"
+import "github.com/vmihailenco/taskq/extra/taskqotel"
 
 consumer := queue.Consumer()
-consumer.AddHook(&taskqext.OpenTelemetryHook{})
+consumer.AddHook(&taskqotel.OpenTelemetryHook{})
 ```
 
 or using a `taskq.Factory`:
