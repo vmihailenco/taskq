@@ -5,3 +5,7 @@ all:
 	go test ./... -short -race
 	go test ./... -run=NONE -bench=. -benchmem
 	golangci-lint run
+
+tag:
+	git tag $(VERSION)
+	git tag extra/taskqotel/$(VERSION)
