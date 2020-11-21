@@ -2,12 +2,12 @@ package taskqotel
 
 import (
 	"github.com/vmihailenco/taskq/v3"
-	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var tracer = global.Tracer("github.com/vmihailenco/taskq")
+var tracer = otel.Tracer("github.com/vmihailenco/taskq")
 
 type OpenTelemetryHook struct{}
 
@@ -25,8 +25,8 @@ func (h OpenTelemetryHook) AfterProcessMessage(evt *taskq.ProcessMessageEvent) e
 	defer span.End()
 
 	if err := evt.Message.Err; err != nil {
-		span.SetStatus(codes.Error, "")
-		span.RecordError(ctx, err)
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 	}
 
 	return nil

@@ -544,6 +544,7 @@ func (c *Consumer) Process(msg *Message) error {
 
 	msg.Err = msgErr
 	c.Put(msg)
+
 	return msg.Err
 }
 
