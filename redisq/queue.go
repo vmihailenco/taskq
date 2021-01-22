@@ -235,6 +235,13 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
+	if msg.Delay > 0 {
+		body, err := msg.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		return q.redis.ZRem(msg.Ctx, q.zset, body).Err()
+	}
 	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
 }
 
