@@ -636,7 +636,7 @@ func (c *Consumer) delete(msg *Message) {
 
 	err := c.q.Delete(msg)
 	if err != nil {
-		internal.Logger.Printf("taks=%q Delete failed: %s", msg.TaskName, err)
+		internal.Logger.Printf("task=%q Delete failed: %s", msg.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
