@@ -23,7 +23,7 @@ type QueueOptions struct {
 	// Overrides MaxNumWorker.
 	WorkerLimit int32
 	// Maximum number of goroutines fetching messages.
-	// Default is 16 * number of CPUs.
+	// Default is 8 * number of CPUs.
 	MaxNumFetcher int32
 
 	// Number of messages reserved by a fetcher in the queue in one request.
