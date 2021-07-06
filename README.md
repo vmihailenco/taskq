@@ -240,7 +240,7 @@ taskq supports tracing out-of-the-box using
 following code:
 
 ```go
-import "github.com/vmihailenco/taskq/extra/taskqotel"
+import "github.com/vmihailenco/taskq/extra/taskqotel/v3"
 
 consumer := queue.Consumer()
 consumer.AddHook(&taskqotel.OpenTelemetryHook{})
