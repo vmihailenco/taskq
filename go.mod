@@ -19,6 +19,7 @@ require (
 	github.com/onsi/gomega v1.10.3
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0
+	github.com/stretchr/testify v1.6.1
 	golang.org/x/net v0.0.0-20201027133719-8eef5233e2a1 // indirect
 	google.golang.org/protobuf v1.25.0 // indirect
 )

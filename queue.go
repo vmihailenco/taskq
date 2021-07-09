@@ -59,6 +59,9 @@ type QueueOptions struct {
 	// Optional message handler. The default is the global Tasks registry.
 	Handler Handler
 
+	// Minimal system resources required to consider the consumer available to process the queue
+	MinSystemResources SystemResources
+
 	inited bool
 }
 
@@ -117,6 +120,10 @@ func (opt *QueueOptions) Init() {
 
 	if opt.Handler == nil {
 		opt.Handler = &Tasks
+	}
+
+	if opt.MinSystemResources == (SystemResources{}) {
+		opt.MinSystemResources = NewDefaultSystemResources()
 	}
 }
 
