@@ -60,6 +60,9 @@ type QueueOptions struct {
 	Handler Handler
 
 	inited bool
+
+	// ZombieConsumerTimeout Time after which the consumer need to be deleted.
+	ZombieConsumerTimeout time.Duration
 }
 
 func (opt *QueueOptions) Init() {
@@ -105,6 +108,10 @@ func (opt *QueueOptions) Init() {
 	}
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = 10 * time.Second
+	}
+
+	if opt.ZombieConsumerTimeout == 0 {
+		opt.ZombieConsumerTimeout = 6 * time.Hour
 	}
 
 	if opt.Storage == nil {
