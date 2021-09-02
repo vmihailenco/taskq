@@ -104,7 +104,7 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	q.wg.Add(1)
 	go func() {
 		defer q.wg.Done()
-		q.scheduler("clean_zombie_consumers", q.scheduleCleanZombieConsumers)
+		q.scheduler("clean_zombie_consumers", q.cleanZombieConsumers)
 	}()
 
 	return q
@@ -336,7 +336,7 @@ func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 	return len(bodies), nil
 }
 
-func (q *Queue) scheduleCleanZombieConsumers(ctx context.Context) (int, error) {
+func (q *Queue) cleanZombieConsumers(ctx context.Context) (int, error) {
 	consumers, err := q.redis.XInfoConsumers(ctx, q.stream, q.streamGroup).Result()
 
 	if err != nil {
@@ -344,11 +344,12 @@ func (q *Queue) scheduleCleanZombieConsumers(ctx context.Context) (int, error) {
 	}
 
 	for _, consumer := range consumers {
+		// skip the current stream consumer
 		if consumer.Name == q.streamConsumer {
 			continue
 		}
 
-		if time.Duration(consumer.Idle)*time.Second > q.opt.ZombieConsumerTimeout {
+		if time.Duration(consumer.Idle)*time.Second > q.opt.ConsumerIdleTimeout {
 			_ = q.redis.XGroupDelConsumer(ctx, q.stream, q.streamGroup, consumer.Name).Err()
 		}
 	}
