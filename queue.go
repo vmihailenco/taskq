@@ -62,6 +62,7 @@ type QueueOptions struct {
 	inited bool
 
 	// ConsumerIdleTimeout Time after which the consumer need to be deleted.
+	// Default is 6 hour
 	ConsumerIdleTimeout time.Duration
 }
 
