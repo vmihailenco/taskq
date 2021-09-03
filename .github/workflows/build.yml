@@ -2,9 +2,9 @@ name: Go
 
 on:
   push:
-    branches: [master]
+    branches: [v3]
   pull_request:
-    branches: [master]
+    branches: [v3]
 
 jobs:
   build:
@@ -30,4 +30,4 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Test
-        run: go test memqueue
+        run: make test
