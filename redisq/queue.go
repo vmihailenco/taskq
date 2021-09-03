@@ -40,6 +40,7 @@ type redisStreamClient interface {
 	ZAdd(ctx context.Context, key string, members ...*redis.Z) *redis.IntCmd
 	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
 	ZRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
+	XInfoConsumers(ctx context.Context, key string, group string) *redis.XInfoConsumersCmd
 }
 
 type Queue struct {
@@ -98,6 +99,12 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	go func() {
 		defer q.wg.Done()
 		q.scheduler("pending", q.schedulePending)
+	}()
+
+	q.wg.Add(1)
+	go func() {
+		defer q.wg.Done()
+		q.scheduler("clean_zombie_consumers", q.cleanZombieConsumers)
 	}()
 
 	return q
@@ -327,6 +334,26 @@ func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 	}
 
 	return len(bodies), nil
+}
+
+func (q *Queue) cleanZombieConsumers(ctx context.Context) (int, error) {
+	consumers, err := q.redis.XInfoConsumers(ctx, q.stream, q.streamGroup).Result()
+
+	if err != nil {
+		return 0, err
+	}
+
+	for _, consumer := range consumers {
+		// skip the current stream consumer
+		if consumer.Name == q.streamConsumer {
+			continue
+		}
+
+		if time.Duration(consumer.Idle)*time.Second > q.opt.ConsumerIdleTimeout {
+			_ = q.redis.XGroupDelConsumer(ctx, q.stream, q.streamGroup, consumer.Name).Err()
+		}
+	}
+	return 0, nil
 }
 
 func (q *Queue) schedulePending(ctx context.Context) (int, error) {
