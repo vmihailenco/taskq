@@ -16,7 +16,7 @@ require (
 	github.com/klauspost/compress v1.12.2
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/onsi/ginkgo v1.16.4
-	github.com/onsi/gomega v1.15.0
+	github.com/onsi/gomega v1.16.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.3.4
 )
