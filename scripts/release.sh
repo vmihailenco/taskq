@@ -39,7 +39,7 @@ then
     exit 1
 fi
 
-git checkout master
+git checkout v3
 
 PACKAGE_DIRS=$(find . -mindepth 2 -type f -name 'go.mod' -exec dirname {} \; \
   | sed 's/^\.\///' \
@@ -59,7 +59,7 @@ done
 
 sed --in-place "s/\(return \)\"[^\"]*\"/\1\"${TAG#v}\"/" ./version.go
 
-git checkout -b release/${TAG} master
+git checkout -b release/${TAG} v3
 git add -u
 git commit -m "Release $TAG (release.sh)"
 git push origin release/${TAG}
