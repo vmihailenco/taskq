@@ -356,15 +356,17 @@ func (q *Queue) cleanZombieConsumers(ctx context.Context) (int, error) {
 	return 0, nil
 }
 
+// schedulePending schedules pending messages that are older than the `ReservationTimeout`.
+// ReservationTimeout is the time after which a message is considered to be not processed and need to be re-enqueue.
 func (q *Queue) schedulePending(ctx context.Context) (int, error) {
-	tm := time.Now().Add(q.opt.ReservationTimeout)
-	start := strconv.FormatInt(unixMs(tm), 10)
+	tm := time.Now().Add(-q.opt.ReservationTimeout)
+	end := strconv.FormatInt(unixMs(tm), 10)
 
 	pending, err := q.redis.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: q.stream,
 		Group:  q.streamGroup,
-		Start:  start,
-		End:    "+",
+		Start:  "-",
+		End:    end,
 		Count:  batchSize,
 	}).Result()
 	if err != nil {
