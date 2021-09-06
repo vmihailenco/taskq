@@ -330,14 +330,14 @@ func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 }
 
 func (q *Queue) schedulePending(ctx context.Context) (int, error) {
-	tm := time.Now().Add(q.opt.ReservationTimeout)
-	start := strconv.FormatInt(unixMs(tm), 10)
+	tm := time.Now().Add(0 - q.opt.ReservationTimeout)
+	end := strconv.FormatInt(unixMs(tm), 10)
 
 	pending, err := q.redis.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: q.stream,
 		Group:  q.streamGroup,
-		Start:  start,
-		End:    "+",
+		Start:  "-",
+		End:    end,
 		Count:  batchSize,
 	}).Result()
 	if err != nil {
