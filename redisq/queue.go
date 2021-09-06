@@ -329,8 +329,10 @@ func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 	return len(bodies), nil
 }
 
+// schedulePending schedules pending messages that are older than the `ReservationTimeout`.
+// ReservationTimeout is the time after which a message is considered to be not processed and need to be re-enqueue.
 func (q *Queue) schedulePending(ctx context.Context) (int, error) {
-	tm := time.Now().Add(0 - q.opt.ReservationTimeout)
+	tm := time.Now().Add(-q.opt.ReservationTimeout)
 	end := strconv.FormatInt(unixMs(tm), 10)
 
 	pending, err := q.redis.XPendingExt(ctx, &redis.XPendingExtArgs{
