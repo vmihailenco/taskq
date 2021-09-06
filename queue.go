@@ -60,6 +60,10 @@ type QueueOptions struct {
 	Handler Handler
 
 	inited bool
+
+	// ConsumerIdleTimeout Time after which the consumer need to be deleted.
+	// Default is 6 hour
+	ConsumerIdleTimeout time.Duration
 }
 
 func (opt *QueueOptions) Init() {
@@ -105,6 +109,10 @@ func (opt *QueueOptions) Init() {
 	}
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = 10 * time.Second
+	}
+
+	if opt.ConsumerIdleTimeout == 0 {
+		opt.ConsumerIdleTimeout = 6 * time.Hour
 	}
 
 	if opt.Storage == nil {

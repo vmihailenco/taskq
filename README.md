@@ -6,21 +6,20 @@
 
 # Golang asynchronous task/job queue with Redis, SQS, IronMQ, and in-memory backends
 
-[![Build Status](https://travis-ci.org/vmihailenco/taskq.svg)](https://travis-ci.org/vmihailenco/taskq)
-[![GoDoc](https://godoc.org/github.com/vmihailenco/taskq?status.svg)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
+![build workflow](https://github.com/vmihailenco/taskq/actions/workflows/build.yml/badge.svg)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/vmihailenco/taskq/v3)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
 
 ## Installation
 
 taskq supports 2 last Go versions and requires a Go version with
-[modules](https://github.com/golang/go/wiki/Modules) support. So make sure to
-initialize a Go module:
+[modules](https://github.com/golang/go/wiki/Modules) support. So make sure to initialize a Go
+module:
 
 ```shell
 go mod init github.com/my/repo
 ```
 
-And then install taskq/v3 (note _v3_ in the import; omitting it is a popular
-mistake):
+And then install taskq/v3 (note _v3_ in the import; omitting it is a popular mistake):
 
 ```shell
 go get github.com/vmihailenco/taskq/v3
@@ -29,16 +28,14 @@ go get github.com/vmihailenco/taskq/v3
 ## Features
 
 - Redis, SQS, IronMQ, and in-memory backends.
-- Automatically scaling number of goroutines used to fetch (fetcher) and process
-  messages (worker).
+- Automatically scaling number of goroutines used to fetch (fetcher) and process messages (worker).
 - Global rate limiting.
 - Global limit of workers.
 - Call once - deduplicating messages with same name.
 - Automatic retries with exponential backoffs.
 - Automatic pausing when all messages in queue fail.
 - Fallback handler for processing failed messages.
-- Message batching. It is used in SQS and IronMQ backends to add/delete messages
-  in batches.
+- Message batching. It is used in SQS and IronMQ backends to add/delete messages in batches.
 - Automatic message compression using snappy / s2.
 
 ## Quickstart
@@ -54,8 +51,8 @@ This way you can:
 - Scale API and worker separately.
 - Have different configs for API and worker (like timeouts).
 
-There is an [api_worker example](example/api_worker) that demonstrates this
-approach using Redis as a backend:
+There is an [api_worker example](example/api_worker) that demonstrates this approach using Redis as
+a backend:
 
 ```bash
 cd example/api_worker
@@ -166,33 +163,28 @@ for i := 0; i < 100; i++ {
 
 ## Message deduplication
 
-If a `Message` has a `Name` then this will be used as unique identifier and
-messages with the same name will be deduplicated (i.e. not processed again)
-within a 24 hour period (or possibly longer if not evicted from local cache
-after that period). Where `Name` is omitted then non deduplication occurs and
-each message will be processed. `Task`'s `WithMessage` and `WithArgs` both
-produces messages with no `Name` so will not be deduplicated. `OnceWithArgs`
-sets a name based off a consistent hash of the arguments and a quantised period
-of time (i.e. 'this hour', 'today') passed to `OnceWithArgs` a `period`. This
-guarantees that the same function will not be called with the same arguments
-during `period'.
+If a `Message` has a `Name` then this will be used as unique identifier and messages with the same
+name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if
+not evicted from local cache after that period). Where `Name` is omitted then non deduplication
+occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces
+messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a
+consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed
+to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the
+same arguments during `period'.
 
 ## Handlers
 
-A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the
-`TaskOptions`.
+A `Handler` and `FallbackHandler` are supplied to `RegisterTask` in the `TaskOptions`.
 
 There are three permitted types of signature:
 
 1. A zero-argument function
-2. A function whose arguments are assignable in type from those which are passed
-   in the message
+2. A function whose arguments are assignable in type from those which are passed in the message
 3. A function which takes a single `*Message` argument
 
-If a task is registered with a handler that takes a Go `context.Context` as its
-first argument then when that handler is invoked it will be passed the same
-`Context` that was passed to `Consumer.Start(ctx)`. This can be used to transmit
-a signal to abort to all tasks being processed:
+If a task is registered with a handler that takes a Go `context.Context` as its first argument then
+when that handler is invoked it will be passed the same `Context` that was passed to
+`Consumer.Start(ctx)`. This can be used to transmit a signal to abort to all tasks being processed:
 
 ```go
 var AbortableTask = MainQueue.RegisterTask(&taskq.TaskOptions{
@@ -214,8 +206,8 @@ var AbortableTask = MainQueue.RegisterTask(&taskq.TaskOptions{
 
 ## Custom message delay
 
-If error returned by handler implements `Delay() time.Duration` interface then
-that delay is used to postpone message processing.
+If error returned by handler implements `Delay() time.Duration` interface then that delay is used to
+postpone message processing.
 
 ```go
 type RateLimitError string
@@ -235,9 +227,8 @@ func handler() error {
 
 ## Tracing
 
-taskq supports tracing out-of-the-box using
-[OpenTelemetry](https://opentelemetry.io/) API. To instrument a queue, use the
-following code:
+taskq supports tracing out-of-the-box using [OpenTelemetry](https://opentelemetry.io/) API. To
+instrument a queue, use the following code:
 
 ```go
 import "github.com/vmihailenco/taskq/extra/taskqotel/v3"
@@ -257,5 +248,4 @@ factory.Range(func(q taskq.Queue) bool {
 })
 ```
 
-We recommend using [Uptrace.dev](https://github.com/uptrace/uptrace-go) as a
-tracing backend.
+We recommend using [Uptrace.dev](https://github.com/uptrace/uptrace-go) as a tracing backend.
