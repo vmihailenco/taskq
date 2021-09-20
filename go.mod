@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/iron-io/iron_go3 v0.0.0-20190916120531-a4a7f74b73ac
 	github.com/jeffh/go.bdd v0.0.0-20120717032931-88f798ee0c74 // indirect
-	github.com/klauspost/compress v1.12.2
+	github.com/klauspost/compress v1.13.6
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.15.0
