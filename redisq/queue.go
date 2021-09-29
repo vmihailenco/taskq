@@ -129,7 +129,7 @@ func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
 }
 
-func (q *Queue) Consumer() *taskq.Consumer {
+func (q *Queue) Consumer() taskq.QueueConsumer {
 	if q.consumer == nil {
 		q.consumer = taskq.NewConsumer(q)
 	}

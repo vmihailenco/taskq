@@ -134,7 +134,7 @@ type Queue interface {
 	fmt.Stringer
 	Name() string
 	Options() *QueueOptions
-	Consumer() *Consumer
+	Consumer() QueueConsumer
 
 	Len() (int, error)
 	Add(msg *Message) error
@@ -144,4 +144,35 @@ type Queue interface {
 	Purge() error
 	Close() error
 	CloseTimeout(timeout time.Duration) error
+}
+
+// QueueConsumer reserves messages from the queue, processes them,
+// and then either releases or deletes messages from the queue.
+type QueueConsumer interface {
+	// AddHook adds a hook into message processing.
+	AddHook(hook ConsumerHook)
+	Queue() Queue
+	Options() *QueueOptions
+	Len() int
+	// Stats returns processor stats.
+	Stats() *ConsumerStats
+	Add(msg *Message) error
+	// Start starts consuming messages in the queue.
+	Start(ctx context.Context) error
+	// Stop is StopTimeout with 30 seconds timeout.
+	Stop() error
+	// StopTimeout waits workers for timeout duration to finish processing current
+	// messages and stops workers.
+	StopTimeout(timeout time.Duration) error
+	// ProcessAll starts workers to process messages in the queue and then stops
+	// them when all messages are processed.
+	ProcessAll(ctx context.Context) error
+	// ProcessOne processes at most one message in the queue.
+	ProcessOne(ctx context.Context) error
+	// Process is low-level API to process message bypassing the internal queue.
+	Process(msg *Message) error
+	Put(msg *Message)
+	// Purge discards messages from the internal queue.
+	Purge() error
+	String() string
 }

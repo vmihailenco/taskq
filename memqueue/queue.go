@@ -114,7 +114,7 @@ func (q *Queue) Options() *taskq.QueueOptions {
 	return q.opt
 }
 
-func (q *Queue) Consumer() *taskq.Consumer {
+func (q *Queue) Consumer() taskq.QueueConsumer {
 	return q.consumer
 }
 
@@ -209,9 +209,7 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	return q.consumer.Add(msg)
 }
 
-func (q *Queue) ReserveN(
-	ctx context.Context, n int, waitTimeout time.Duration,
-) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(_ context.Context, _ int, _ time.Duration) ([]taskq.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 
