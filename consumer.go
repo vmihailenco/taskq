@@ -77,7 +77,7 @@ type Consumer struct {
 	hooks []ConsumerHook
 }
 
-// New creates new Consumer for the queue using provided processing options.
+// NewConsumer creates new Consumer for the queue using provided processing options.
 func NewConsumer(q Queue) *Consumer {
 	opt := q.Options()
 	c := &Consumer{
@@ -95,7 +95,7 @@ func NewConsumer(q Queue) *Consumer {
 	return c
 }
 
-// Starts creates new Consumer and starts it.
+// StartConsumer creates new QueueConsumer and starts it.
 func StartConsumer(ctx context.Context, q Queue) *Consumer {
 	c := NewConsumer(q)
 	if err := c.Start(ctx); err != nil {

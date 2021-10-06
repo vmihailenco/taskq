@@ -22,7 +22,7 @@ func (opt *BatcherOptions) init() {
 
 // Batcher collects messages for later batch processing.
 type Batcher struct {
-	consumer *taskq.Consumer
+	consumer taskq.QueueConsumer
 	opt      *BatcherOptions
 
 	timer *time.Timer
@@ -32,7 +32,7 @@ type Batcher struct {
 	closed bool
 }
 
-func NewBatcher(consumer *taskq.Consumer, opt *BatcherOptions) *Batcher {
+func NewBatcher(consumer taskq.QueueConsumer, opt *BatcherOptions) *Batcher {
 	opt.init()
 	b := Batcher{
 		consumer: consumer,
