@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/hashicorp/golang-lru/simplelru"
+
 	"github.com/vmihailenco/taskq/v3/internal"
 )
 
