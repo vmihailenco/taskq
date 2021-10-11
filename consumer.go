@@ -11,6 +11,7 @@ import (
 	"github.com/go-redis/redis_rate/v9"
 
 	"github.com/bsm/redislock"
+
 	"github.com/vmihailenco/taskq/v3/internal"
 )
 

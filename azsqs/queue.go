@@ -372,7 +372,7 @@ func (q *Queue) addBatch(msgs []*taskq.Message) error {
 			entry.DelaySeconds = aws.Int64(int64(maxDelay / time.Second))
 			delayUntil := time.Now().Add(msg.Delay - maxDelay)
 			entry.MessageAttributes = map[string]*sqs.MessageAttributeValue{
-				delayUntilAttr: &sqs.MessageAttributeValue{
+				delayUntilAttr: {
 					DataType:    aws.String("String"),
 					StringValue: aws.String(delayUntil.Format(time.RFC3339)),
 				},

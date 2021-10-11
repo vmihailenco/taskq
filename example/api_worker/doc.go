@@ -15,5 +15,5 @@ counter. If you run each program in a separate terminal with:
 Then api will periodically print the messages sent to the terminal and worker will print the message received.
 
 If you spawn further workers they will share consumption of the messages produced by api.
- */
+*/
 package api_worker

@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bsm/redislock"
+
 	"github.com/vmihailenco/taskq/v3"
 	"github.com/vmihailenco/taskq/v3/internal"
 	"github.com/vmihailenco/taskq/v3/internal/msgutil"
