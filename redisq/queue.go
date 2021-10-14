@@ -243,6 +243,10 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
+	err := q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err()
+	if err != nil {
+		return err
+	}
 	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
 }
 
