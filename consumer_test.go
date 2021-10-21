@@ -1,10 +1,14 @@
 package taskq_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"math/rand"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -81,6 +85,77 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	case <-ch:
 	case <-time.After(testTimeout):
 		t.Fatalf("message was not processed")
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Stderr = w
+
+	taskq.SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
+
+	c := context.Background()
+	opt.WaitTimeout = waitTimeout
+	opt.Redis = redisRing()
+
+	q := factory.RegisterQueue(opt)
+	defer q.Close()
+
+	purge(t, q)
+
+	outC := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		outC <- buf.String()
+	}()
+
+	ch := make(chan time.Time)
+	task := taskq.RegisterTask(&taskq.TaskOptions{
+		Name: nextTaskID(),
+		Handler: func() error {
+			ch <- time.Now()
+			return nil
+		},
+	})
+
+	err = q.Add(task.WithArgs(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := q.Consumer()
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-ch:
+	case <-time.After(testTimeout):
+		t.Fatalf("message was not processed")
+	}
+
+	time.Sleep(2 * time.Second)
+	w.Close()
+	os.Stderr = old
+
+	out := <-outC
+	findPendingLogLine := strings.Contains(out, "redisq: pending failed: redisq: can't find pending message")
+
+	if findPendingLogLine {
+		t.Fatalf("data not acknowledged and still exists in pending list.")
 	}
 
 	if err := p.Stop(); err != nil {

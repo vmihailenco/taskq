@@ -377,6 +377,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "NOGROUP") {
 			q.createStreamGroup(ctx)
+
 			return 0, nil
 		}
 		return 0, err
@@ -390,8 +391,9 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		if len(xmsgs) != 1 {
-			err := fmt.Errorf("redisq: can't find peding message id=%q in stream=%q",
+			err := fmt.Errorf("redisq: can't find pending message id=%q in stream=%q",
 				id, q.stream)
 			return 0, err
 		}
