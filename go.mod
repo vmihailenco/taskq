@@ -18,5 +18,5 @@ require (
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.16.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/vmihailenco/msgpack/v5 v5.3.4
+	github.com/vmihailenco/msgpack/v5 v5.3.5
 )
