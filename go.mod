@@ -15,7 +15,7 @@ require (
 	github.com/jeffh/go.bdd v0.0.0-20120717032931-88f798ee0c74 // indirect
 	github.com/klauspost/compress v1.13.6
 	github.com/kr/pretty v0.2.1 // indirect
-	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.16.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/vmihailenco/msgpack/v5 v5.3.5
