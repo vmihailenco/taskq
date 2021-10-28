@@ -2,6 +2,7 @@ package taskq_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/vmihailenco/taskq/v3"
 	"github.com/vmihailenco/taskq/v3/redisq"
@@ -14,6 +15,13 @@ func redisqFactory() taskq.Factory {
 func TestRedisqConsumer(t *testing.T) {
 	testConsumer(t, redisqFactory(), &taskq.QueueOptions{
 		Name: queueName("redisq-consumer"),
+	})
+}
+
+func TestRedisqAckMessage(t *testing.T) {
+	testConsumerDelete(t, redisqFactory(), &taskq.QueueOptions{
+		Name:               queueName("redisq-ack-message"),
+		ReservationTimeout: 1 * time.Second,
 	})
 }
 

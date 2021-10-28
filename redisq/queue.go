@@ -23,7 +23,7 @@ import (
 
 const batchSize = 100
 
-type redisStreamClient interface {
+type RedisStreamClient interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	TxPipeline() redis.Pipeliner
 
@@ -49,7 +49,7 @@ type Queue struct {
 
 	consumer *taskq.Consumer
 
-	redis redisStreamClient
+	redis RedisStreamClient
 	wg    sync.WaitGroup
 
 	zset                string
@@ -73,7 +73,7 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	if opt.Redis == nil {
 		panic(fmt.Errorf("redisq: Redis client is required"))
 	}
-	red, ok := opt.Redis.(redisStreamClient)
+	red, ok := opt.Redis.(RedisStreamClient)
 	if !ok {
 		panic(fmt.Errorf("redisq: Redis client must support streams"))
 	}
@@ -147,7 +147,7 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	return q.add(q.redis, msg)
 }
 
-func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
+func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
@@ -243,6 +243,10 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
+	err := q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err()
+	if err != nil {
+		return err
+	}
 	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
 }
 
@@ -373,6 +377,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "NOGROUP") {
 			q.createStreamGroup(ctx)
+
 			return 0, nil
 		}
 		return 0, err
@@ -386,8 +391,9 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		if len(xmsgs) != 1 {
-			err := fmt.Errorf("redisq: can't find peding message id=%q in stream=%q",
+			err := fmt.Errorf("redisq: can't find pending message id=%q in stream=%q",
 				id, q.stream)
 			return 0, err
 		}
