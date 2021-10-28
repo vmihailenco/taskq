@@ -243,8 +243,7 @@ func (q *Queue) Release(msg *taskq.Message) error {
 
 // Delete deletes the message from the queue.
 func (q *Queue) Delete(msg *taskq.Message) error {
-	err := q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err()
-	if err != nil {
+	if err := q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
 		return err
 	}
 	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
@@ -343,7 +342,6 @@ func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
 
 func (q *Queue) cleanZombieConsumers(ctx context.Context) (int, error) {
 	consumers, err := q.redis.XInfoConsumers(ctx, q.stream, q.streamGroup).Result()
-
 	if err != nil {
 		return 0, err
 	}
