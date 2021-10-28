@@ -1,14 +1,11 @@
 package taskq_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,6 +18,7 @@ import (
 	"github.com/go-redis/redis_rate/v9"
 
 	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
 const waitTimeout = time.Second
@@ -97,30 +95,19 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 }
 
 func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	old := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		log.Fatal(err)
-	}
-	os.Stderr = w
-
-	taskq.SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
-
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
+
+	red, ok := opt.Redis.(redisq.RedisStreamClient)
+	if !ok {
+		log.Fatal(fmt.Errorf("redisq: Redis client must support streams"))
+	}
 
 	q := factory.RegisterQueue(opt)
 	defer q.Close()
 
 	purge(t, q)
-
-	outC := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		outC <- buf.String()
-	}()
 
 	ch := make(chan time.Time)
 	task := taskq.RegisterTask(&taskq.TaskOptions{
@@ -131,7 +118,7 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 		},
 	})
 
-	err = q.Add(task.WithArgs(c))
+	err := q.Add(task.WithArgs(c))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,15 +134,22 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 		t.Fatalf("message was not processed")
 	}
 
-	time.Sleep(2 * time.Second)
-	w.Close()
-	os.Stderr = old
+	tm := time.Now().Add(opt.ReservationTimeout)
+	end := strconv.FormatInt(unixMs(tm), 10)
+	pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
+		Stream: "taskq:{" + opt.Name + "}:stream",
+		Group:  "taskq",
+		Start:  "-",
+		End:    end,
+		Count:  100,
+	}).Result()
 
-	out := <-outC
-	findPendingLogLine := strings.Contains(out, "redisq: pending failed: redisq: can't find pending message")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if findPendingLogLine {
-		t.Fatalf("data not acknowledged and still exists in pending list.")
+	if len(pending) > 0 {
+		t.Fatal("task not acknowledged and still exists in pending list.")
 	}
 
 	if err := p.Stop(); err != nil {
@@ -837,4 +831,8 @@ func nextTaskID() string {
 	id := strconv.Itoa(taskID)
 	taskID++
 	return id
+}
+
+func unixMs(tm time.Time) int64 {
+	return tm.UnixNano() / int64(time.Millisecond)
 }

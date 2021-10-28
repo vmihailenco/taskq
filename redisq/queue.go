@@ -23,7 +23,7 @@ import (
 
 const batchSize = 100
 
-type redisStreamClient interface {
+type RedisStreamClient interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	TxPipeline() redis.Pipeliner
 
@@ -49,7 +49,7 @@ type Queue struct {
 
 	consumer *taskq.Consumer
 
-	redis redisStreamClient
+	redis RedisStreamClient
 	wg    sync.WaitGroup
 
 	zset                string
@@ -73,7 +73,7 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	if opt.Redis == nil {
 		panic(fmt.Errorf("redisq: Redis client is required"))
 	}
-	red, ok := opt.Redis.(redisStreamClient)
+	red, ok := opt.Redis.(RedisStreamClient)
 	if !ok {
 		panic(fmt.Errorf("redisq: Redis client must support streams"))
 	}
@@ -147,7 +147,7 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	return q.add(q.redis, msg)
 }
 
-func (q *Queue) add(pipe redisStreamClient, msg *taskq.Message) error {
+func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
