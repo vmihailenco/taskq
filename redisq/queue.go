@@ -403,6 +403,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 
 		xmsg := &xmsgs[0]
 		msg := new(taskq.Message)
+		msg.Ctx = ctx
 		err = unmarshalMessage(msg, xmsg)
 		if err != nil {
 			return 0, err
