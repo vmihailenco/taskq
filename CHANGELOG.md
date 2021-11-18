@@ -1,3 +1,13 @@
+## [3.2.8](https://github.com/vmihailenco/taskq/compare/v3.2.7...v3.2.8) (2021-11-18)
+
+
+### Bug Fixes
+
+* ack msg before we delete it ([bac023a](https://github.com/vmihailenco/taskq/commit/bac023a71ba191e60f43ce3ca01a25d08d0a70c2))
+* adding ctx to msg ([819b42b](https://github.com/vmihailenco/taskq/commit/819b42b66bf482187843670a4a2fc288e9173e29))
+
+
+
 ## [3.2.7](https://github.com/vmihailenco/taskq/compare/v3.2.6...v3.2.7) (2021-10-28)
 
 
