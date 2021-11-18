@@ -352,7 +352,7 @@ func (q *Queue) cleanZombieConsumers(ctx context.Context) (int, error) {
 			continue
 		}
 
-		if time.Duration(consumer.Idle)*time.Second > q.opt.ConsumerIdleTimeout {
+		if time.Duration(consumer.Idle)*time.Millisecond > q.opt.ConsumerIdleTimeout {
 			_ = q.redis.XGroupDelConsumer(ctx, q.stream, q.streamGroup, consumer.Name).Err()
 		}
 	}
