@@ -226,6 +226,11 @@ func (q *Queue) Release(msg *taskq.Message) error {
 	// Make the delete and re-queue operation atomic in case we crash midway
 	// and lose a message.
 	pipe := q.redis.TxPipeline()
+	// When Release a msg, ack it before we delete msg.
+	if err := pipe.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
+		return err
+	}
+
 	err := pipe.XDel(msg.Ctx, q.stream, msg.ID).Err()
 	if err != nil {
 		return err
@@ -398,6 +403,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 
 		xmsg := &xmsgs[0]
 		msg := new(taskq.Message)
+		msg.Ctx = ctx
 		err = unmarshalMessage(msg, xmsg)
 		if err != nil {
 			return 0, err
