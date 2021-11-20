@@ -104,7 +104,11 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 			inType := h.ft.In(inStart + i)
 
 			if inType.Kind() == reflect.Interface {
-				if !v.Type().Implements(inType) {
+				// If the input value is an untyped nil, simply create a new
+				// typed nil so that the subsequent .Call() works
+				if !v.IsValid() {
+					v = reflect.Zero(inType)
+				} else if !v.Type().Implements(inType) {
 					hasWrongType = true
 					break
 				}
