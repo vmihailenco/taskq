@@ -82,7 +82,7 @@ type Queue struct {
 
 	scheduler scheduler
 
-	_state int32
+	_state int64
 }
 
 var _ taskq.Queue = (*Queue)(nil)
@@ -133,12 +133,12 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapInt32(&q._state, stateRunning, stateClosing) {
+	if !atomic.CompareAndSwapInt64(&q._state, stateRunning, stateClosing) {
 		return fmt.Errorf("taskq: %s is already closed", q)
 	}
 	err := q.WaitTimeout(timeout)
 
-	if !atomic.CompareAndSwapInt32(&q._state, stateClosing, stateClosed) {
+	if !atomic.CompareAndSwapInt64(&q._state, stateClosing, stateClosed) {
 		panic("not reached")
 	}
 
@@ -251,7 +251,7 @@ func (q *Queue) Purge() error {
 }
 
 func (q *Queue) closed() bool {
-	return atomic.LoadInt32(&q._state) == stateClosed
+	return atomic.LoadInt64(&q._state) == stateClosed
 }
 
 func (q *Queue) isDuplicate(msg *taskq.Message) bool {

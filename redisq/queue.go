@@ -58,7 +58,7 @@ type Queue struct {
 	streamConsumer      string
 	schedulerLockPrefix string
 
-	_closed uint32
+	_closed uint64
 }
 
 var _ taskq.Queue = (*Queue)(nil)
@@ -269,7 +269,7 @@ func (q *Queue) Close() error {
 
 // CloseTimeout closes the queue waiting for pending messages to be processed.
 func (q *Queue) CloseTimeout(timeout time.Duration) error {
-	if !atomic.CompareAndSwapUint32(&q._closed, 0, 1) {
+	if !atomic.CompareAndSwapUint64(&q._closed, 0, 1) {
 		return nil
 	}
 
@@ -284,7 +284,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 }
 
 func (q *Queue) closed() bool {
-	return atomic.LoadUint32(&q._closed) == 1
+	return atomic.LoadUint64(&q._closed) == 1
 }
 
 func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)) {
