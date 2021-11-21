@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
@@ -39,7 +38,8 @@ var _ = Describe("message with args", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -68,7 +68,8 @@ var _ = Describe("context.Context", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -97,7 +98,8 @@ var _ = Describe("message with invalid number of args", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -132,7 +134,8 @@ var _ = Describe("HandlerFunc", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -168,7 +171,8 @@ var _ = Describe("message retry timing", func() {
 		count = 0
 		ch = make(chan time.Time, 10)
 		q = memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task = taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -231,7 +235,8 @@ var _ = Describe("failing queue with error handler", func() {
 
 	BeforeEach(func() {
 		q = memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -261,8 +266,8 @@ var _ = Describe("named message", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name:  "test",
-			Redis: redisRing(),
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -306,8 +311,8 @@ var _ = Describe("CallOnce", func() {
 		now = time.Now()
 
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name:  "test",
-			Redis: redisRing(),
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -349,7 +354,8 @@ var _ = Describe("stress testing", func() {
 
 	BeforeEach(func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
-			Name: "test",
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -381,6 +387,7 @@ var _ = Describe("stress testing failing queue", func() {
 		q := memqueue.NewQueue(&taskq.QueueOptions{
 			Name:                 "test",
 			PauseErrorsThreshold: -1,
+			Storage:              taskq.NewLocalStorage(),
 		})
 		task := taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -416,8 +423,8 @@ var _ = Describe("empty queue", func() {
 	BeforeEach(func() {
 		processed = 0
 		q = memqueue.NewQueue(&taskq.QueueOptions{
-			Name:  "test",
-			Redis: redisRing(),
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
 		})
 		task = taskq.RegisterTask(&taskq.TaskOptions{
 			Name: "test",
@@ -510,18 +517,4 @@ func slot(period time.Duration) int64 {
 		return tm.Unix()
 	}
 	return tm.Unix() / periodSec
-}
-
-var (
-	ringOnce sync.Once
-	ring     *redis.Ring
-)
-
-func redisRing() *redis.Ring {
-	ringOnce.Do(func() {
-		ring = redis.NewRing(&redis.RingOptions{
-			Addrs: map[string]string{"0": ":6379"},
-		})
-	})
-	return ring
 }
