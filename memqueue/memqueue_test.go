@@ -62,6 +62,51 @@ var _ = Describe("message with args", func() {
 	})
 })
 
+type testInterface interface {
+	TestFunction() int
+}
+
+type testInterfaceImpl struct {
+	x int
+}
+
+func (t *testInterfaceImpl) TestFunction() int {
+	return t.x
+}
+
+var _ = Describe("message with interface args", func() {
+	ctx := context.Background()
+	ch := make(chan bool, 10)
+
+	BeforeEach(func() {
+		q := memqueue.NewQueue(&taskq.QueueOptions{
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
+		})
+		expected := 7
+		task := taskq.RegisterTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(notNilArg testInterface, nilArg testInterface) {
+				Expect(notNilArg).ToNot(BeNil())
+				Expect(nilArg).To(BeNil())
+				Expect(notNilArg.TestFunction()).To(Equal(expected))
+				ch <- true
+			},
+		})
+		notNilInput := testInterface(&testInterfaceImpl{x: expected})
+		err := q.Add(task.WithArgs(ctx, notNilInput, nil))
+		Expect(err).NotTo(HaveOccurred())
+
+		err = q.Close()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("handler is called with args", func() {
+		Expect(ch).To(Receive())
+		Expect(ch).NotTo(Receive())
+	})
+})
+
 var _ = Describe("context.Context", func() {
 	ctx := context.Background()
 	ch := make(chan bool, 10)
