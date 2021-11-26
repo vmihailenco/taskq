@@ -13,7 +13,8 @@ func BenchmarkCallAsync(b *testing.B) {
 	ctx := context.Background()
 
 	q := memqueue.NewQueue(&taskq.QueueOptions{
-		Name: "test",
+		Name:    "test",
+		Storage: taskq.NewLocalStorage(),
 	})
 	defer q.Close()
 
@@ -36,8 +37,8 @@ func BenchmarkNamedMessage(b *testing.B) {
 	ctx := context.Background()
 
 	q := memqueue.NewQueue(&taskq.QueueOptions{
-		Name:  "test",
-		Redis: redisRing(),
+		Name:    "test",
+		Storage: taskq.NewLocalStorage(),
 	})
 	defer q.Close()
 
