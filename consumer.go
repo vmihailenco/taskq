@@ -155,12 +155,6 @@ func (c *Consumer) Start(ctx context.Context) error {
 			NumFetcher: c.opt.MaxNumFetcher,
 			NumWorker:  c.opt.MaxNumWorker,
 		})
-
-		c.fetchersWG.Add(1)
-		go func() {
-			defer c.fetchersWG.Done()
-			//c.autotune(ctx, cfg)
-		}()
 	} else {
 		c.replaceConfig(ctx, &consumerConfig{
 			NumFetcher: 0, // fetcher is automatically started when needed
