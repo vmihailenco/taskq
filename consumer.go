@@ -37,11 +37,6 @@ type ConsumerStats struct {
 	Timing    time.Duration
 }
 
-type consumerConfig struct {
-	NumFetcher int32
-	NumWorker  int32
-}
-
 //------------------------------------------------------------------------------
 
 const (
