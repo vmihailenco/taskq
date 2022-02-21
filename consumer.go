@@ -77,6 +77,11 @@ type Consumer struct {
 	hooks []ConsumerHook
 }
 
+type consumerConfig struct {
+	NumFetcher int32
+	NumWorker  int32
+}
+
 // NewConsumer creates new Consumer for the queue using provided processing options.
 func NewConsumer(q Queue) *Consumer {
 	opt := q.Options()
