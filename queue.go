@@ -64,6 +64,13 @@ type QueueOptions struct {
 	// ConsumerIdleTimeout Time after which the consumer need to be deleted.
 	// Default is 6 hour
 	ConsumerIdleTimeout time.Duration
+
+	// SchedulerBackoffTime is the time of backoff for the scheduler(
+	// Scheduler was designed to clean zombie Consumer and requeue pending msgs, and so on.
+	// Default is randomly between 1~1.5s
+	// We can change it to a bigger value so that it won't slowdown the redis when using redis queue.
+	// It will be between SchedulerBackoffTime and SchedulerBackoffTime+250ms.
+	SchedulerBackoffTime time.Duration
 }
 
 func (opt *QueueOptions) Init() {

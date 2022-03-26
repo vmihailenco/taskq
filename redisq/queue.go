@@ -311,8 +311,11 @@ func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)
 }
 
 func (q *Queue) schedulerBackoff() time.Duration {
-	n := 250 + rand.Intn(250)
-	return time.Duration(n) * time.Millisecond
+	n := rand.Intn(500)
+	if q.opt.SchedulerBackoffTime > 0 {
+		return q.opt.SchedulerBackoffTime + time.Duration(n)*time.Millisecond
+	}
+	return time.Duration(n+1000) * time.Millisecond
 }
 
 func (q *Queue) scheduleDelayed(ctx context.Context) (int, error) {
