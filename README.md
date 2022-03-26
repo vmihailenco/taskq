@@ -164,9 +164,12 @@ for i := 0; i < 100; i++ {
 ## Message deduplication
 
 If a `Message` has a `Name` then this will be used as unique identifier and messages with the same
-name will be deduplicated (i.e. not processed again) within a 24 hour period (or possibly longer if
-not evicted from local cache after that period). Where `Name` is omitted then non deduplication
-occurs and each message will be processed. `Task`'s `WithMessage` and `WithArgs` both produces
+name will be deduplicated (i.e. not processed again) within within a `UniqueDuration` period 
+(by default, it is 24 hours, if you don't set it in `QueueOptions`).
+
+Where `Name` is omitted then non deduplication occurs and each message will be processed. 
+
+`Task`'s `WithMessage` and `WithArgs` both produces
 messages with no `Name` so will not be deduplicated. `OnceWithArgs` sets a name based off a
 consistent hash of the arguments and a quantised period of time (i.e. 'this hour', 'today') passed
 to `OnceWithArgs` a `period`. This guarantees that the same function will not be called with the

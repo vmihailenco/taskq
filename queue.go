@@ -71,6 +71,10 @@ type QueueOptions struct {
 	// We can change it to a bigger value so that it won't slowdown the redis when using redis queue.
 	// It will be between SchedulerBackoffTime and SchedulerBackoffTime+250ms.
 	SchedulerBackoffTime time.Duration
+
+	// UniqueDuration specifies the duration of the unique task name in memory.
+	// by default it is set to 24 hour.
+	UniqueDuration time.Duration
 }
 
 func (opt *QueueOptions) Init() {
@@ -122,8 +126,12 @@ func (opt *QueueOptions) Init() {
 		opt.ConsumerIdleTimeout = 6 * time.Hour
 	}
 
+	if opt.UniqueDuration == 0 {
+		opt.UniqueDuration = 24 * time.Hour
+	}
+
 	if opt.Storage == nil {
-		opt.Storage = newRedisStorage(opt.Redis)
+		opt.Storage = newRedisStorage(opt.Redis, opt.UniqueDuration)
 	}
 
 	if !opt.RateLimit.IsZero() && opt.RateLimiter == nil && opt.Redis != nil {
