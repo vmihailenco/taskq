@@ -249,3 +249,7 @@ factory.Range(func(q taskq.Queue) bool {
 ```
 
 We recommend using [Uptrace.dev](https://github.com/uptrace/uptrace-go) as a tracing backend.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vmihailenco/taskq&type=Timeline)](https://star-history.com/#vmihailenco/taskq&Timeline)
