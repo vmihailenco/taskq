@@ -280,6 +280,9 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	_ = q.redis.XGroupDelConsumer(
 		context.TODO(), q.stream, q.streamGroup, q.streamConsumer).Err()
 
+	// maybe place the wg.wait for redisq here?
+	q.wg.Wait()
+	
 	return nil
 }
 
