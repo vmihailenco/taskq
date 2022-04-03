@@ -1,13 +1,11 @@
-<p align="center">
-  <a href="https://uptrace.dev/?utm_source=gh-taskq&utm_campaign=gh-taskq-banner1">
-    <img src="https://raw.githubusercontent.com/uptrace/roadmap/master/banner1.png">
-  </a>
-</p>
-
 # Golang asynchronous task/job queue with Redis, SQS, IronMQ, and in-memory backends
 
 ![build workflow](https://github.com/vmihailenco/taskq/actions/workflows/build.yml/badge.svg)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/vmihailenco/taskq/v3)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
+
+> taskq is brought to you by :star: [**uptrace/uptrace**](https://github.com/uptrace/uptrace).
+> Uptrace is an open source and blazingly fast [distributed tracing tool](https://get.uptrace.dev/)
+> powered by OpenTelemetry and ClickHouse. Give it a star as well!
 
 ## Installation
 
