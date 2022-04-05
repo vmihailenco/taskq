@@ -4,8 +4,9 @@
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/vmihailenco/taskq/v3)](https://pkg.go.dev/github.com/vmihailenco/taskq/v3?tab=doc)
 
 > taskq is brought to you by :star: [**uptrace/uptrace**](https://github.com/uptrace/uptrace).
-> Uptrace is an open source and blazingly fast [distributed tracing tool](https://get.uptrace.dev/)
-> powered by OpenTelemetry and ClickHouse. Give it a star as well!
+> Uptrace is an open source and blazingly fast
+> [distributed tracing tool](https://get.uptrace.dev/compare/distributed-tracing-tools.html) powered
+> by OpenTelemetry and ClickHouse. Give it a star as well!
 
 ## Installation
 
@@ -246,8 +247,19 @@ factory.Range(func(q taskq.Queue) bool {
 })
 ```
 
-We recommend using [Uptrace.dev](https://github.com/uptrace/uptrace-go) as a tracing backend.
+We recommend using [Uptrace](https://github.com/uptrace/uptrace) as a tracing backend.
 
-## Star History
+## See also
 
-[![Star History Chart](https://api.star-history.com/svg?repos=vmihailenco/taskq&type=Timeline)](https://star-history.com/#vmihailenco/taskq&Timeline)
+- [Golang ORM](https://github.com/uptrace/bun) for PostgreSQL, MySQL, MSSQL, and SQLite
+- [Golang PostgreSQL](https://bun.uptrace.dev/postgres/)
+- [Golang HTTP router](https://github.com/uptrace/bunrouter)
+- [Golang ClickHouse ORM](https://github.com/uptrace/go-clickhouse)
+
+## Contributors
+
+Thanks to all the people who already contributed!
+
+<a href="https://github.com/vmihailenco/taskq/graphs/contributors">
+  <img src="https://contributors-img.web.app/image?repo=vmihailenco/taskq" />
+</a>
