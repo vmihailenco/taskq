@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/vmihailenco/taskq/example/api_worker"
+	"github.com/vmihailenco/taskq/example/redisexample"
 )
 
 func main() {
@@ -13,17 +13,17 @@ func main() {
 
 	c := context.Background()
 
-	err := api_worker.QueueFactory.StartConsumers(c)
+	err := redisexample.QueueFactory.StartConsumers(c)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go api_worker.LogStats()
+	go redisexample.LogStats()
 
-	sig := api_worker.WaitSignal()
+	sig := redisexample.WaitSignal()
 	log.Println(sig.String())
 
-	err = api_worker.QueueFactory.Close()
+	err = redisexample.QueueFactory.Close()
 	if err != nil {
 		log.Fatal(err)
 	}

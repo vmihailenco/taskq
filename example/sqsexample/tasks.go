@@ -1,4 +1,4 @@
-package api_worker
+package sqsexample
 
 import (
 	"log"
@@ -8,10 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/go-redis/redis/v8"
 
 	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/redisq"
+	"github.com/vmihailenco/taskq/v3/azsqs"
 )
 
 var Redis = redis.NewClient(&redis.Options{
@@ -19,7 +21,7 @@ var Redis = redis.NewClient(&redis.Options{
 })
 
 var (
-	QueueFactory = redisq.NewFactory()
+	QueueFactory = azsqs.NewFactory(sqs.New(session.New()), os.Getenv("AWS_ACCOUNT_ID"))
 	MainQueue    = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 		Name:  "api-worker",
 		Redis: Redis,
@@ -28,7 +30,6 @@ var (
 		Name: "counter",
 		Handler: func() error {
 			IncrLocalCounter()
-			time.Sleep(time.Millisecond)
 			return nil
 		},
 	})

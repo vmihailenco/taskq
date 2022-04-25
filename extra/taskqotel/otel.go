@@ -14,6 +14,10 @@ type OpenTelemetryHook struct{}
 
 var _ taskq.ConsumerHook = (*OpenTelemetryHook)(nil)
 
+func NewHook() *OpenTelemetryHook {
+	return new(OpenTelemetryHook)
+}
+
 func (h OpenTelemetryHook) BeforeProcessMessage(evt *taskq.ProcessMessageEvent) error {
 	evt.Message.Ctx, _ = tracer.Start(evt.Message.Ctx, evt.Message.TaskName)
 	return nil
