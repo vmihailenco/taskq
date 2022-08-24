@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/vmihailenco/taskq/v3 v3.2.8
+	github.com/vmihailenco/taskq/v3 v3.2.9
 )
 
 require (

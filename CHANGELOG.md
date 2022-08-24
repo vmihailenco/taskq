@@ -1,3 +1,18 @@
+## [3.2.9](https://github.com/vmihailenco/taskq/compare/v3.2.8...v3.2.9) (2022-08-24)
+
+
+### Bug Fixes
+
+* swapped dst and src arguments in zstd decode call ([e61a842](https://github.com/vmihailenco/taskq/commit/e61a84219a8fe65444da5ca9b19571d2245633f2))
+* Use localStorage for memqueue tests instead of Redis for [#162](https://github.com/vmihailenco/taskq/issues/162) ([b2ec9f5](https://github.com/vmihailenco/taskq/commit/b2ec9f53b0a3182b49c1c1510172e3ab6ac34b85))
+
+
+### Features
+
+* allow set backoff duration for redis scheduler ([f6818a8](https://github.com/vmihailenco/taskq/commit/f6818a888f92e6a78e022aae2083d202bfdd3726))
+
+
+
 ## [3.2.8](https://github.com/vmihailenco/taskq/compare/v3.2.7...v3.2.8) (2021-11-18)
 
 
