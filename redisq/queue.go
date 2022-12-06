@@ -208,6 +208,7 @@ func (q *Queue) ReserveN(
 	for i := range stream.Messages {
 		xmsg := &stream.Messages[i]
 		msg := &msgs[i]
+		msg.Ctx = ctx
 
 		err = unmarshalMessage(msg, xmsg)
 		if err != nil {
