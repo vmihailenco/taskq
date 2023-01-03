@@ -15,8 +15,18 @@ func init() {
 	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
 }
 
-func SetLogger(logger *log.Logger) {
+// SetLogger sets the main logger of the library, when not called it uses standard error.
+func SetLogger(logger Logger) {
 	internal.Logger = logger
+}
+
+// Logger is a generic logging interface used in SetLogger.
+type Logger interface {
+	Fatal(v ...interface{})
+	Fatalf(format string, v ...interface{})
+	Print(v ...interface{})
+	Println(v ...interface{})
+	Printf(format string, v ...interface{})
 }
 
 // Factory is an interface that abstracts creation of new queues.

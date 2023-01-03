@@ -1,7 +1,11 @@
 package internal
 
-import (
-	"log"
-)
+type StdLogger interface {
+	Fatal(v ...interface{})
+	Fatalf(format string, v ...interface{})
+	Print(v ...interface{})
+	Println(v ...interface{})
+	Printf(format string, v ...interface{})
+}
 
-var Logger *log.Logger
+var Logger StdLogger
