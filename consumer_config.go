@@ -245,11 +245,6 @@ func (r *configRoulette) genConfigs(bestCfg *consumerConfig, queueEmpty bool) {
 	r.oldBestCfg = bestCfg.Clone()
 	r.addConfig(r.oldBestCfg)
 
-	if !hasFreeSystemResources() {
-		internal.Logger.Println("taskq: system does not have enough free resources")
-		return
-	}
-
 	if queueEmpty {
 		r.addConfig(r.withMoreWorkers(bestCfg, 2))
 		return
