@@ -1,10 +1,10 @@
-module github.com/vmihailenco/taskq/v3/redisq
+module github.com/vmihailenco/taskq/v4/redisq
 
 go 1.20
 
-replace github.com/vmihailenco/taskq/v3 => ./..
+replace github.com/vmihailenco/taskq/v4 => ./..
 
-replace github.com/vmihailenco/taskq/v3/taskqtest => ../taskqtest
+replace github.com/vmihailenco/taskq/v4/taskqtest => ../taskqtest
 
 require (
 	github.com/bsm/redislock v0.9.1
@@ -12,12 +12,11 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.0.2
 	github.com/stretchr/testify v1.8.1
-	github.com/vmihailenco/taskq/v3 v3.2.9
-	github.com/vmihailenco/taskq/v3/taskqtest v0.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/v4/taskqtest v0.0.0-00010101000000-000000000000
 )
 
 require (
-	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect

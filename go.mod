@@ -1,10 +1,8 @@
-module github.com/vmihailenco/taskq/v3
+module github.com/vmihailenco/taskq/v4
 
 go 1.18
 
 require (
-	github.com/bsm/redislock v0.9.1
-	github.com/capnm/sysinfo v0.0.0-20130621111458-5909a53897f3
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/hashicorp/golang-lru v0.5.4

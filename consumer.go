@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-redis/redis_rate/v10"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v4/internal"
 )
 
 const stopTimeout = 30 * time.Second

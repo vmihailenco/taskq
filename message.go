@@ -12,7 +12,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v4/internal"
 )
 
 // ErrDuplicate is returned when adding duplicate message to the queue.

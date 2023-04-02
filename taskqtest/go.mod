@@ -1,11 +1,10 @@
-module github.com/vmihailenco/taskq/v3/taskqtest
+module github.com/vmihailenco/taskq/v4/taskqtest
 
 go 1.20
 
 require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redis_rate/v9 v9.1.2
-	github.com/vmihailenco/taskq/v3 v3.2.9
 )
 
 require (
