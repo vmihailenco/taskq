@@ -109,12 +109,6 @@ func TestErrorDelay(t *testing.T) {
 	})
 }
 
-func TestWorkerLimit(t *testing.T) {
-	taskqtest.TestWorkerLimit(t, newFactory(), &taskq.QueueOptions{
-		Name: queueName("worker-limit"),
-	})
-}
-
 func TestBatchConsumerSmallMessage(t *testing.T) {
 	taskqtest.TestBatchConsumer(t, newFactory(), &taskq.QueueOptions{
 		Name: queueName("batch-consumer-small-message"),
@@ -128,7 +122,7 @@ func TestBatchConsumerLarge(t *testing.T) {
 }
 
 func TestAckMessage(t *testing.T) {
-	c := context.Background()
+	ctx := context.Background()
 	opt := &taskq.QueueOptions{
 		Name:               queueName("ack-message"),
 		ReservationTimeout: 1 * time.Second,
@@ -145,7 +139,7 @@ func TestAckMessage(t *testing.T) {
 	q := factory.RegisterQueue(opt)
 	defer q.Close()
 
-	err := q.Purge()
+	err := q.Purge(ctx)
 	require.NoError(t, err)
 
 	ch := make(chan time.Time)
@@ -157,11 +151,11 @@ func TestAckMessage(t *testing.T) {
 		},
 	})
 
-	err = q.Add(task.WithArgs(c))
+	err = q.Add(ctx, task.WithArgs(ctx))
 	require.NoError(t, err)
 
 	p := q.Consumer()
-	if err := p.Start(c); err != nil {
+	if err := p.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 

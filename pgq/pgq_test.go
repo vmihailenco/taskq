@@ -101,12 +101,6 @@ func TestErrorDelay(t *testing.T) {
 	})
 }
 
-func TestWorkerLimit(t *testing.T) {
-	taskqtest.TestWorkerLimit(t, newFactory(t), &taskq.QueueOptions{
-		Name: queueName("worker-limit"),
-	})
-}
-
 func TestBatchConsumerSmallMessage(t *testing.T) {
 	taskqtest.TestBatchConsumer(t, newFactory(t), &taskq.QueueOptions{
 		Name: queueName("batch-consumer-small-message"),

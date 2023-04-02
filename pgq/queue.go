@@ -69,18 +69,18 @@ func (q *Queue) Consumer() taskq.QueueConsumer {
 	return q.consumer
 }
 
-func (q *Queue) Len() (int, error) {
+func (q *Queue) Len(ctx context.Context) (int, error) {
 	return q.db.NewSelect().
 		Model((*Message)(nil)).
 		Where("queue = ?", q.Name()).
-		Count(context.Background())
+		Count(ctx)
 }
 
-func (q *Queue) Add(msg *taskq.Message) error {
-	return q.add(msg)
+func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
+	return q.add(ctx, msg)
 }
 
-func (q *Queue) add(msg *taskq.Message) error {
+func (q *Queue) add(ctx context.Context, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
@@ -109,7 +109,7 @@ func (q *Queue) add(msg *taskq.Message) error {
 
 	if _, err := q.db.NewInsert().
 		Model(model).
-		Exec(msg.Ctx); err != nil {
+		Exec(ctx); err != nil {
 		return err
 	}
 
@@ -169,14 +169,14 @@ func (q *Queue) ReserveN(
 	return msgs, nil
 }
 
-func (q *Queue) Release(msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
 	res, err := q.db.NewUpdate().
 		Model((*Message)(nil)).
 		Set("run_at = ?", time.Now().Add(msg.Delay)).
 		Set("reserved_at = ?", time.Time{}).
 		Where("queue = ?", q.Name()).
 		Where("id = ?", ulid.MustParse(msg.ID)).
-		Exec(msg.Ctx)
+		Exec(ctx)
 	if err != nil {
 		return err
 	}
@@ -192,12 +192,12 @@ func (q *Queue) Release(msg *taskq.Message) error {
 	return nil
 }
 
-func (q *Queue) Delete(msg *taskq.Message) error {
+func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
 	res, err := q.db.NewDelete().
 		Model((*Message)(nil)).
 		Where("queue = ?", q.Name()).
 		Where("id = ?", ulid.MustParse(msg.ID)).
-		Exec(msg.Ctx)
+		Exec(ctx)
 	if err != nil {
 		return err
 	}
@@ -213,11 +213,11 @@ func (q *Queue) Delete(msg *taskq.Message) error {
 	return nil
 }
 
-func (q *Queue) Purge() error {
+func (q *Queue) Purge(ctx context.Context) error {
 	if _, err := q.db.NewDelete().
 		Model((*Message)(nil)).
 		Where("queue = ?", q.Name()).
-		Exec(context.Background()); err != nil {
+		Exec(ctx); err != nil {
 		return err
 	}
 	return nil

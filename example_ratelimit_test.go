@@ -35,7 +35,7 @@ func Example_customRateLimit() {
 	})
 
 	ctx := context.Background()
-	q.Add(task.WithArgs(ctx))
+	q.Add(ctx, task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

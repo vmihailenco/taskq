@@ -143,7 +143,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	}
 
 	_ = q.consumer.StopTimeout(timeout)
-	_ = q.Purge()
+	_ = q.Purge(context.Background())
 
 	return err
 }
@@ -164,12 +164,12 @@ func (q *Queue) WaitTimeout(timeout time.Duration) error {
 	return nil
 }
 
-func (q *Queue) Len() (int, error) {
+func (q *Queue) Len(ctx context.Context) (int, error) {
 	return q.consumer.Len(), nil
 }
 
 // Add adds message to the queue.
-func (q *Queue) Add(msg *taskq.Message) error {
+func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
 	if q.closed() {
 		return fmt.Errorf("taskq: %s is closed", q)
 	}
@@ -181,17 +181,17 @@ func (q *Queue) Add(msg *taskq.Message) error {
 		return nil
 	}
 	q.wg.Add(1)
-	return q.enqueueMessage(msg)
+	return q.enqueueMessage(ctx, msg)
 }
 
-func (q *Queue) enqueueMessage(msg *taskq.Message) error {
+func (q *Queue) enqueueMessage(ctx context.Context, msg *taskq.Message) error {
 	if (q.noDelay || q.sync) && msg.Delay > 0 {
 		msg.Delay = 0
 	}
 	msg.ReservedCount++
 
 	if q.sync {
-		return q.consumer.Process(msg)
+		return q.consumer.Process(ctx, msg)
 	}
 
 	if msg.Delay > 0 {
@@ -209,38 +209,38 @@ func (q *Queue) enqueueMessage(msg *taskq.Message) error {
 	return q.consumer.Add(msg)
 }
 
-func (q *Queue) ReserveN(_ context.Context, _ int, _ time.Duration) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(ctx context.Context, _ int, _ time.Duration) ([]taskq.Message, error) {
 	return nil, internal.ErrNotSupported
 }
 
-func (q *Queue) Release(msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
 	// Shallow copy.
 	clone := *msg
 	clone.Err = nil
-	return q.enqueueMessage(&clone)
+	return q.enqueueMessage(ctx, &clone)
 }
 
-func (q *Queue) Delete(msg *taskq.Message) error {
+func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
 	q.scheduler.Remove(msg)
 	q.wg.Done()
 	return nil
 }
 
-func (q *Queue) DeleteBatch(msgs []*taskq.Message) error {
+func (q *Queue) DeleteBatch(ctx context.Context, msgs []*taskq.Message) error {
 	if len(msgs) == 0 {
 		return errors.New("taskq: no messages to delete")
 	}
 	for _, msg := range msgs {
-		if err := q.Delete(msg); err != nil {
+		if err := q.Delete(ctx, msg); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (q *Queue) Purge() error {
+func (q *Queue) Purge(ctx context.Context) error {
 	// Purge any messages already in the consumer
-	err := q.consumer.Purge()
+	err := q.consumer.Purge(ctx)
 
 	numPurged := q.scheduler.Purge()
 	for i := 0; i < numPurged; i++ {

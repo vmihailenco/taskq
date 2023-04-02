@@ -49,7 +49,7 @@ var _ = Describe("message with args", func() {
 				ch <- true
 			},
 		})
-		err := q.Add(task.WithArgs(ctx, "string", 42))
+		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -79,7 +79,7 @@ var _ = Describe("context.Context", func() {
 				ch <- true
 			},
 		})
-		err := q.Add(task.WithArgs(ctx, "string", 42))
+		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -110,7 +110,7 @@ var _ = Describe("message with invalid number of args", func() {
 		})
 		q.Consumer().Stop()
 
-		err := q.Add(task.WithArgs(ctx))
+		err := q.Add(ctx, task.WithArgs(ctx))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Consumer().ProcessOne(ctx)
@@ -146,7 +146,7 @@ var _ = Describe("HandlerFunc", func() {
 			},
 		})
 
-		err := q.Add(task.WithArgs(ctx, "string", 42))
+		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -191,7 +191,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			_ = q.Add(task.WithArgs(ctx))
+			_ = q.Add(ctx, task.WithArgs(ctx))
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -213,7 +213,7 @@ var _ = Describe("message retry timing", func() {
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			q.Add(msg)
+			q.Add(ctx, msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -248,7 +248,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		q.Add(task.WithArgs(ctx))
+		q.Add(ctx, task.WithArgs(ctx))
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -286,7 +286,7 @@ var _ = Describe("named message", func() {
 				defer wg.Done()
 				msg := task.WithArgs(ctx)
 				msg.Name = name
-				q.Add(msg)
+				q.Add(ctx, msg)
 			}()
 		}
 		wg.Wait()
@@ -332,7 +332,7 @@ var _ = Describe("CallOnce", func() {
 				msg := task.WithArgs(ctx)
 				msg.OnceInPeriod(delay)
 
-				q.Add(msg)
+				q.Add(ctx, msg)
 			}()
 		}
 		wg.Wait()
@@ -365,7 +365,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs(ctx))
+			q.Add(ctx, task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -401,7 +401,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs(ctx))
+			q.Add(ctx, task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -474,7 +474,7 @@ var _ = Describe("empty queue", func() {
 		Context("when there are messages in the queue", func() {
 			BeforeEach(func() {
 				for i := 0; i < 3; i++ {
-					err := q.Add(task.WithArgs(ctx))
+					err := q.Add(ctx, task.WithArgs(ctx))
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})

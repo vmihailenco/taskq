@@ -22,7 +22,7 @@ var (
 )
 
 func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
-	c := context.Background()
+	ctx := context.Background()
 
 	once.Do(func() {
 		q = factory.RegisterQueue(&taskq.QueueOptions{
@@ -37,7 +37,7 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 			},
 		})
 
-		_ = q.Consumer().Start(c)
+		_ = q.Consumer().Start(ctx)
 	})
 
 	b.ResetTimer()
@@ -45,7 +45,7 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
 			wg.Add(1)
-			_ = q.Add(task.WithArgs(c))
+			_ = q.Add(ctx, task.WithArgs(ctx))
 		}
 		wg.Wait()
 	}

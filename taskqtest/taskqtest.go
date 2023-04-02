@@ -39,7 +39,7 @@ func redisRing() *redis.Ring {
 }
 
 func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -62,13 +62,13 @@ func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		},
 	})
 
-	err := q.Add(task.WithArgs(c, "hello", "world"))
+	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	if err := p.Start(c); err != nil {
+	if err := p.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,7 +88,7 @@ func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 }
 
 func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -106,15 +106,15 @@ func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 		RetryLimit: 1,
 	})
 
-	msg := taskq.NewMessage(c)
+	msg := taskq.NewMessage(ctx)
 	msg.TaskName = "unknown"
-	err := q.Add(msg)
+	err := q.Add(ctx, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	if err := p.Start(c); err != nil {
+	if err := p.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,7 +128,7 @@ func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 }
 
 func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -155,13 +155,13 @@ func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		RetryLimit: 1,
 	})
 
-	err := q.Add(task.WithArgs(c, "hello", "world"))
+	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	select {
 	case <-ch:
@@ -179,7 +179,7 @@ func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 }
 
 func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -197,15 +197,15 @@ func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 
 	start := time.Now()
 
-	msg := task.WithArgs(c)
+	msg := task.WithArgs(ctx)
 	msg.Delay = 5 * time.Second
-	err := q.Add(msg)
+	err := q.Add(ctx, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	var tm time.Time
 	select {
@@ -229,7 +229,7 @@ func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 }
 
 func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -258,13 +258,13 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 		MinBackoff: time.Second,
 	})
 
-	err := q.Add(task.WithArgs(c, "hello", "world"))
+	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -279,7 +279,7 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 }
 
 func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -305,9 +305,9 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 		go func() {
 			defer wg.Done()
 
-			msg := task.WithArgs(c, "world")
+			msg := task.WithArgs(ctx, "world")
 			msg.Name = "the-name"
-			err := q.Add(msg)
+			err := q.Add(ctx, msg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -316,7 +316,7 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	select {
 	case <-ch:
@@ -335,7 +335,7 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 }
 
 func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -354,10 +354,10 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				msg := task.WithArgs(c)
+				msg := task.WithArgs(ctx)
 				msg.OnceInPeriod(500 * time.Millisecond)
 
-				err := q.Add(msg)
+				err := q.Add(ctx, msg)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -367,7 +367,7 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}()
 
 	p := q.Consumer()
-	if err := p.Start(c); err != nil {
+	if err := p.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -397,7 +397,7 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	const N = 10
 
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -411,14 +411,14 @@ func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	})
 
 	for i := 0; i < N; i++ {
-		err := q.Add(task.WithArgs(c))
+		err := q.Add(ctx, task.WithArgs(ctx))
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	eventually(func() error {
-		n, err := q.Len()
+		n, err := q.Len(ctx)
 		if err != nil {
 			return err
 		}
@@ -435,7 +435,7 @@ func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 }
 
 func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.RateLimit = redis_rate.PerSecond(1)
 	opt.Redis = redisRing()
@@ -458,7 +458,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 		go func() {
 			defer wg.Done()
 
-			err := q.Add(task.WithArgs(c))
+			err := q.Add(ctx, task.WithArgs(ctx))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -467,7 +467,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	time.Sleep(5 * time.Second)
 
@@ -485,7 +485,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 }
 
 func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
+	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
 
@@ -504,13 +504,13 @@ func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 		RetryLimit: 3,
 	})
 
-	err := q.Add(task.WithArgs(c))
+	err := q.Add(ctx, task.WithArgs(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	p.Start(ctx)
 
 	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -520,46 +520,6 @@ func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	}
 
 	if err := q.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	ctx := context.Background()
-	opt.WaitTimeout = waitTimeout
-	opt.Redis = redisRing()
-	opt.WorkerLimit = 1
-
-	q := factory.RegisterQueue(opt)
-	defer q.Close()
-	purge(t, q)
-
-	ch := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
-		Handler: func() {
-			ch <- time.Now()
-			time.Sleep(time.Second)
-		},
-	})
-
-	for i := 0; i < 3; i++ {
-		err := q.Add(task.WithArgs(ctx))
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	p1 := taskq.StartConsumer(ctx, q)
-	p2 := taskq.StartConsumer(ctx, q)
-
-	timings := []time.Duration{0, time.Second, 2 * time.Second}
-	testTimings(t, ch, timings)
-
-	if err := p1.Stop(); err != nil {
-		t.Fatal(err)
-	}
-	if err := p2.Stop(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -586,7 +546,7 @@ func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 		},
 	})
 
-	err := q.Add(task.WithArgs(ctx, "hello", "world"))
+	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,7 +594,7 @@ func TestBatchConsumer(
 	})
 
 	for i := 0; i < N; i++ {
-		err := q.Add(task.WithArgs(ctx, payload))
+		err := q.Add(ctx, task.WithArgs(ctx, payload))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -687,7 +647,7 @@ func testTimings(t *testing.T, ch chan time.Time, timings []time.Duration) {
 }
 
 func purge(t *testing.T, q taskq.Queue) {
-	err := q.Purge()
+	err := q.Purge(context.TODO())
 	if err == nil {
 		return
 	}

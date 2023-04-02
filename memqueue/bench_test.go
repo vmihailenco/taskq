@@ -27,7 +27,7 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = q.Add(task.WithArgs(ctx))
+			_ = q.Add(ctx, task.WithArgs(ctx))
 		}
 	})
 }
@@ -53,7 +53,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 		for pb.Next() {
 			msg := task.WithArgs(ctx)
 			msg.Name = "myname"
-			q.Add(msg)
+			q.Add(ctx, msg)
 		}
 	})
 }

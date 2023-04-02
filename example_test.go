@@ -39,7 +39,7 @@ func Example_retryOnError() {
 	})
 
 	ctx := context.Background()
-	q.Add(task.WithArgs(ctx))
+	q.Add(ctx, task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -64,7 +64,7 @@ func Example_messageDelay() {
 	ctx := context.Background()
 	msg := task.WithArgs(ctx)
 	msg.Delay = time.Second
-	_ = q.Add(msg)
+	_ = q.Add(ctx, msg)
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -88,7 +88,7 @@ func Example_rateLimit() {
 
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
-		_ = q.Add(task.WithArgs(ctx))
+		_ = q.Add(ctx, task.WithArgs(ctx))
 	}
 
 	// Wait for all messages to be processed.
@@ -117,7 +117,7 @@ func Example_once() {
 		// Call once in a second.
 		msg.OnceInPeriod(time.Second)
 
-		_ = q.Add(msg)
+		_ = q.Add(ctx, msg)
 	}
 
 	// Wait for all messages to be processed.

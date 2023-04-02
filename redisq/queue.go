@@ -137,17 +137,17 @@ func (q *Queue) Consumer() taskq.QueueConsumer {
 	return q.consumer
 }
 
-func (q *Queue) Len() (int, error) {
-	n, err := q.redis.XLen(context.TODO(), q.stream).Result()
+func (q *Queue) Len(ctx context.Context) (int, error) {
+	n, err := q.redis.XLen(ctx, q.stream).Result()
 	return int(n), err
 }
 
 // Add adds message to the queue.
-func (q *Queue) Add(msg *taskq.Message) error {
-	return q.add(q.redis, msg)
+func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
+	return q.add(ctx, q.redis, msg)
 }
 
-func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
+func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
@@ -168,13 +168,13 @@ func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return pipe.ZAdd(msg.Ctx, q.zset, redis.Z{
+		return pipe.ZAdd(ctx, q.zset, redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
 	}
 
-	return pipe.XAdd(msg.Ctx, &redis.XAddArgs{
+	return pipe.XAdd(ctx, &redis.XAddArgs{
 		Stream: q.stream,
 		Values: map[string]interface{}{
 			"body": body,
@@ -222,40 +222,39 @@ func (q *Queue) createStreamGroup(ctx context.Context) {
 	_ = q.redis.XGroupCreateMkStream(ctx, q.stream, q.streamGroup, "0").Err()
 }
 
-func (q *Queue) Release(msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
 	// Make the delete and re-queue operation atomic in case we crash midway
 	// and lose a message.
 	pipe := q.redis.TxPipeline()
 	// When Release a msg, ack it before we delete msg.
-	if err := pipe.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
+	if err := pipe.XAck(ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
 		return err
 	}
 
-	err := pipe.XDel(msg.Ctx, q.stream, msg.ID).Err()
+	err := pipe.XDel(ctx, q.stream, msg.ID).Err()
 	if err != nil {
 		return err
 	}
 
 	msg.ReservedCount++
-	if err := q.add(pipe, msg); err != nil {
+	if err := q.add(ctx, pipe, msg); err != nil {
 		return err
 	}
 
-	_, err = pipe.Exec(msg.Ctx)
+	_, err = pipe.Exec(ctx)
 	return err
 }
 
 // Delete deletes the message from the queue.
-func (q *Queue) Delete(msg *taskq.Message) error {
-	if err := q.redis.XAck(msg.Ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
+func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
+	if err := q.redis.XAck(ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
 		return err
 	}
-	return q.redis.XDel(msg.Ctx, q.stream, msg.ID).Err()
+	return q.redis.XDel(ctx, q.stream, msg.ID).Err()
 }
 
 // Purge deletes all messages from the queue.
-func (q *Queue) Purge() error {
-	ctx := context.TODO()
+func (q *Queue) Purge(ctx context.Context) error {
 	_ = q.redis.Del(ctx, q.zset).Err()
 	_ = q.redis.XTrimMaxLen(ctx, q.stream, 0).Err()
 	return nil
@@ -410,7 +409,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 			return 0, err
 		}
 
-		if err := q.Release(msg); err != nil {
+		if err := q.Release(ctx, msg); err != nil {
 			return 0, err
 		}
 	}

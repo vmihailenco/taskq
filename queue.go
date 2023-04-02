@@ -13,18 +13,13 @@ type QueueOptions struct {
 	// Queue name.
 	Name string
 
-	// Minimum number of goroutines processing messages.
-	// Default is 1.
-	MinNumWorker int32
-	// Maximum number of goroutines processing messages.
-	// Default is 32 * number of CPUs.
-	MaxNumWorker int32
+	NumWorker int
 	// Global limit of concurrently running workers across all servers.
-	// Overrides MaxNumWorker.
-	WorkerLimit int32
+	// Overrides NumWorker.
+	WorkerLimit int
 	// Maximum number of goroutines fetching messages.
 	// Default is 8 * number of CPUs.
-	MaxNumFetcher int32
+	NumFetcher int
 
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
@@ -84,18 +79,14 @@ func (opt *QueueOptions) Init() {
 	}
 
 	if opt.WorkerLimit > 0 {
-		opt.MinNumWorker = opt.WorkerLimit
-		opt.MaxNumWorker = opt.WorkerLimit
+		opt.NumWorker = opt.WorkerLimit
 	} else {
-		if opt.MinNumWorker == 0 {
-			opt.MinNumWorker = 1
-		}
-		if opt.MaxNumWorker == 0 {
-			opt.MaxNumWorker = 32 * int32(runtime.NumCPU())
+		if opt.NumWorker == 0 {
+			opt.NumWorker = 2 * runtime.GOMAXPROCS(0)
 		}
 	}
-	if opt.MaxNumFetcher == 0 {
-		opt.MaxNumFetcher = 8 * int32(runtime.NumCPU())
+	if opt.NumFetcher == 0 {
+		opt.NumFetcher = 1
 	}
 
 	switch opt.PauseErrorsThreshold {
@@ -143,12 +134,12 @@ type Queue interface {
 	Options() *QueueOptions
 	Consumer() QueueConsumer
 
-	Len() (int, error)
-	Add(msg *Message) error
+	Len(ctx context.Context) (int, error)
+	Add(ctx context.Context, msg *Message) error
 	ReserveN(ctx context.Context, n int, waitTimeout time.Duration) ([]Message, error)
-	Release(msg *Message) error
-	Delete(msg *Message) error
-	Purge() error
+	Release(ctx context.Context, msg *Message) error
+	Delete(ctx context.Context, msg *Message) error
+	Purge(ctx context.Context) error
 	Close() error
 	CloseTimeout(timeout time.Duration) error
 }
@@ -177,9 +168,9 @@ type QueueConsumer interface {
 	// ProcessOne processes at most one message in the queue.
 	ProcessOne(ctx context.Context) error
 	// Process is low-level API to process message bypassing the internal queue.
-	Process(msg *Message) error
-	Put(msg *Message)
+	Process(ctx context.Context, msg *Message) error
+	Put(ctx context.Context, msg *Message)
 	// Purge discards messages from the internal queue.
-	Purge() error
+	Purge(ctx context.Context) error
 	String() string
 }

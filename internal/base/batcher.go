@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -98,7 +99,7 @@ func (b *Batcher) process(batch []*taskq.Message) {
 		if msg.Err == nil {
 			msg.Err = err
 		}
-		b.consumer.Put(msg)
+		b.consumer.Put(context.TODO(), msg)
 	}
 }
 
