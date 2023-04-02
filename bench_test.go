@@ -5,17 +5,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/vmihailenco/taskq/v3"
 	"github.com/vmihailenco/taskq/v3/memqueue"
-	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
 func BenchmarkConsumerMemq(b *testing.B) {
 	benchmarkConsumer(b, memqueue.NewFactory())
-}
-
-func BenchmarkConsumerRedisq(b *testing.B) {
-	benchmarkConsumer(b, redisq.NewFactory())
 }
 
 var (
@@ -53,4 +49,19 @@ func benchmarkConsumer(b *testing.B, factory taskq.Factory) {
 		}
 		wg.Wait()
 	}
+}
+
+var (
+	ringOnce sync.Once
+	ring     *redis.Ring
+)
+
+func redisRing() *redis.Ring {
+	ringOnce.Do(func() {
+		ring = redis.NewRing(&redis.RingOptions{
+			Addrs: map[string]string{"0": ":6379"},
+		})
+	})
+	_ = ring.FlushDB(context.TODO()).Err()
+	return ring
 }

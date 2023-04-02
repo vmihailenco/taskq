@@ -138,7 +138,7 @@ func (q *Queue) Add(msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if q.isDuplicate(msg) {
+	if msg.Name != "" && q.isDuplicate(msg) {
 		msg.Err = taskq.ErrDuplicate
 		return nil
 	}
@@ -511,9 +511,6 @@ func (q *Queue) GetDeleteQueue() *memqueue.Queue {
 }
 
 func (q *Queue) isDuplicate(msg *taskq.Message) bool {
-	if msg.Name == "" {
-		return false
-	}
 	return q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 }
 

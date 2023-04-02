@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
 
 	"github.com/bsm/redislock"
 
@@ -229,18 +229,14 @@ func (c *Consumer) StopTimeout(timeout time.Duration) error {
 		done <- struct{}{}
 	}()
 
-	var firstErr error
 	select {
 	case <-done:
 	case <-timer.C:
-		firstErr = fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
+		return fmt.Errorf("taskq: %s: fetchers are not stopped after %s", c, timeout)
 	}
 
 	if !atomic.CompareAndSwapInt32(&c.state, stateStoppingFetchers, stateStoppingWorkers) {
 		panic("not reached")
-	}
-	if firstErr != nil {
-		return firstErr
 	}
 
 	go func() {
@@ -305,7 +301,7 @@ func (c *Consumer) ensureFetcher(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) removeFetcher(num int32) bool {
+func (c *Consumer) tryRemoveFetcher(num int32) bool {
 	return atomic.CompareAndSwapInt32(&c.numFetcher, num+1, num)
 }
 
@@ -395,7 +391,7 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int32) {
 		if err != nil {
 			if err == internal.ErrNotSupported {
 				atomic.StoreInt32(&c.numFetcher, -1)
-				continue
+				return
 			}
 
 			const backoff = time.Second
@@ -406,7 +402,7 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int32) {
 			continue
 		}
 		if timeout {
-			c.removeFetcher(fetcherID)
+			c.tryRemoveFetcher(fetcherID)
 		}
 	}
 }

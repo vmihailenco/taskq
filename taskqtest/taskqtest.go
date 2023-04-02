@@ -1,34 +1,27 @@
-package taskq_test
+package taskqtest
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
-	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 
 	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
-const waitTimeout = time.Second
-const testTimeout = 30 * time.Second
-
-func queueName(s string) string {
-	version := strings.Split(runtime.Version(), " ")[0]
-	version = strings.Replace(version, ".", "", -1)
-	return "test-" + s + "-" + version
-}
+const (
+	waitTimeout = time.Second
+	testTimeout = 30 * time.Second
+)
 
 var (
 	ringOnce sync.Once
@@ -45,7 +38,7 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -94,74 +87,7 @@ func testConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
-	c := context.Background()
-	opt.WaitTimeout = waitTimeout
-	opt.Redis = redisRing()
-
-	red, ok := opt.Redis.(redisq.RedisStreamClient)
-	if !ok {
-		log.Fatal(fmt.Errorf("redisq: Redis client must support streams"))
-	}
-
-	q := factory.RegisterQueue(opt)
-	defer q.Close()
-
-	purge(t, q)
-
-	ch := make(chan time.Time)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
-		Handler: func() error {
-			ch <- time.Now()
-			return nil
-		},
-	})
-
-	err := q.Add(task.WithArgs(c))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	p := q.Consumer()
-	if err := p.Start(c); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-ch:
-	case <-time.After(testTimeout):
-		t.Fatalf("message was not processed")
-	}
-
-	tm := time.Now().Add(opt.ReservationTimeout)
-	end := strconv.FormatInt(unixMs(tm), 10)
-	pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
-		Stream: "taskq:{" + opt.Name + "}:stream",
-		Group:  "taskq",
-		Start:  "-",
-		End:    end,
-		Count:  100,
-	}).Result()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(pending) > 0 {
-		t.Fatal("task not acknowledged and still exists in pending list.")
-	}
-
-	if err := p.Stop(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := q.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -201,7 +127,7 @@ func testUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	}
 }
 
-func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -252,7 +178,7 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -302,7 +228,7 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -352,7 +278,7 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -404,16 +330,11 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	default:
 	}
 
-	if err := p.Stop(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := q.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, p.Stop())
+	require.NoError(t, q.Close())
 }
 
-func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -473,7 +394,7 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	const N = 10
 
 	c := context.Background()
@@ -513,7 +434,7 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.RateLimit = redis_rate.PerSecond(1)
@@ -563,7 +484,7 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	}
 }
 
-func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	c := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -603,7 +524,7 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	}
 }
 
-func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -643,7 +564,7 @@ func testWorkerLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	}
 }
 
-func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -679,7 +600,7 @@ func testInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	}
 }
 
-func testBatchConsumer(
+func TestBatchConsumer(
 	t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions, messageSize int,
 ) {
 	const N = 16
@@ -835,4 +756,16 @@ func nextTaskID() string {
 
 func unixMs(tm time.Time) int64 {
 	return tm.UnixNano() / int64(time.Millisecond)
+}
+
+//------------------------------------------------------------------------------
+
+type RateLimitError string
+
+func (e RateLimitError) Error() string {
+	return string(e)
+}
+
+func (RateLimitError) Delay() time.Duration {
+	return 3 * time.Second
 }

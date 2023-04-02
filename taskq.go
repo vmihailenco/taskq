@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/v3/internal"
 )
@@ -30,13 +30,9 @@ type Factory interface {
 }
 
 type Redis interface {
+	redis.Scripter
+
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	Pipelined(ctx context.Context, fn func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
-
-	// Eval Required by redislock
-	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
-	EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
-	ScriptExists(ctx context.Context, scripts ...string) *redis.BoolSliceCmd
-	ScriptLoad(ctx context.Context, script string) *redis.StringCmd
 }

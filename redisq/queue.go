@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/bsm/redislock"
 
@@ -35,10 +35,10 @@ type RedisStreamClient interface {
 	XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd
 	XPendingExt(ctx context.Context, a *redis.XPendingExtArgs) *redis.XPendingExtCmd
-	XTrim(ctx context.Context, key string, maxLen int64) *redis.IntCmd
+	XTrimMaxLen(ctx context.Context, key string, maxLen int64) *redis.IntCmd
 	XGroupDelConsumer(ctx context.Context, stream, group, consumer string) *redis.IntCmd
 
-	ZAdd(ctx context.Context, key string, members ...*redis.Z) *redis.IntCmd
+	ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd
 	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
 	ZRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
 	XInfoConsumers(ctx context.Context, key string, group string) *redis.XInfoConsumersCmd
@@ -151,7 +151,7 @@ func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if q.isDuplicate(msg) {
+	if msg.Name != "" && q.isDuplicate(msg) {
 		msg.Err = taskq.ErrDuplicate
 		return nil
 	}
@@ -168,7 +168,7 @@ func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return pipe.ZAdd(msg.Ctx, q.zset, &redis.Z{
+		return pipe.ZAdd(msg.Ctx, q.zset, redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
@@ -210,8 +210,7 @@ func (q *Queue) ReserveN(
 		msg := &msgs[i]
 		msg.Ctx = ctx
 
-		err = unmarshalMessage(msg, xmsg)
-		if err != nil {
+		if err := unmarshalMessage(msg, xmsg); err != nil {
 			msg.Err = err
 		}
 	}
@@ -238,8 +237,7 @@ func (q *Queue) Release(msg *taskq.Message) error {
 	}
 
 	msg.ReservedCount++
-	err = q.add(pipe, msg)
-	if err != nil {
+	if err := q.add(pipe, msg); err != nil {
 		return err
 	}
 
@@ -259,7 +257,7 @@ func (q *Queue) Delete(msg *taskq.Message) error {
 func (q *Queue) Purge() error {
 	ctx := context.TODO()
 	_ = q.redis.Del(ctx, q.zset).Err()
-	_ = q.redis.XTrim(ctx, q.stream, 0).Err()
+	_ = q.redis.XTrimMaxLen(ctx, q.stream, 0).Err()
 	return nil
 }
 
@@ -408,13 +406,11 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 		xmsg := &xmsgs[0]
 		msg := new(taskq.Message)
 		msg.Ctx = ctx
-		err = unmarshalMessage(msg, xmsg)
-		if err != nil {
+		if err := unmarshalMessage(msg, xmsg); err != nil {
 			return 0, err
 		}
 
-		err = q.Release(msg)
-		if err != nil {
+		if err := q.Release(msg); err != nil {
 			return 0, err
 		}
 	}
@@ -423,9 +419,6 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 }
 
 func (q *Queue) isDuplicate(msg *taskq.Message) bool {
-	if msg.Name == "" {
-		return false
-	}
 	exists := q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
 	return exists
 }
@@ -453,8 +446,7 @@ func unixMs(tm time.Time) int64 {
 
 func unmarshalMessage(msg *taskq.Message, xmsg *redis.XMessage) error {
 	body := xmsg.Values["body"].(string)
-	err := msg.UnmarshalBinary(internal.StringToBytes(body))
-	if err != nil {
+	if err := msg.UnmarshalBinary(internal.StringToBytes(body)); err != nil {
 		return err
 	}
 
