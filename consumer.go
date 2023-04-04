@@ -291,9 +291,6 @@ func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 }
 
 func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
-	timer := time.NewTimer(time.Minute)
-	timer.Stop()
-
 	for {
 		if pauseTime := c.paused(); pauseTime > 0 {
 			internal.Logger.Printf("%s is automatically paused for dur=%s", c, pauseTime)
@@ -302,22 +299,26 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 			continue
 		}
 
-		switch err := c.fetchJobs(ctx); err {
+		switch err := c.reserveJobs(ctx); err {
 		case nil:
 			// nothing
 		case internal.ErrNotSupported, context.Canceled:
 			return
+		case context.DeadlineExceeded:
+			internal.Logger.Printf(
+				"fetcher(%d) reserveJobs failed: %s (exiting)",
+				fetcherID, err)
 		default:
 			backoff := time.Second
 			internal.Logger.Printf(
-				"%s fetchJobs failed: %s (sleeping for dur=%s)",
-				c, err, backoff)
+				"fetcher(%d) reserveJobs failed: %s (sleeping for dur=%s)",
+				fetcherID, err, backoff)
 			sleep(ctx, backoff)
 		}
 	}
 }
 
-func (c *Consumer) fetchJobs(ctx context.Context) error {
+func (c *Consumer) reserveJobs(ctx context.Context) error {
 	size, err := c.limiter.Reserve(ctx, c.opt.ReservationSize)
 	if err != nil {
 		return err

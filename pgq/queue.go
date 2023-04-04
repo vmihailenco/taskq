@@ -24,7 +24,7 @@ type Queue struct {
 }
 
 type Job struct {
-	bun.BaseModel `bun:"taskq_messages,alias:m"`
+	bun.BaseModel `bun:"taskq_jobs,alias:m"`
 
 	ID            ulid.ULID `bun:"type:uuid"`
 	Queue         string

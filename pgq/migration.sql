@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS taskq_messages
+CREATE TABLE IF NOT EXISTS taskq_jobs
 (
   id bytea NOT NULL PRIMARY KEY,
   queue varchar(500) NOT NULL,
@@ -10,5 +10,5 @@ CREATE TABLE IF NOT EXISTS taskq_messages
 
 --bun:split
 
-CREATE INDEX IF NOT EXISTS taskq_messages_queue_run_at_reserved_at_idx
-ON taskq_messages (queue, run_at, reserved_at);
+CREATE INDEX IF NOT EXISTS taskq_jobs_queue_run_at_reserved_at_idx
+ON taskq_jobs (queue, run_at, reserved_at);
