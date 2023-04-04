@@ -15,8 +15,8 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
 	github.com/uptrace/bun/driver/pgdriver v1.1.12
 	github.com/uptrace/bun/extra/bundebug v1.1.12
-	github.com/vmihailenco/taskq/taskqtest/v4 v4.0.0-00010101000000-000000000000
-	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/taskqtest/v4 v4.0.0-beta.1
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
 )
 
 require (

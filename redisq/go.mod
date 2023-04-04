@@ -14,8 +14,8 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.2
-	github.com/vmihailenco/taskq/taskqtest/v4 v4.0.0-00010101000000-000000000000
-	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/taskqtest/v4 v4.0.0-beta.1
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
 )
 
 require (

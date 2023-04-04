@@ -7,7 +7,7 @@ replace github.com/vmihailenco/taskq/v4 => ../..
 replace github.com/vmihailenco/taskq/memqueue/v4 => ../../memqueue
 
 require (
-	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
 	go.opentelemetry.io/otel v1.14.0
 	go.opentelemetry.io/otel/trace v1.14.0
 

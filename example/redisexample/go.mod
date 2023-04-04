@@ -12,8 +12,8 @@ replace github.com/vmihailenco/taskq/taskqtest/v4 => ../../taskqtest
 
 require (
 	github.com/redis/go-redis/v9 v9.0.3
-	github.com/vmihailenco/taskq/redisq/v4 v4.0.0-00010101000000-000000000000
-	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/redisq/v4 v4.0.0-beta.1
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
 )
 
 require (
@@ -25,7 +25,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/klauspost/compress v1.16.3 // indirect
-	github.com/stretchr/testify v1.8.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 )

@@ -1,3 +1,17 @@
+# [4.0.0-beta.1](https://github.com/vmihailenco/taskq/compare/v3.2.9...v4.0.0-beta.1) (2023-04-04)
+
+
+### Bug Fixes
+
+* crash due to nil msg.Ctx. Fixes [#177](https://github.com/vmihailenco/taskq/issues/177) ([c24c993](https://github.com/vmihailenco/taskq/commit/c24c993ad9e1b9c4c3152f27b668a61697422501)), closes [#153](https://github.com/vmihailenco/taskq/issues/153)
+
+
+### Features
+
+* add pgq backend ([2b48fd6](https://github.com/vmihailenco/taskq/commit/2b48fd6bea47b96fc0e3f3cd2b82ba72c35e5155))
+
+
+
 ## [3.2.9](https://github.com/vmihailenco/taskq/compare/v3.2.8...v3.2.9) (2022-08-24)
 
 
