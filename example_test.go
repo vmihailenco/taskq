@@ -25,11 +25,10 @@ func timeSinceCeil(start time.Time) time.Duration {
 
 func Example_retryOnError() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name: "test",
 	})
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: "Example_retryOnError",
+	task := taskq.RegisterTask("Example_retryOnError", &taskq.TaskConfig{
 		Handler: func() error {
 			fmt.Println("retried in", timeSince(start))
 			return errors.New("fake error")
@@ -39,7 +38,7 @@ func Example_retryOnError() {
 	})
 
 	ctx := context.Background()
-	q.Add(ctx, task.WithArgs(ctx))
+	q.AddJob(ctx, task.NewJob())
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -51,20 +50,19 @@ func Example_retryOnError() {
 
 func Example_messageDelay() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name: "test",
 	})
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: "Example_messageDelay",
+	task := taskq.RegisterTask("Example_messageDelay", &taskq.TaskConfig{
 		Handler: func() {
 			fmt.Println("processed with delay", timeSince(start))
 		},
 	})
 
 	ctx := context.Background()
-	msg := task.WithArgs(ctx)
+	msg := task.NewJob()
 	msg.Delay = time.Second
-	_ = q.Add(ctx, msg)
+	_ = q.AddJob(ctx, msg)
 
 	// Wait for all messages to be processed.
 	_ = q.Close()
@@ -74,13 +72,12 @@ func Example_messageDelay() {
 
 func Example_rateLimit() {
 	start := time.Now()
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name:      "test",
 		Redis:     redisRing(),
 		RateLimit: redis_rate.PerSecond(1),
 	})
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    "Example_rateLimit",
+	task := taskq.RegisterTask("Example_rateLimit", &taskq.TaskConfig{
 		Handler: func() {},
 	})
 
@@ -88,7 +85,7 @@ func Example_rateLimit() {
 
 	ctx := context.Background()
 	for i := 0; i < n; i++ {
-		_ = q.Add(ctx, task.WithArgs(ctx))
+		_ = q.AddJob(ctx, task.NewJob())
 	}
 
 	// Wait for all messages to be processed.
@@ -99,13 +96,12 @@ func Example_rateLimit() {
 }
 
 func Example_once() {
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name:      "test",
 		Redis:     redisRing(),
 		RateLimit: redis_rate.PerSecond(1),
 	})
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: "Example_once",
+	task := taskq.RegisterTask("Example_once", &taskq.TaskConfig{
 		Handler: func(name string) {
 			fmt.Println("hello", name)
 		},
@@ -113,11 +109,11 @@ func Example_once() {
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		msg := task.WithArgs(ctx, "world")
+		msg := task.NewJob("world")
 		// Call once in a second.
 		msg.OnceInPeriod(time.Second)
 
-		_ = q.Add(ctx, msg)
+		_ = q.AddJob(ctx, msg)
 	}
 
 	// Wait for all messages to be processed.

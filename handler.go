@@ -10,18 +10,20 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
-var messageType = reflect.TypeOf((*Message)(nil))
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
+var (
+	contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+	messageType = reflect.TypeOf((*Job)(nil))
+	errorType   = reflect.TypeOf((*error)(nil)).Elem()
+)
 
 // Handler is an interface for processing messages.
 type Handler interface {
-	HandleMessage(msg *Message) error
+	HandleJob(ctx context.Context, msg *Job) error
 }
 
-type HandlerFunc func(*Message) error
+type HandlerFunc func(*Job) error
 
-func (fn HandlerFunc) HandleMessage(msg *Message) error {
+func (fn HandlerFunc) HandleJob(ctx context.Context, msg *Job) error {
 	return fn(msg)
 }
 
@@ -52,13 +54,13 @@ func NewHandler(fn interface{}) Handler {
 	}
 
 	h.returnsError = returnsError(h.ft)
-	if acceptsMessage(h.ft) {
+	if acceptsJob(h.ft) {
 		if h.returnsError {
-			return HandlerFunc(fn.(func(*Message) error))
+			return HandlerFunc(fn.(func(*Job) error))
 		}
 		if h.ft.NumOut() == 0 {
-			theFn := fn.(func(*Message))
-			return HandlerFunc(func(msg *Message) error {
+			theFn := fn.(func(*Job))
+			return HandlerFunc(func(msg *Job) error {
 				theFn(msg)
 				return nil
 			})
@@ -69,8 +71,8 @@ func NewHandler(fn interface{}) Handler {
 	return &h
 }
 
-func (h *reflectFunc) HandleMessage(msg *Message) error {
-	in, err := h.fnArgs(msg)
+func (h *reflectFunc) HandleJob(ctx context.Context, msg *Job) error {
+	in, err := h.fnArgs(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -86,14 +88,14 @@ func (h *reflectFunc) HandleMessage(msg *Message) error {
 	return nil
 }
 
-func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
+func (h *reflectFunc) fnArgs(ctx context.Context, msg *Job) ([]reflect.Value, error) {
 	in := make([]reflect.Value, h.ft.NumIn())
 	inSaved := in
 
 	var inStart int
 	if h.acceptsContext {
 		inStart = 1
-		in[0] = reflect.ValueOf(msg.Ctx)
+		in[0] = reflect.ValueOf(ctx)
 		in = in[1:]
 	}
 
@@ -152,7 +154,7 @@ func (h *reflectFunc) fnArgs(msg *Message) ([]reflect.Value, error) {
 	return inSaved, nil
 }
 
-func acceptsMessage(typ reflect.Type) bool {
+func acceptsJob(typ reflect.Type) bool {
 	return typ.NumIn() == 1 && typ.In(0) == messageType
 }
 

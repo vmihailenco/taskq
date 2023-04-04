@@ -38,7 +38,7 @@ func redisRing() *redis.Ring {
 	return ring
 }
 
-func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -48,8 +48,7 @@ func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %s, wanted hello", hello)
@@ -62,7 +61,7 @@ func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		},
 	})
 
-	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
+	err := q.AddJob(ctx, task.NewJob("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +86,7 @@ func TestConsumer(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -96,19 +95,18 @@ func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	defer q.Close()
 	purge(t, q)
 
-	_ = taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    nextTaskID(),
+	_ = taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() {},
 	})
 
-	taskq.SetUnknownTaskOptions(&taskq.TaskOptions{
+	taskq.SetUnknownTaskConfig(&taskq.TaskConfig{
 		Name:       "_",
 		RetryLimit: 1,
 	})
 
-	msg := taskq.NewMessage(ctx)
+	msg := taskq.NewJob()
 	msg.TaskName = "unknown"
-	err := q.Add(ctx, msg)
+	err := q.AddJob(ctx, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +125,7 @@ func TestUnknownTask(t *testing.T, factory taskq.Factory, opt *taskq.QueueOption
 	}
 }
 
-func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -137,8 +135,7 @@ func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() error {
 			return errors.New("fake error")
 		},
@@ -155,7 +152,7 @@ func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 		RetryLimit: 1,
 	})
 
-	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
+	err := q.AddJob(ctx, task.NewJob("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +175,7 @@ func TestFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -188,8 +185,7 @@ func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() {
 			handlerCh <- time.Now()
 		},
@@ -197,9 +193,9 @@ func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 
 	start := time.Now()
 
-	msg := task.WithArgs(ctx)
+	msg := task.NewJob()
 	msg.Delay = 5 * time.Second
-	err := q.Add(ctx, msg)
+	err := q.AddJob(ctx, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +224,7 @@ func TestDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -238,8 +234,7 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func(hello, world string) error {
 			if hello != "hello" {
 				t.Fatalf("got %q, wanted hello", hello)
@@ -250,7 +245,7 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 			handlerCh <- time.Now()
 			return errors.New("fake error")
 		},
-		FallbackHandler: func(msg *taskq.Message) error {
+		FallbackHandler: func(msg *taskq.Job) error {
 			handlerCh <- time.Now()
 			return nil
 		},
@@ -258,7 +253,7 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 		MinBackoff: time.Second,
 	})
 
-	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
+	err := q.AddJob(ctx, task.NewJob("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +273,7 @@ func TestRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestNamedJob(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -288,8 +283,7 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func(hello string) error {
 			if hello != "world" {
 				panic("hello != world")
@@ -305,9 +299,9 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 		go func() {
 			defer wg.Done()
 
-			msg := task.WithArgs(ctx, "world")
+			msg := task.NewJob("world")
 			msg.Name = "the-name"
-			err := q.Add(ctx, msg)
+			err := q.AddJob(ctx, msg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -334,7 +328,7 @@ func TestNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 	require.NoError(t, q.Close())
 }
 
-func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -344,8 +338,7 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	purge(t, q)
 
 	ch := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() {
 			ch <- time.Now()
 		},
@@ -354,10 +347,10 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	go func() {
 		for i := 0; i < 3; i++ {
 			for j := 0; j < 10; j++ {
-				msg := task.WithArgs(ctx)
+				msg := task.NewJob()
 				msg.OnceInPeriod(500 * time.Millisecond)
 
-				err := q.Add(ctx, msg)
+				err := q.AddJob(ctx, msg)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -394,7 +387,7 @@ func TestCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 }
 
-func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	const N = 10
 
 	ctx := context.Background()
@@ -405,13 +398,12 @@ func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	defer q.Close()
 	purge(t, q)
 
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() {},
 	})
 
 	for i := 0; i < N; i++ {
-		err := q.Add(ctx, task.WithArgs(ctx))
+		err := q.AddJob(ctx, task.NewJob())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -434,7 +426,7 @@ func TestLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 }
 
-func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.RateLimit = redis_rate.PerSecond(1)
@@ -445,8 +437,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	purge(t, q)
 
 	var count int64
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() {
 			atomic.AddInt64(&count, 1)
 		},
@@ -458,7 +449,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 		go func() {
 			defer wg.Done()
 
-			err := q.Add(ctx, task.WithArgs(ctx))
+			err := q.AddJob(ctx, task.NewJob())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -484,7 +475,7 @@ func TestRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 	}
 }
 
-func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -494,8 +485,7 @@ func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	purge(t, q)
 
 	handlerCh := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func() error {
 			handlerCh <- time.Now()
 			return RateLimitError("fake error")
@@ -504,7 +494,7 @@ func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 		RetryLimit: 3,
 	})
 
-	err := q.Add(ctx, task.WithArgs(ctx))
+	err := q.AddJob(ctx, task.NewJob())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +514,7 @@ func TestErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	}
 }
 
-func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
+func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig) {
 	ctx := context.Background()
 	opt.WaitTimeout = waitTimeout
 	opt.Redis = redisRing()
@@ -533,8 +523,7 @@ func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 	defer q.Close()
 
 	ch := make(chan time.Time, 10)
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func(s1, s2 string) {
 			if s1 != "hello" {
 				t.Fatalf("got %q, wanted hello", s1)
@@ -546,7 +535,7 @@ func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 		},
 	})
 
-	err := q.Add(ctx, task.WithArgs(ctx, "hello", "world"))
+	err := q.AddJob(ctx, task.NewJob("hello", "world"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +550,7 @@ func TestInvalidCredentials(t *testing.T, factory taskq.Factory, opt *taskq.Queu
 }
 
 func TestBatchConsumer(
-	t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions, messageSize int,
+	t *testing.T, factory taskq.Factory, opt *taskq.QueueConfig, messageSize int,
 ) {
 	const N = 16
 
@@ -583,8 +572,7 @@ func TestBatchConsumer(
 	defer q.Close()
 	purge(t, q)
 
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name: nextTaskID(),
+	task := taskq.RegisterTask(nextTaskID(), &taskq.TaskConfig{
 		Handler: func(s string) {
 			defer wg.Done()
 			if s != string(payload) {
@@ -594,7 +582,7 @@ func TestBatchConsumer(
 	})
 
 	for i := 0; i < N; i++ {
-		err := q.Add(ctx, task.WithArgs(ctx, payload))
+		err := q.AddJob(ctx, task.NewJob(payload))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -652,8 +640,7 @@ func purge(t *testing.T, q taskq.Queue) {
 		return
 	}
 
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    "*",
+	task := taskq.RegisterTask("*", &taskq.TaskConfig{
 		Handler: func() {},
 	})
 

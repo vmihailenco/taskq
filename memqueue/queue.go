@@ -10,15 +10,15 @@ import (
 
 	"github.com/vmihailenco/taskq/v4"
 	"github.com/vmihailenco/taskq/v4/internal"
-	"github.com/vmihailenco/taskq/v4/internal/msgutil"
+	"github.com/vmihailenco/taskq/v4/internal/jobutil"
 )
 
 type scheduler struct {
 	timerLock sync.Mutex
-	timerMap  map[*taskq.Message]*time.Timer
+	timerMap  map[*taskq.Job]*time.Timer
 }
 
-func (q *scheduler) Schedule(msg *taskq.Message, fn func()) {
+func (q *scheduler) Schedule(msg *taskq.Job, fn func()) {
 	q.timerLock.Lock()
 	defer q.timerLock.Unlock()
 
@@ -32,12 +32,12 @@ func (q *scheduler) Schedule(msg *taskq.Message, fn func()) {
 	})
 
 	if q.timerMap == nil {
-		q.timerMap = make(map[*taskq.Message]*time.Timer)
+		q.timerMap = make(map[*taskq.Job]*time.Timer)
 	}
 	q.timerMap[msg] = timer
 }
 
-func (q *scheduler) Remove(msg *taskq.Message) {
+func (q *scheduler) Remove(msg *taskq.Job) {
 	q.timerLock.Lock()
 	defer q.timerLock.Unlock()
 
@@ -72,7 +72,7 @@ const (
 )
 
 type Queue struct {
-	opt *taskq.QueueOptions
+	opt *taskq.QueueConfig
 
 	sync    bool
 	noDelay bool
@@ -87,7 +87,7 @@ type Queue struct {
 
 var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(opt *taskq.QueueOptions) *Queue {
+func NewQueue(opt *taskq.QueueConfig) *Queue {
 	opt.Init()
 
 	q := &Queue{
@@ -110,7 +110,7 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("queue=%q", q.Name())
 }
 
-func (q *Queue) Options() *taskq.QueueOptions {
+func (q *Queue) Options() *taskq.QueueConfig {
 	return q.opt
 }
 
@@ -169,22 +169,22 @@ func (q *Queue) Len(ctx context.Context) (int, error) {
 }
 
 // Add adds message to the queue.
-func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) AddJob(ctx context.Context, msg *taskq.Job) error {
 	if q.closed() {
 		return fmt.Errorf("taskq: %s is closed", q)
 	}
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if q.isDuplicate(msg) {
+	if msg.Name != "" && q.isDuplicate(ctx, msg) {
 		msg.Err = taskq.ErrDuplicate
 		return nil
 	}
 	q.wg.Add(1)
-	return q.enqueueMessage(ctx, msg)
+	return q.enqueueJob(ctx, msg)
 }
 
-func (q *Queue) enqueueMessage(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) enqueueJob(ctx context.Context, msg *taskq.Job) error {
 	if (q.noDelay || q.sync) && msg.Delay > 0 {
 		msg.Delay = 0
 	}
@@ -202,31 +202,31 @@ func (q *Queue) enqueueMessage(ctx context.Context, msg *taskq.Message) error {
 				return
 			}
 			msg.Delay = 0
-			_ = q.consumer.Add(msg)
+			_ = q.consumer.AddJob(ctx, msg)
 		})
 		return nil
 	}
-	return q.consumer.Add(msg)
+	return q.consumer.AddJob(ctx, msg)
 }
 
-func (q *Queue) ReserveN(ctx context.Context, _ int, _ time.Duration) ([]taskq.Message, error) {
+func (q *Queue) ReserveN(ctx context.Context, _ int, _ time.Duration) ([]taskq.Job, error) {
 	return nil, internal.ErrNotSupported
 }
 
-func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, msg *taskq.Job) error {
 	// Shallow copy.
 	clone := *msg
 	clone.Err = nil
-	return q.enqueueMessage(ctx, &clone)
+	return q.enqueueJob(ctx, &clone)
 }
 
-func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Delete(ctx context.Context, msg *taskq.Job) error {
 	q.scheduler.Remove(msg)
 	q.wg.Done()
 	return nil
 }
 
-func (q *Queue) DeleteBatch(ctx context.Context, msgs []*taskq.Message) error {
+func (q *Queue) DeleteBatch(ctx context.Context, msgs []*taskq.Job) error {
 	if len(msgs) == 0 {
 		return errors.New("taskq: no messages to delete")
 	}
@@ -254,9 +254,6 @@ func (q *Queue) closed() bool {
 	return atomic.LoadInt32(&q._state) == stateClosed
 }
 
-func (q *Queue) isDuplicate(msg *taskq.Message) bool {
-	if msg.Name == "" {
-		return false
-	}
-	return q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
+func (q *Queue) isDuplicate(ctx context.Context, job *taskq.Job) bool {
+	return q.opt.Storage.Exists(ctx, jobutil.FullJobName(q, job))
 }

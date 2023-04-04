@@ -11,11 +11,12 @@ import (
 func main() {
 	flag.Parse()
 
+	ctx := context.Background()
 	go redisexample.LogStats()
 
 	go func() {
 		for {
-			err := redisexample.MainQueue.Add(redisexample.CountTask.WithArgs(context.Background()))
+			err := redisexample.MainQueue.AddJob(ctx, redisexample.CountTask.NewJob(ctx))
 			if err != nil {
 				log.Fatal(err)
 			}

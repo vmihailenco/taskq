@@ -12,14 +12,13 @@ func BenchmarkCallAsync(b *testing.B) {
 	taskq.Tasks.Reset()
 	ctx := context.Background()
 
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name:    "test",
 		Storage: taskq.NewLocalStorage(),
 	})
 	defer q.Close()
 
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    "test",
+	task := taskq.RegisterTask("test", &taskq.TaskConfig{
 		Handler: func() {},
 	})
 
@@ -27,23 +26,22 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = q.Add(ctx, task.WithArgs(ctx))
+			_ = q.Add(ctx, task.NewJob())
 		}
 	})
 }
 
-func BenchmarkNamedMessage(b *testing.B) {
+func BenchmarkNamedJob(b *testing.B) {
 	taskq.Tasks.Reset()
 	ctx := context.Background()
 
-	q := memqueue.NewQueue(&taskq.QueueOptions{
+	q := memqueue.NewQueue(&taskq.QueueConfig{
 		Name:    "test",
 		Storage: taskq.NewLocalStorage(),
 	})
 	defer q.Close()
 
-	task := taskq.RegisterTask(&taskq.TaskOptions{
-		Name:    "test",
+	task := taskq.RegisterTask("test", &taskq.TaskConfig{
 		Handler: func() {},
 	})
 
@@ -51,7 +49,7 @@ func BenchmarkNamedMessage(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			msg := task.WithArgs(ctx)
+			msg := task.NewJob()
 			msg.Name = "myname"
 			q.Add(ctx, msg)
 		}

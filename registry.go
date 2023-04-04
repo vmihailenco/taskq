@@ -1,6 +1,7 @@
 package taskq
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -22,10 +23,11 @@ func (r *TaskMap) Get(name string) *Task {
 	return nil
 }
 
-func (r *TaskMap) Register(opt *TaskOptions) (*Task, error) {
+func (r *TaskMap) Register(name string, opt *TaskConfig) (*Task, error) {
 	opt.init()
 
 	task := &Task{
+		name:    name,
 		opt:     opt,
 		handler: NewHandler(opt.Handler),
 	}
@@ -34,7 +36,6 @@ func (r *TaskMap) Register(opt *TaskOptions) (*Task, error) {
 		task.fallbackHandler = NewHandler(opt.FallbackHandler)
 	}
 
-	name := task.Name()
 	_, loaded := r.m.LoadOrStore(name, task)
 	if loaded {
 		return nil, fmt.Errorf("task=%q already exists", name)
@@ -56,7 +57,7 @@ func (r *TaskMap) Range(fn func(name string, task *Task) bool) {
 	})
 }
 
-func (r *TaskMap) HandleMessage(msg *Message) error {
+func (r *TaskMap) HandleJob(ctx context.Context, msg *Job) error {
 	task := r.Get(msg.TaskName)
 	if task == nil {
 		msg.Delay = r.delay(msg, nil, unknownTaskOpt)
@@ -68,7 +69,7 @@ func (r *TaskMap) HandleMessage(msg *Message) error {
 		defer opt.DeferFunc()
 	}
 
-	msgErr := task.HandleMessage(msg)
+	msgErr := task.HandleJob(ctx, msg)
 	if msgErr == nil {
 		return nil
 	}
@@ -77,7 +78,7 @@ func (r *TaskMap) HandleMessage(msg *Message) error {
 	return msgErr
 }
 
-func (r *TaskMap) delay(msg *Message, msgErr error, opt *TaskOptions) time.Duration {
+func (r *TaskMap) delay(msg *Job, msgErr error, opt *TaskConfig) time.Duration {
 	if msg.ReservedCount >= opt.RetryLimit {
 		return 0
 	}

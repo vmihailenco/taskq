@@ -9,8 +9,8 @@ import (
 )
 
 type BatcherOptions struct {
-	Handler     func([]*taskq.Message) error
-	ShouldBatch func([]*taskq.Message, *taskq.Message) bool
+	Handler     func([]*taskq.Job) error
+	ShouldBatch func([]*taskq.Job, *taskq.Job) bool
 
 	Timeout time.Duration
 }
@@ -29,7 +29,7 @@ type Batcher struct {
 	timer *time.Timer
 
 	mu     sync.Mutex
-	batch  []*taskq.Message
+	batch  []*taskq.Job
 	closed bool
 }
 
@@ -51,8 +51,8 @@ func (b *Batcher) flush() {
 	}
 }
 
-func (b *Batcher) Add(msg *taskq.Message) error {
-	var batch []*taskq.Message
+func (b *Batcher) Add(msg *taskq.Job) error {
+	var batch []*taskq.Job
 
 	b.mu.Lock()
 
@@ -60,7 +60,7 @@ func (b *Batcher) Add(msg *taskq.Message) error {
 		if len(b.batch) > 0 {
 			panic("not reached")
 		}
-		batch = []*taskq.Message{msg}
+		batch = []*taskq.Job{msg}
 	} else {
 		if len(b.batch) == 0 {
 			b.stopTimer()
@@ -71,7 +71,7 @@ func (b *Batcher) Add(msg *taskq.Message) error {
 			b.batch = append(b.batch, msg)
 		} else {
 			batch = b.batch
-			b.batch = []*taskq.Message{msg}
+			b.batch = []*taskq.Job{msg}
 		}
 	}
 
@@ -93,7 +93,7 @@ func (b *Batcher) stopTimer() {
 	}
 }
 
-func (b *Batcher) process(batch []*taskq.Message) {
+func (b *Batcher) process(batch []*taskq.Job) {
 	err := b.opt.Handler(batch)
 	for _, msg := range batch {
 		if msg.Err == nil {

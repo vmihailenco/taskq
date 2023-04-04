@@ -47,9 +47,9 @@ const (
 // and then either releases or deletes messages from the queue.
 type Consumer struct {
 	q   Queue
-	opt *QueueOptions
+	opt *QueueConfig
 
-	buffer  chan *Message // never closed
+	buffer  chan *Job // never closed
 	limiter *limiter
 
 	consecutiveNumErr uint32
@@ -79,7 +79,7 @@ func NewConsumer(q Queue) *Consumer {
 		q:   q,
 		opt: opt,
 
-		buffer: make(chan *Message, opt.BufferSize),
+		buffer: make(chan *Job, opt.BufferSize),
 
 		limiter: &limiter{
 			bucket:  q.Name(),
@@ -108,7 +108,7 @@ func (c *Consumer) Queue() Queue {
 	return c.q
 }
 
-func (c *Consumer) Options() *QueueOptions {
+func (c *Consumer) Options() *QueueConfig {
 	return c.opt
 }
 
@@ -129,8 +129,8 @@ func (c *Consumer) Stats() *ConsumerStats {
 	}
 }
 
-func (c *Consumer) Add(msg *Message) error {
-	_, _ = c.limiter.Reserve(msg.Ctx, 1)
+func (c *Consumer) AddJob(ctx context.Context, msg *Job) error {
+	_, _ = c.limiter.Reserve(ctx, 1)
 	c.buffer <- msg
 	return nil
 }
@@ -265,12 +265,10 @@ func (c *Consumer) ProcessOne(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	msg.Ctx = ctx
 	return c.Process(ctx, msg)
 }
 
-func (c *Consumer) reserveOne(ctx context.Context) (*Message, error) {
+func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 	select {
 	case msg := <-c.buffer:
 		return msg, nil
@@ -304,7 +302,7 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 			continue
 		}
 
-		switch err := c.fetchMessages(ctx); err {
+		switch err := c.fetchJobs(ctx); err {
 		case nil:
 			// nothing
 		case internal.ErrNotSupported, context.Canceled:
@@ -312,14 +310,14 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 		default:
 			backoff := time.Second
 			internal.Logger.Printf(
-				"%s fetchMessages failed: %s (sleeping for dur=%s)",
+				"%s fetchJobs failed: %s (sleeping for dur=%s)",
 				c, err, backoff)
 			sleep(ctx, backoff)
 		}
 	}
 }
 
-func (c *Consumer) fetchMessages(ctx context.Context) error {
+func (c *Consumer) fetchJobs(ctx context.Context) error {
 	size, err := c.limiter.Reserve(ctx, c.opt.ReservationSize)
 	if err != nil {
 		return err
@@ -351,16 +349,15 @@ func (c *Consumer) fetchMessages(ctx context.Context) error {
 
 func (c *Consumer) worker(ctx context.Context, workerID int) {
 	for {
-		msg := c.waitMessage(ctx)
+		msg := c.waitJob(ctx)
 		if msg == nil {
 			return
 		}
-		msg.Ctx = ctx
 		_ = c.Process(internal.UndoContext(ctx), msg)
 	}
 }
 
-func (c *Consumer) waitMessage(ctx context.Context) *Message {
+func (c *Consumer) waitJob(ctx context.Context) *Job {
 	select {
 	case msg := <-c.buffer:
 		return msg
@@ -376,11 +373,11 @@ func (c *Consumer) waitMessage(ctx context.Context) *Message {
 }
 
 // Process is low-level API to process message bypassing the internal queue.
-func (c *Consumer) Process(ctx context.Context, msg *Message) error {
+func (c *Consumer) Process(ctx context.Context, msg *Job) error {
 	atomic.AddUint32(&c.inFlight, 1)
 
 	if msg.Delay > 0 {
-		if err := c.q.Add(ctx, msg); err != nil {
+		if err := c.q.AddJob(ctx, msg); err != nil {
 			return err
 		}
 		return nil
@@ -392,7 +389,7 @@ func (c *Consumer) Process(ctx context.Context, msg *Message) error {
 		return msg.Err
 	}
 
-	evt, err := c.beforeProcessMessage(msg)
+	evt, err := c.beforeProcessJob(msg)
 	if err != nil {
 		msg.Err = err
 		c.Put(ctx, msg)
@@ -401,7 +398,7 @@ func (c *Consumer) Process(ctx context.Context, msg *Message) error {
 
 	msg.evt = evt
 
-	msgErr := c.opt.Handler.HandleMessage(msg)
+	msgErr := c.opt.Handler.HandleJob(ctx, msg)
 	if msgErr == ErrAsyncTask {
 		return ErrAsyncTask
 	}
@@ -412,8 +409,8 @@ func (c *Consumer) Process(ctx context.Context, msg *Message) error {
 	return msg.Err
 }
 
-func (c *Consumer) Put(ctx context.Context, msg *Message) {
-	if err := c.afterProcessMessage(msg); err != nil {
+func (c *Consumer) Put(ctx context.Context, msg *Job) {
+	if err := c.afterProcessJob(msg); err != nil {
 		msg.Err = err
 	}
 
@@ -435,7 +432,7 @@ func (c *Consumer) Put(ctx context.Context, msg *Message) {
 	c.release(ctx, msg)
 }
 
-func (c *Consumer) release(ctx context.Context, msg *Message) {
+func (c *Consumer) release(ctx context.Context, msg *Job) {
 	if msg.Err != nil {
 		internal.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
 			msg.TaskName, msg.ReservedCount, msg.Delay, msg.Err)
@@ -447,12 +444,12 @@ func (c *Consumer) release(ctx context.Context, msg *Message) {
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
-func (c *Consumer) delete(ctx context.Context, msg *Message) {
+func (c *Consumer) delete(ctx context.Context, msg *Job) {
 	if msg.Err != nil {
 		internal.Logger.Printf("task=%q handler failed after retry=%d: %s",
 			msg.TaskName, msg.ReservedCount, msg.Err)
 
-		if err := c.opt.Handler.HandleMessage(msg); err != nil {
+		if err := c.opt.Handler.HandleJob(ctx, msg); err != nil {
 			internal.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
 		}
 	}
@@ -475,30 +472,30 @@ func (c *Consumer) Purge(ctx context.Context) error {
 	}
 }
 
-type ProcessMessageEvent struct {
-	Message   *Message
+type ProcessJobEvent struct {
+	Job       *Job
 	StartTime time.Time
 
 	Stash map[interface{}]interface{}
 }
 
 type ConsumerHook interface {
-	BeforeProcessMessage(*ProcessMessageEvent) error
-	AfterProcessMessage(*ProcessMessageEvent) error
+	BeforeProcessJob(*ProcessJobEvent) error
+	AfterProcessJob(*ProcessJobEvent) error
 }
 
-func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, error) {
+func (c *Consumer) beforeProcessJob(msg *Job) (*ProcessJobEvent, error) {
 	if len(c.hooks) == 0 {
 		return nil, nil
 	}
 
-	evt := &ProcessMessageEvent{
-		Message:   msg,
+	evt := &ProcessJobEvent{
+		Job:       msg,
 		StartTime: time.Now(),
 	}
 
 	for _, hook := range c.hooks {
-		if err := hook.BeforeProcessMessage(evt); err != nil {
+		if err := hook.BeforeProcessJob(evt); err != nil {
 			return nil, err
 		}
 	}
@@ -506,14 +503,14 @@ func (c *Consumer) beforeProcessMessage(msg *Message) (*ProcessMessageEvent, err
 	return evt, nil
 }
 
-func (c *Consumer) afterProcessMessage(msg *Message) error {
+func (c *Consumer) afterProcessJob(msg *Job) error {
 	if msg.evt == nil {
 		return nil
 	}
 
 	var firstErr error
 	for _, hook := range c.hooks {
-		if err := hook.AfterProcessMessage(msg.evt); err != nil && firstErr == nil {
+		if err := hook.AfterProcessJob(msg.evt); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

@@ -1,4 +1,4 @@
-package msgutil
+package jobutil
 
 import (
 	"encoding/binary"
@@ -10,33 +10,33 @@ import (
 	"github.com/vmihailenco/taskq/v4/internal"
 )
 
-func WrapMessage(msg *taskq.Message) *taskq.Message {
-	msg0 := taskq.NewMessage(msg.Ctx, msg)
+func WrapJob(msg *taskq.Job) *taskq.Job {
+	msg0 := taskq.NewJob(msg)
 	msg0.Name = msg.Name
 	return msg0
 }
 
-func UnwrapMessage(msg *taskq.Message) (*taskq.Message, error) {
+func UnwrapJob(msg *taskq.Job) (*taskq.Job, error) {
 	if len(msg.Args) != 1 {
-		err := fmt.Errorf("UnwrapMessage: got %d args, wanted 1", len(msg.Args))
+		err := fmt.Errorf("UnwrapJob: got %d args, wanted 1", len(msg.Args))
 		return nil, err
 	}
 
-	msg, ok := msg.Args[0].(*taskq.Message)
+	msg, ok := msg.Args[0].(*taskq.Job)
 	if !ok {
-		err := fmt.Errorf("UnwrapMessage: got %v, wanted *taskq.Message", msg.Args)
+		err := fmt.Errorf("UnwrapJob: got %v, wanted *taskq.Job", msg.Args)
 		return nil, err
 	}
 	return msg, nil
 }
 
-func UnwrapMessageHandler(fn interface{}) taskq.HandlerFunc {
+func UnwrapJobHandler(fn interface{}) taskq.HandlerFunc {
 	if fn == nil {
 		return nil
 	}
-	h := fn.(func(*taskq.Message) error)
-	return taskq.HandlerFunc(func(msg *taskq.Message) error {
-		msg, err := UnwrapMessage(msg)
+	h := fn.(func(*taskq.Job) error)
+	return taskq.HandlerFunc(func(msg *taskq.Job) error {
+		msg, err := UnwrapJob(msg)
 		if err != nil {
 			return err
 		}
@@ -44,7 +44,7 @@ func UnwrapMessageHandler(fn interface{}) taskq.HandlerFunc {
 	})
 }
 
-func FullMessageName(q taskq.Queue, msg *taskq.Message) string {
+func FullJobName(q taskq.Queue, msg *taskq.Job) string {
 	ln := len(q.Name()) + len(msg.TaskName)
 	data := make([]byte, 0, ln+len(msg.Name))
 	data = append(data, q.Name()...)

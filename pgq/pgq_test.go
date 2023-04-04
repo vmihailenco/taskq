@@ -42,73 +42,73 @@ func newFactory(t *testing.T) taskq.Factory {
 }
 
 func TestConsumer(t *testing.T) {
-	taskqtest.TestConsumer(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestConsumer(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("consumer"),
 	})
 }
 
 func TestUnknownTask(t *testing.T) {
-	taskqtest.TestUnknownTask(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestUnknownTask(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("unknown-task"),
 	})
 }
 
 func TestFallback(t *testing.T) {
-	taskqtest.TestFallback(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestFallback(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("fallback"),
 	})
 }
 
 func TestDelay(t *testing.T) {
-	taskqtest.TestDelay(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestDelay(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("delay"),
 	})
 }
 
 func TestRetry(t *testing.T) {
-	taskqtest.TestRetry(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestRetry(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("retry"),
 	})
 }
 
-func TestNamedMessage(t *testing.T) {
-	taskqtest.TestNamedMessage(t, newFactory(t), &taskq.QueueOptions{
+func TestNamedJob(t *testing.T) {
+	taskqtest.TestNamedJob(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("named-message"),
 	})
 }
 
 func TestCallOnce(t *testing.T) {
-	taskqtest.TestCallOnce(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestCallOnce(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("call-once"),
 	})
 }
 
 func TestLen(t *testing.T) {
-	taskqtest.TestLen(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestLen(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("queue-len"),
 	})
 }
 
 func TestRateLimit(t *testing.T) {
-	taskqtest.TestRateLimit(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestRateLimit(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("rate-limit"),
 	})
 }
 
 func TestErrorDelay(t *testing.T) {
-	taskqtest.TestErrorDelay(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestErrorDelay(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("delayer"),
 	})
 }
 
-func TestBatchConsumerSmallMessage(t *testing.T) {
-	taskqtest.TestBatchConsumer(t, newFactory(t), &taskq.QueueOptions{
+func TestBatchConsumerSmallJob(t *testing.T) {
+	taskqtest.TestBatchConsumer(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("batch-consumer-small-message"),
 	}, 100)
 }
 
 func TestBatchConsumerLarge(t *testing.T) {
-	taskqtest.TestBatchConsumer(t, newFactory(t), &taskq.QueueOptions{
+	taskqtest.TestBatchConsumer(t, newFactory(t), &taskq.QueueConfig{
 		Name: queueName("batch-processor-large-message"),
 	}, 64000)
 }

@@ -17,7 +17,7 @@ func NewFactory() taskq.Factory {
 	return &factory{}
 }
 
-func (f *factory) RegisterQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (f *factory) RegisterQueue(opt *taskq.QueueConfig) taskq.Queue {
 	q := NewQueue(opt)
 	if err := f.base.Register(q); err != nil {
 		panic(err)

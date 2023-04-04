@@ -1,7 +1,6 @@
 package taskq
 
 import (
-	"context"
 	"encoding"
 	"encoding/binary"
 	"errors"
@@ -18,14 +17,12 @@ import (
 // ErrDuplicate is returned when adding duplicate message to the queue.
 var ErrDuplicate = errors.New("taskq: message with such name already exists")
 
-// Message is used to create and retrieve messages from a queue.
-type Message struct {
-	Ctx context.Context `msgpack:"-"`
-
+// Job is used to create and retrieve messages from a queue.
+type Job struct {
 	// SQS/IronMQ message id.
 	ID string `msgpack:"1,omitempty,alias:ID"`
 
-	// Optional name for the message. Messages with the same name
+	// Optional name for the message. Jobs with the same name
 	// are processed only once.
 	Name string `msgpack:"-"`
 
@@ -49,47 +46,46 @@ type Message struct {
 	TaskName string `msgpack:"5,alias:TaskName"`
 	Err      error  `msgpack:"-"`
 
-	evt                *ProcessMessageEvent
+	evt                *ProcessJobEvent
 	marshalBinaryCache []byte
 }
 
-func NewMessage(ctx context.Context, args ...interface{}) *Message {
-	return &Message{
-		Ctx:  ctx,
+func NewJob(args ...interface{}) *Job {
+	return &Job{
 		Args: args,
 	}
 }
 
-func (m *Message) String() string {
-	return fmt.Sprintf("Message<ID=%q Name=%q ReservedCount=%d>",
+func (m *Job) String() string {
+	return fmt.Sprintf("Job<ID=%q Name=%q ReservedCount=%d>",
 		m.ID, m.Name, m.ReservedCount)
 }
 
 // SetDelay sets the message delay.
-func (m *Message) SetDelay(delay time.Duration) {
+func (m *Job) SetDelay(delay time.Duration) {
 	m.Delay = delay
 }
 
 // OnceInPeriod uses the period and the args to generate such a message name
 // that message with such args is added to the queue once in a given period.
 // If args are not provided then message args are used instead.
-func (m *Message) OnceInPeriod(period time.Duration, args ...interface{}) {
+func (m *Job) OnceInPeriod(period time.Duration, args ...interface{}) {
 	m.setNameFromArgs(period, args...)
 	m.SetDelay(period)
 }
 
-func (m *Message) OnceWithDelay(delay time.Duration) {
+func (m *Job) OnceWithDelay(delay time.Duration) {
 	m.setNameFromArgs(0)
 	if delay > 0 {
 		m.SetDelay(delay)
 	}
 }
 
-func (m *Message) OnceWithSchedule(tm time.Time) {
+func (m *Job) OnceWithSchedule(tm time.Time) {
 	m.OnceWithDelay(time.Until(tm))
 }
 
-func (m *Message) setNameFromArgs(period time.Duration, args ...interface{}) {
+func (m *Job) setNameFromArgs(period time.Duration, args ...interface{}) {
 	var b []byte
 	if len(args) > 0 {
 		b, _ = msgpack.Marshal(args)
@@ -104,7 +100,7 @@ func (m *Message) setNameFromArgs(period time.Duration, args ...interface{}) {
 
 var zdec, _ = zstd.NewReader(nil)
 
-func (m *Message) decompress() ([]byte, error) {
+func (m *Job) decompress() ([]byte, error) {
 	switch m.ArgsCompression {
 	case "":
 		return m.ArgsBin, nil
@@ -117,7 +113,7 @@ func (m *Message) decompress() ([]byte, error) {
 	}
 }
 
-func (m *Message) MarshalArgs() ([]byte, error) {
+func (m *Job) MarshalArgs() ([]byte, error) {
 	if m.ArgsBin != nil {
 		if m.ArgsCompression == "" {
 			return m.ArgsBin, nil
@@ -136,11 +132,11 @@ func (m *Message) MarshalArgs() ([]byte, error) {
 	return b, nil
 }
 
-type messageRaw Message
+type messageRaw Job
 
-var _ encoding.BinaryMarshaler = (*Message)(nil)
+var _ encoding.BinaryMarshaler = (*Job)(nil)
 
-func (m *Message) MarshalBinary() ([]byte, error) {
+func (m *Job) MarshalBinary() ([]byte, error) {
 	if m.TaskName == "" {
 		return nil, internal.ErrTaskNameRequired
 	}
@@ -170,9 +166,9 @@ func (m *Message) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-var _ encoding.BinaryUnmarshaler = (*Message)(nil)
+var _ encoding.BinaryUnmarshaler = (*Job)(nil)
 
-func (m *Message) UnmarshalBinary(b []byte) error {
+func (m *Job) UnmarshalBinary(b []byte) error {
 	if err := msgpack.Unmarshal(b, (*messageRaw)(m)); err != nil {
 		return err
 	}

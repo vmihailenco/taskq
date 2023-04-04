@@ -20,7 +20,7 @@ func NewFactory(db *bun.DB) taskq.Factory {
 	}
 }
 
-func (f *factory) RegisterQueue(opt *taskq.QueueOptions) taskq.Queue {
+func (f *factory) RegisterQueue(opt *taskq.QueueConfig) taskq.Queue {
 	q := NewQueue(f.db, opt)
 	if err := f.Factory.Register(q); err != nil {
 		panic(err)

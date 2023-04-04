@@ -11,11 +11,12 @@ import (
 func main() {
 	flag.Parse()
 
+	ctx := context.Background()
 	go sqsexample.LogStats()
 
 	go func() {
 		for {
-			err := sqsexample.MainQueue.Add(sqsexample.CountTask.WithArgs(context.Background()))
+			err := sqsexample.MainQueue.AddJob(ctx, sqsexample.CountTask.NewJob())
 			if err != nil {
 				log.Fatal(err)
 			}

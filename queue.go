@@ -9,7 +9,7 @@ import (
 	"github.com/go-redis/redis_rate/v10"
 )
 
-type QueueOptions struct {
+type QueueConfig struct {
 	// Queue name.
 	Name string
 
@@ -68,14 +68,14 @@ type QueueOptions struct {
 	SchedulerBackoffTime time.Duration
 }
 
-func (opt *QueueOptions) Init() {
+func (opt *QueueConfig) Init() {
 	if opt.inited {
 		return
 	}
 	opt.inited = true
 
 	if opt.Name == "" {
-		panic("QueueOptions.Name is required")
+		panic("QueueConfig.Name is required")
 	}
 
 	if opt.WorkerLimit > 0 {
@@ -131,14 +131,14 @@ func (opt *QueueOptions) Init() {
 type Queue interface {
 	fmt.Stringer
 	Name() string
-	Options() *QueueOptions
+	Options() *QueueConfig
 	Consumer() QueueConsumer
 
 	Len(ctx context.Context) (int, error)
-	Add(ctx context.Context, msg *Message) error
-	ReserveN(ctx context.Context, n int, waitTimeout time.Duration) ([]Message, error)
-	Release(ctx context.Context, msg *Message) error
-	Delete(ctx context.Context, msg *Message) error
+	AddJob(ctx context.Context, msg *Job) error
+	ReserveN(ctx context.Context, n int, waitTimeout time.Duration) ([]Job, error)
+	Release(ctx context.Context, msg *Job) error
+	Delete(ctx context.Context, msg *Job) error
 	Purge(ctx context.Context) error
 	Close() error
 	CloseTimeout(timeout time.Duration) error
@@ -150,11 +150,11 @@ type QueueConsumer interface {
 	// AddHook adds a hook into message processing.
 	AddHook(hook ConsumerHook)
 	Queue() Queue
-	Options() *QueueOptions
+	Options() *QueueConfig
 	Len() int
 	// Stats returns processor stats.
 	Stats() *ConsumerStats
-	Add(msg *Message) error
+	AddJob(ctx context.Context, job *Job) error
 	// Start starts consuming messages in the queue.
 	Start(ctx context.Context) error
 	// Stop is StopTimeout with 30 seconds timeout.
@@ -168,8 +168,8 @@ type QueueConsumer interface {
 	// ProcessOne processes at most one message in the queue.
 	ProcessOne(ctx context.Context) error
 	// Process is low-level API to process message bypassing the internal queue.
-	Process(ctx context.Context, msg *Message) error
-	Put(ctx context.Context, msg *Message)
+	Process(ctx context.Context, msg *Job) error
+	Put(ctx context.Context, msg *Job)
 	// Purge discards messages from the internal queue.
 	Purge(ctx context.Context) error
 	String() string

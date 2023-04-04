@@ -37,19 +37,18 @@ var _ = Describe("message with args", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func(s string, i int) {
 				Expect(s).To(Equal("string"))
 				Expect(i).To(Equal(42))
 				ch <- true
 			},
 		})
-		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
+		err := q.AddJob(ctx, task.NewJob("string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -67,19 +66,18 @@ var _ = Describe("context.Context", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func(c context.Context, s string, i int) {
 				Expect(s).To(Equal("string"))
 				Expect(i).To(Equal(42))
 				ch <- true
 			},
 		})
-		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
+		err := q.AddJob(ctx, task.NewJob("string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
@@ -97,12 +95,11 @@ var _ = Describe("message with invalid number of args", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func(s string) {
 				ch <- true
 			},
@@ -110,7 +107,7 @@ var _ = Describe("message with invalid number of args", func() {
 		})
 		q.Consumer().Stop()
 
-		err := q.Add(ctx, task.WithArgs(ctx))
+		err := q.AddJob(ctx, task.NewJob())
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Consumer().ProcessOne(ctx)
@@ -133,27 +130,26 @@ var _ = Describe("HandlerFunc", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
-			Handler: func(msg *taskq.Message) error {
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
+			Handler: func(msg *taskq.Job) error {
 				Expect(msg.Args).To(Equal([]interface{}{"string", 42}))
 				ch <- true
 				return nil
 			},
 		})
 
-		err := q.Add(ctx, task.WithArgs(ctx, "string", 42))
+		err := q.AddJob(ctx, task.NewJob("string", 42))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = q.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("is called with Message", func() {
+	It("is called with Job", func() {
 		Expect(ch).To(Receive())
 		Expect(ch).NotTo(Receive())
 	})
@@ -170,12 +166,11 @@ var _ = Describe("message retry timing", func() {
 	BeforeEach(func() {
 		count = 0
 		ch = make(chan time.Time, 10)
-		q = memqueue.NewQueue(&taskq.QueueOptions{
+		q = memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task = taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task = taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() error {
 				ch <- time.Now()
 				count++
@@ -191,7 +186,7 @@ var _ = Describe("message retry timing", func() {
 
 		BeforeEach(func() {
 			now = time.Now()
-			_ = q.Add(ctx, task.WithArgs(ctx))
+			_ = q.AddJob(ctx, task.NewJob())
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -209,11 +204,11 @@ var _ = Describe("message retry timing", func() {
 		var now time.Time
 
 		BeforeEach(func() {
-			msg := task.WithArgs(ctx)
+			msg := task.NewJob()
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			q.Add(ctx, msg)
+			q.AddJob(ctx, msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -234,12 +229,11 @@ var _ = Describe("failing queue with error handler", func() {
 	ch := make(chan bool, 10)
 
 	BeforeEach(func() {
-		q = memqueue.NewQueue(&taskq.QueueOptions{
+		q = memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() error {
 				return errors.New("fake error")
 			},
@@ -248,7 +242,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		q.Add(ctx, task.WithArgs(ctx))
+		q.AddJob(ctx, task.NewJob())
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -265,12 +259,11 @@ var _ = Describe("named message", func() {
 	var count int64
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
 			},
@@ -284,9 +277,9 @@ var _ = Describe("named message", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer wg.Done()
-				msg := task.WithArgs(ctx)
+				msg := task.NewJob()
 				msg.Name = name
-				q.Add(ctx, msg)
+				q.AddJob(ctx, msg)
 			}()
 		}
 		wg.Wait()
@@ -310,12 +303,11 @@ var _ = Describe("CallOnce", func() {
 	BeforeEach(func() {
 		now = time.Now()
 
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() error {
 				ch <- time.Now()
 				return nil
@@ -329,10 +321,10 @@ var _ = Describe("CallOnce", func() {
 				defer GinkgoRecover()
 				defer wg.Done()
 
-				msg := task.WithArgs(ctx)
+				msg := task.NewJob()
 				msg.OnceInPeriod(delay)
 
-				q.Add(ctx, msg)
+				q.AddJob(ctx, msg)
 			}()
 		}
 		wg.Wait()
@@ -353,19 +345,18 @@ var _ = Describe("stress testing", func() {
 	var count int64
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() {
 				atomic.AddInt64(&count, 1)
 			},
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(ctx, task.WithArgs(ctx))
+			q.AddJob(ctx, task.NewJob())
 		}
 
 		err := q.Close()
@@ -384,13 +375,12 @@ var _ = Describe("stress testing failing queue", func() {
 	var errorCount int64
 
 	BeforeEach(func() {
-		q := memqueue.NewQueue(&taskq.QueueOptions{
+		q := memqueue.NewQueue(&taskq.QueueConfig{
 			Name:                 "test",
 			PauseErrorsThreshold: -1,
 			Storage:              taskq.NewLocalStorage(),
 		})
-		task := taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task := taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() error {
 				return errors.New("fake error")
 			},
@@ -401,7 +391,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(ctx, task.WithArgs(ctx))
+			q.AddJob(ctx, task.NewJob())
 		}
 
 		err := q.Close()
@@ -422,12 +412,11 @@ var _ = Describe("empty queue", func() {
 
 	BeforeEach(func() {
 		processed = 0
-		q = memqueue.NewQueue(&taskq.QueueOptions{
+		q = memqueue.NewQueue(&taskq.QueueConfig{
 			Name:    "test",
 			Storage: taskq.NewLocalStorage(),
 		})
-		task = taskq.RegisterTask(&taskq.TaskOptions{
-			Name: "test",
+		task = taskq.RegisterTask("test", &taskq.TaskConfig{
 			Handler: func() {
 				atomic.AddUint32(&processed, 1)
 			},
@@ -474,7 +463,7 @@ var _ = Describe("empty queue", func() {
 		Context("when there are messages in the queue", func() {
 			BeforeEach(func() {
 				for i := 0; i < 3; i++ {
-					err := q.Add(ctx, task.WithArgs(ctx))
+					err := q.AddJob(ctx, task.NewJob())
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})

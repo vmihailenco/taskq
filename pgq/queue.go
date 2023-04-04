@@ -11,11 +11,11 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/vmihailenco/taskq/v4"
 	"github.com/vmihailenco/taskq/v4/internal"
-	"github.com/vmihailenco/taskq/v4/internal/msgutil"
+	"github.com/vmihailenco/taskq/v4/internal/jobutil"
 )
 
 type Queue struct {
-	opt *taskq.QueueOptions
+	opt *taskq.QueueConfig
 	db  *bun.DB
 
 	consumer *taskq.Consumer
@@ -23,7 +23,7 @@ type Queue struct {
 	_closed uint32
 }
 
-type Message struct {
+type Job struct {
 	bun.BaseModel `bun:"taskq_messages,alias:m"`
 
 	ID            ulid.ULID `bun:"type:uuid"`
@@ -36,7 +36,7 @@ type Message struct {
 
 var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(db *bun.DB, opt *taskq.QueueOptions) *Queue {
+func NewQueue(db *bun.DB, opt *taskq.QueueConfig) *Queue {
 	if opt.WaitTimeout == 0 {
 		opt.WaitTimeout = 3 * time.Second
 	}
@@ -58,7 +58,7 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("queue=%q", q.Name())
 }
 
-func (q *Queue) Options() *taskq.QueueOptions {
+func (q *Queue) Options() *taskq.QueueConfig {
 	return q.opt
 }
 
@@ -71,40 +71,40 @@ func (q *Queue) Consumer() taskq.QueueConsumer {
 
 func (q *Queue) Len(ctx context.Context) (int, error) {
 	return q.db.NewSelect().
-		Model((*Message)(nil)).
+		Model((*Job)(nil)).
 		Where("queue = ?", q.Name()).
 		Count(ctx)
 }
 
-func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
-	return q.add(ctx, msg)
+func (q *Queue) AddJob(ctx context.Context, job *taskq.Job) error {
+	return q.add(ctx, job)
 }
 
-func (q *Queue) add(ctx context.Context, msg *taskq.Message) error {
-	if msg.TaskName == "" {
+func (q *Queue) add(ctx context.Context, job *taskq.Job) error {
+	if job.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if msg.Name != "" && q.isDuplicate(msg) {
-		msg.Err = taskq.ErrDuplicate
+	if job.Name != "" && q.isDuplicate(ctx, job) {
+		job.Err = taskq.ErrDuplicate
 		return nil
 	}
 
-	data, err := msg.MarshalBinary()
+	data, err := job.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	model := &Message{
+	model := &Job{
 		Queue: q.Name(),
 		Data:  data,
 	}
-	if msg.ID != "" {
-		model.ID = ulid.MustParse(msg.ID)
+	if job.ID != "" {
+		model.ID = ulid.MustParse(job.ID)
 	} else {
 		model.ID = ulid.Make()
 	}
-	if msg.Delay > 0 {
-		model.RunAt = time.Now().Add(msg.Delay)
+	if job.Delay > 0 {
+		model.RunAt = time.Now().Add(job.Delay)
 	}
 
 	if _, err := q.db.NewInsert().
@@ -113,18 +113,18 @@ func (q *Queue) add(ctx context.Context, msg *taskq.Message) error {
 		return err
 	}
 
-	msg.ID = model.ID.String()
+	job.ID = model.ID.String()
 	return nil
 }
 
-func (q *Queue) isDuplicate(msg *taskq.Message) bool {
-	exists := q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
+func (q *Queue) isDuplicate(ctx context.Context, job *taskq.Job) bool {
+	exists := q.opt.Storage.Exists(ctx, jobutil.FullJobName(q, job))
 	return exists
 }
 
 func (q *Queue) ReserveN(
 	ctx context.Context, n int, waitTimeout time.Duration,
-) ([]taskq.Message, error) {
+) ([]taskq.Job, error) {
 	if waitTimeout > 0 {
 		if err := sleep(ctx, waitTimeout); err != nil {
 			return nil, err
@@ -133,7 +133,7 @@ func (q *Queue) ReserveN(
 
 	subq := q.db.NewSelect().
 		ColumnExpr("ctid").
-		Model((*Message)(nil)).
+		Model((*Job)(nil)).
 		Where("queue = ?", q.Name()).
 		Where("run_at <= ?", time.Now()).
 		Where("reserved_at = ?", time.Time{}).
@@ -141,7 +141,7 @@ func (q *Queue) ReserveN(
 		Limit(n).
 		For("UPDATE SKIP LOCKED")
 
-	var src []Message
+	var src []Job
 
 	if err := q.db.NewUpdate().
 		Model(&src).
@@ -155,27 +155,25 @@ func (q *Queue) ReserveN(
 		return nil, err
 	}
 
-	msgs := make([]taskq.Message, len(src))
+	jobs := make([]taskq.Job, len(src))
 
-	for i := range msgs {
-		msg := &msgs[i]
-		msg.Ctx = ctx
-
-		if err := unmarshalMessage(msg, &src[i]); err != nil {
-			msg.Err = err
+	for i := range jobs {
+		job := &jobs[i]
+		if err := unmarshalJob(job, &src[i]); err != nil {
+			job.Err = err
 		}
 	}
 
-	return msgs, nil
+	return jobs, nil
 }
 
-func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, job *taskq.Job) error {
 	res, err := q.db.NewUpdate().
-		Model((*Message)(nil)).
-		Set("run_at = ?", time.Now().Add(msg.Delay)).
+		Model((*Job)(nil)).
+		Set("run_at = ?", time.Now().Add(job.Delay)).
 		Set("reserved_at = ?", time.Time{}).
 		Where("queue = ?", q.Name()).
-		Where("id = ?", ulid.MustParse(msg.ID)).
+		Where("id = ?", ulid.MustParse(job.ID)).
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -192,11 +190,11 @@ func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
 	return nil
 }
 
-func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Delete(ctx context.Context, job *taskq.Job) error {
 	res, err := q.db.NewDelete().
-		Model((*Message)(nil)).
+		Model((*Job)(nil)).
 		Where("queue = ?", q.Name()).
-		Where("id = ?", ulid.MustParse(msg.ID)).
+		Where("id = ?", ulid.MustParse(job.ID)).
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -215,7 +213,7 @@ func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
 
 func (q *Queue) Purge(ctx context.Context) error {
 	if _, err := q.db.NewDelete().
-		Model((*Message)(nil)).
+		Model((*Job)(nil)).
 		Where("queue = ?", q.Name()).
 		Exec(ctx); err != nil {
 		return err
@@ -241,7 +239,7 @@ func (q *Queue) CloseTimeout(timeout time.Duration) error {
 	return nil
 }
 
-func unmarshalMessage(dest *taskq.Message, src *Message) error {
+func unmarshalJob(dest *taskq.Job, src *Job) error {
 	if err := dest.UnmarshalBinary(src.Data); err != nil {
 		return err
 	}

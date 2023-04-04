@@ -30,7 +30,7 @@ type RedisStreamClient interface {
 	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
 	XDel(ctx context.Context, stream string, ids ...string) *redis.IntCmd
 	XLen(ctx context.Context, stream string) *redis.IntCmd
-	XRangeN(ctx context.Context, stream, start, stop string, count int64) *redis.XMessageSliceCmd
+	XRangeN(ctx context.Context, stream, start, stop string, count int64) *redis.XJobSliceCmd
 	XGroupCreateMkStream(ctx context.Context, stream, group, start string) *redis.StatusCmd
 	XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd
@@ -45,7 +45,7 @@ type RedisStreamClient interface {
 }
 
 type Queue struct {
-	opt *taskq.QueueOptions
+	opt *taskq.QueueConfig
 
 	consumer *taskq.Consumer
 
@@ -63,7 +63,7 @@ type Queue struct {
 
 var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(opt *taskq.QueueOptions) *Queue {
+func NewQueue(opt *taskq.QueueConfig) *Queue {
 	const redisPrefix = "taskq:"
 
 	if opt.WaitTimeout == 0 {
@@ -126,7 +126,7 @@ func (q *Queue) String() string {
 	return fmt.Sprintf("queue=%q", q.Name())
 }
 
-func (q *Queue) Options() *taskq.QueueOptions {
+func (q *Queue) Options() *taskq.QueueConfig {
 	return q.opt
 }
 
@@ -143,15 +143,15 @@ func (q *Queue) Len(ctx context.Context) (int, error) {
 }
 
 // Add adds message to the queue.
-func (q *Queue) Add(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) AddJob(ctx context.Context, msg *taskq.Job) error {
 	return q.add(ctx, q.redis, msg)
 }
 
-func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Message) error {
+func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Job) error {
 	if msg.TaskName == "" {
 		return internal.ErrTaskNameRequired
 	}
-	if msg.Name != "" && q.isDuplicate(msg) {
+	if msg.Name != "" && q.isDuplicate(ctx, msg) {
 		msg.Err = taskq.ErrDuplicate
 		return nil
 	}
@@ -184,7 +184,7 @@ func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Mess
 
 func (q *Queue) ReserveN(
 	ctx context.Context, n int, waitTimeout time.Duration,
-) ([]taskq.Message, error) {
+) ([]taskq.Job, error) {
 	streams, err := q.redis.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Streams:  []string{q.stream, ">"},
 		Group:    q.streamGroup,
@@ -204,13 +204,12 @@ func (q *Queue) ReserveN(
 	}
 
 	stream := &streams[0]
-	msgs := make([]taskq.Message, len(stream.Messages))
-	for i := range stream.Messages {
-		xmsg := &stream.Messages[i]
+	msgs := make([]taskq.Job, len(stream.Jobs))
+	for i := range stream.Jobs {
+		xmsg := &stream.Jobs[i]
 		msg := &msgs[i]
-		msg.Ctx = ctx
 
-		if err := unmarshalMessage(msg, xmsg); err != nil {
+		if err := unmarshalJob(msg, xmsg); err != nil {
 			msg.Err = err
 		}
 	}
@@ -222,7 +221,7 @@ func (q *Queue) createStreamGroup(ctx context.Context) {
 	_ = q.redis.XGroupCreateMkStream(ctx, q.stream, q.streamGroup, "0").Err()
 }
 
-func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Release(ctx context.Context, msg *taskq.Job) error {
 	// Make the delete and re-queue operation atomic in case we crash midway
 	// and lose a message.
 	pipe := q.redis.TxPipeline()
@@ -246,7 +245,7 @@ func (q *Queue) Release(ctx context.Context, msg *taskq.Message) error {
 }
 
 // Delete deletes the message from the queue.
-func (q *Queue) Delete(ctx context.Context, msg *taskq.Message) error {
+func (q *Queue) Delete(ctx context.Context, msg *taskq.Job) error {
 	if err := q.redis.XAck(ctx, q.stream, q.streamGroup, msg.ID).Err(); err != nil {
 		return err
 	}
@@ -403,9 +402,8 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 		}
 
 		xmsg := &xmsgs[0]
-		msg := new(taskq.Message)
-		msg.Ctx = ctx
-		if err := unmarshalMessage(msg, xmsg); err != nil {
+		msg := new(taskq.Job)
+		if err := unmarshalJob(msg, xmsg); err != nil {
 			return 0, err
 		}
 
@@ -417,8 +415,8 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 	return len(pending), nil
 }
 
-func (q *Queue) isDuplicate(msg *taskq.Message) bool {
-	exists := q.opt.Storage.Exists(msg.Ctx, msgutil.FullMessageName(q, msg))
+func (q *Queue) isDuplicate(ctx context.Context, msg *taskq.Job) bool {
+	exists := q.opt.Storage.Exists(ctx, msgutil.FullJobName(q, msg))
 	return exists
 }
 
@@ -443,7 +441,7 @@ func unixMs(tm time.Time) int64 {
 	return tm.UnixNano() / int64(time.Millisecond)
 }
 
-func unmarshalMessage(msg *taskq.Message, xmsg *redis.XMessage) error {
+func unmarshalJob(msg *taskq.Job, xmsg *redis.XJob) error {
 	body := xmsg.Values["body"].(string)
 	if err := msg.UnmarshalBinary(internal.StringToBytes(body)); err != nil {
 		return err

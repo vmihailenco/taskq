@@ -53,8 +53,7 @@ var MainQueue = QueueFactory.RegisterQueue(&taskq.QueueOptions{
 })
 
 // Register a task.
-var CountTask = taskq.RegisterTask(&taskq.TaskOptions{
-    Name: "counter",
+var CountTask = taskq.RegisterTask("counter", &taskq.TaskOptions{
     Handler: func() error {
         IncrLocalCounter()
         return nil
@@ -66,7 +65,7 @@ ctx := context.Background()
 // And start producing.
 for {
 	// Call the task without any args.
-	err := MainQueue.Add(CountTask.WithArgs(ctx))
+	err := MainQueue.AddJob(ctx, CountTask.NewJob())
 	if err != nil {
 		panic(err)
 	}
