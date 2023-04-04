@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/internal"
-	"github.com/vmihailenco/taskq/v4/internal/jobutil"
+	"github.com/vmihailenco/taskq/v4/backend"
+	"github.com/vmihailenco/taskq/v4/backend/jobutil"
 )
 
 type scheduler struct {
@@ -174,7 +174,7 @@ func (q *Queue) AddJob(ctx context.Context, msg *taskq.Job) error {
 		return fmt.Errorf("taskq: %s is closed", q)
 	}
 	if msg.TaskName == "" {
-		return internal.ErrTaskNameRequired
+		return backend.ErrTaskNameRequired
 	}
 	if msg.Name != "" && q.isDuplicate(ctx, msg) {
 		msg.Err = taskq.ErrDuplicate
@@ -210,7 +210,7 @@ func (q *Queue) enqueueJob(ctx context.Context, msg *taskq.Job) error {
 }
 
 func (q *Queue) ReserveN(ctx context.Context, _ int, _ time.Duration) ([]taskq.Job, error) {
-	return nil, internal.ErrNotSupported
+	return nil, backend.ErrNotSupported
 }
 
 func (q *Queue) Release(ctx context.Context, msg *taskq.Job) error {

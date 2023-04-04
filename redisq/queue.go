@@ -17,8 +17,9 @@ import (
 	"github.com/bsm/redislock"
 
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/internal"
-	"github.com/vmihailenco/taskq/v4/internal/msgutil"
+	"github.com/vmihailenco/taskq/v4/backend"
+	"github.com/vmihailenco/taskq/v4/backend/jobutil"
+	"github.com/vmihailenco/taskq/v4/backend/unsafeconv"
 )
 
 const batchSize = 100
@@ -30,7 +31,7 @@ type RedisStreamClient interface {
 	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
 	XDel(ctx context.Context, stream string, ids ...string) *redis.IntCmd
 	XLen(ctx context.Context, stream string) *redis.IntCmd
-	XRangeN(ctx context.Context, stream, start, stop string, count int64) *redis.XJobSliceCmd
+	XRangeN(ctx context.Context, stream, start, stop string, count int64) *redis.XMessageSliceCmd
 	XGroupCreateMkStream(ctx context.Context, stream, group, start string) *redis.StatusCmd
 	XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd
@@ -149,7 +150,7 @@ func (q *Queue) AddJob(ctx context.Context, msg *taskq.Job) error {
 
 func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Job) error {
 	if msg.TaskName == "" {
-		return internal.ErrTaskNameRequired
+		return backend.ErrTaskNameRequired
 	}
 	if msg.Name != "" && q.isDuplicate(ctx, msg) {
 		msg.Err = taskq.ErrDuplicate
@@ -158,7 +159,7 @@ func (q *Queue) add(ctx context.Context, pipe RedisStreamClient, msg *taskq.Job)
 
 	if msg.ID == "" {
 		u := uuid.New()
-		msg.ID = internal.BytesToString(u[:])
+		msg.ID = unsafeconv.String(u[:])
 	}
 
 	body, err := msg.MarshalBinary()
@@ -204,9 +205,9 @@ func (q *Queue) ReserveN(
 	}
 
 	stream := &streams[0]
-	msgs := make([]taskq.Job, len(stream.Jobs))
-	for i := range stream.Jobs {
-		xmsg := &stream.Jobs[i]
+	msgs := make([]taskq.Job, len(stream.Messages))
+	for i := range stream.Messages {
+		xmsg := &stream.Messages[i]
 		msg := &msgs[i]
 
 		if err := unmarshalJob(msg, xmsg); err != nil {
@@ -299,7 +300,7 @@ func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)
 			return err
 		})
 		if err != nil && err != redislock.ErrNotObtained {
-			internal.Logger.Printf("redisq: %s failed: %s", name, err)
+			backend.Logger.Printf("redisq: %s failed: %s", name, err)
 		}
 		if err != nil || n == 0 {
 			time.Sleep(q.schedulerBackoff())
@@ -416,7 +417,7 @@ func (q *Queue) schedulePending(ctx context.Context) (int, error) {
 }
 
 func (q *Queue) isDuplicate(ctx context.Context, msg *taskq.Job) bool {
-	exists := q.opt.Storage.Exists(ctx, msgutil.FullJobName(q, msg))
+	exists := q.opt.Storage.Exists(ctx, jobutil.FullJobName(q, msg))
 	return exists
 }
 
@@ -430,7 +431,7 @@ func (q *Queue) withRedisLock(
 
 	defer func() {
 		if err := lock.Release(ctx); err != nil {
-			internal.Logger.Printf("redislock.Release failed: %s", err)
+			backend.Logger.Printf("redislock.Release failed: %s", err)
 		}
 	}()
 
@@ -441,9 +442,9 @@ func unixMs(tm time.Time) int64 {
 	return tm.UnixNano() / int64(time.Millisecond)
 }
 
-func unmarshalJob(msg *taskq.Job, xmsg *redis.XJob) error {
+func unmarshalJob(msg *taskq.Job, xmsg *redis.XMessage) error {
 	body := xmsg.Values["body"].(string)
-	if err := msg.UnmarshalBinary(internal.StringToBytes(body)); err != nil {
+	if err := msg.UnmarshalBinary(unsafeconv.Bytes(body)); err != nil {
 		return err
 	}
 

@@ -14,9 +14,9 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"github.com/vmihailenco/taskq/redisq/v4"
+	"github.com/vmihailenco/taskq/taskqtest/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/redisq"
-	"github.com/vmihailenco/taskq/v4/taskqtest"
 )
 
 const (

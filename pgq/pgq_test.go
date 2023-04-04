@@ -14,9 +14,9 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/uptrace/bun/migrate"
+	"github.com/vmihailenco/taskq/pgq/v4"
+	"github.com/vmihailenco/taskq/taskqtest/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/pgq"
-	"github.com/vmihailenco/taskq/v4/taskqtest"
 )
 
 func queueName(s string) string {

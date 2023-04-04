@@ -10,8 +10,8 @@ import (
 	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/vmihailenco/msgpack/v5"
-
-	"github.com/vmihailenco/taskq/v4/internal"
+	"github.com/vmihailenco/taskq/v4/backend"
+	"github.com/vmihailenco/taskq/v4/backend/unsafeconv"
 )
 
 // ErrDuplicate is returned when adding duplicate message to the queue.
@@ -95,7 +95,7 @@ func (m *Job) setNameFromArgs(period time.Duration, args ...interface{}) {
 	if period > 0 {
 		b = appendTimeSlot(b, period)
 	}
-	m.Name = internal.BytesToString(b)
+	m.Name = unsafeconv.String(b)
 }
 
 var zdec, _ = zstd.NewReader(nil)
@@ -138,7 +138,7 @@ var _ encoding.BinaryMarshaler = (*Job)(nil)
 
 func (m *Job) MarshalBinary() ([]byte, error) {
 	if m.TaskName == "" {
-		return nil, internal.ErrTaskNameRequired
+		return nil, backend.ErrTaskNameRequired
 	}
 	if m.marshalBinaryCache != nil {
 		return m.marshalBinaryCache, nil

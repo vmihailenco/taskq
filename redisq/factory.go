@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/internal/base"
+	"github.com/vmihailenco/taskq/v4/backend/base"
 )
 
 type factory struct {

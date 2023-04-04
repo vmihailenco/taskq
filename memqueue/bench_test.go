@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/vmihailenco/taskq/memqueue/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/memqueue"
 )
 
 func BenchmarkCallAsync(b *testing.B) {
@@ -26,7 +26,7 @@ func BenchmarkCallAsync(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = q.Add(ctx, task.NewJob())
+			_ = q.AddJob(ctx, task.NewJob())
 		}
 	})
 }
@@ -51,7 +51,7 @@ func BenchmarkNamedJob(b *testing.B) {
 		for pb.Next() {
 			msg := task.NewJob()
 			msg.Name = "myname"
-			q.Add(ctx, msg)
+			q.AddJob(ctx, msg)
 		}
 	})
 }

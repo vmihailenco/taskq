@@ -10,8 +10,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"github.com/vmihailenco/taskq/redisq/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/redisq"
 )
 
 var Redis = redis.NewClient(&redis.Options{

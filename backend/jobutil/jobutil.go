@@ -7,7 +7,7 @@ import (
 	"github.com/dgryski/go-farm"
 
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/internal"
+	"github.com/vmihailenco/taskq/v4/backend/unsafeconv"
 )
 
 func WrapJob(msg *taskq.Job) *taskq.Job {
@@ -65,5 +65,5 @@ func FullJobName(q taskq.Queue, msg *taskq.Job) string {
 	h = farm.Hash64WithSeed(data, seed)
 	binary.BigEndian.PutUint64(b[11:19], h)
 
-	return internal.BytesToString(b)
+	return unsafeconv.String(b)
 }

@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-redis/redis_rate/v10"
 
+	"github.com/vmihailenco/taskq/memqueue/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/memqueue"
 )
 
 func timeSince(start time.Time) time.Duration {

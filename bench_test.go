@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/vmihailenco/taskq/memqueue/v4"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/memqueue"
 )
 
 func BenchmarkConsumerMemq(b *testing.B) {

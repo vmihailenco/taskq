@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-redis/redis_rate/v10"
 
-	"github.com/vmihailenco/taskq/v4/internal"
+	"github.com/vmihailenco/taskq/v4/backend"
 )
 
 const stopTimeout = 30 * time.Second
@@ -276,7 +276,7 @@ func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 	}
 
 	msgs, err := c.q.ReserveN(ctx, 1, c.opt.WaitTimeout)
-	if err != nil && err != internal.ErrNotSupported {
+	if err != nil && err != backend.ErrNotSupported {
 		return nil, err
 	}
 
@@ -293,7 +293,7 @@ func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 	for {
 		if pauseTime := c.paused(); pauseTime > 0 {
-			internal.Logger.Printf("%s is automatically paused for dur=%s", c, pauseTime)
+			backend.Logger.Printf("%s is automatically paused for dur=%s", c, pauseTime)
 			time.Sleep(pauseTime)
 			c.resetPause()
 			continue
@@ -302,15 +302,15 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 		switch err := c.reserveJobs(ctx); err {
 		case nil:
 			// nothing
-		case internal.ErrNotSupported, context.Canceled:
+		case backend.ErrNotSupported, context.Canceled:
 			return
 		case context.DeadlineExceeded:
-			internal.Logger.Printf(
+			backend.Logger.Printf(
 				"fetcher(%d) reserveJobs failed: %s (exiting)",
 				fetcherID, err)
 		default:
 			backoff := time.Second
-			internal.Logger.Printf(
+			backend.Logger.Printf(
 				"fetcher(%d) reserveJobs failed: %s (sleeping for dur=%s)",
 				fetcherID, err, backoff)
 			sleep(ctx, backoff)
@@ -354,7 +354,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 		if msg == nil {
 			return
 		}
-		_ = c.Process(internal.UndoContext(ctx), msg)
+		_ = c.Process(backend.UndoContext(ctx), msg)
 	}
 }
 
@@ -435,28 +435,28 @@ func (c *Consumer) Put(ctx context.Context, msg *Job) {
 
 func (c *Consumer) release(ctx context.Context, msg *Job) {
 	if msg.Err != nil {
-		internal.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
+		backend.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
 			msg.TaskName, msg.ReservedCount, msg.Delay, msg.Err)
 	}
 
 	if err := c.q.Release(ctx, msg); err != nil {
-		internal.Logger.Printf("task=%q Release failed: %s", msg.TaskName, err)
+		backend.Logger.Printf("task=%q Release failed: %s", msg.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
 func (c *Consumer) delete(ctx context.Context, msg *Job) {
 	if msg.Err != nil {
-		internal.Logger.Printf("task=%q handler failed after retry=%d: %s",
+		backend.Logger.Printf("task=%q handler failed after retry=%d: %s",
 			msg.TaskName, msg.ReservedCount, msg.Err)
 
 		if err := c.opt.Handler.HandleJob(ctx, msg); err != nil {
-			internal.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
+			backend.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
 		}
 	}
 
 	if err := c.q.Delete(ctx, msg); err != nil {
-		internal.Logger.Printf("task=%q Delete failed: %s", msg.TaskName, err)
+		backend.Logger.Printf("task=%q Delete failed: %s", msg.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }

@@ -1,8 +1,10 @@
-package internal
+package backend
 
 import (
 	"encoding/ascii85"
 	"errors"
+
+	"github.com/vmihailenco/taskq/v4/backend/unsafeconv"
 )
 
 func MaxEncodedLen(n int) int {
@@ -13,12 +15,12 @@ func EncodeToString(src []byte) string {
 	dst := make([]byte, MaxEncodedLen(len(src)))
 	n := ascii85.Encode(dst, src)
 	dst = dst[:n]
-	return BytesToString(dst)
+	return unsafeconv.String(dst)
 }
 
 func DecodeString(src string) ([]byte, error) {
 	dst := make([]byte, len(src))
-	ndst, nsrc, err := ascii85.Decode(dst, StringToBytes(src), true)
+	ndst, nsrc, err := ascii85.Decode(dst, unsafeconv.Bytes(src), true)
 	if err != nil {
 		return nil, err
 	}

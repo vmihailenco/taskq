@@ -10,8 +10,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/uptrace/bun"
 	"github.com/vmihailenco/taskq/v4"
-	"github.com/vmihailenco/taskq/v4/internal"
-	"github.com/vmihailenco/taskq/v4/internal/jobutil"
+	"github.com/vmihailenco/taskq/v4/backend"
+	"github.com/vmihailenco/taskq/v4/backend/jobutil"
 )
 
 type Queue struct {
@@ -82,7 +82,7 @@ func (q *Queue) AddJob(ctx context.Context, job *taskq.Job) error {
 
 func (q *Queue) add(ctx context.Context, job *taskq.Job) error {
 	if job.TaskName == "" {
-		return internal.ErrTaskNameRequired
+		return backend.ErrTaskNameRequired
 	}
 	if job.Name != "" && q.isDuplicate(ctx, job) {
 		job.Err = taskq.ErrDuplicate

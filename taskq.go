@@ -8,7 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/vmihailenco/taskq/v4/internal"
+	"github.com/vmihailenco/taskq/v4/backend"
 )
 
 func init() {
@@ -16,7 +16,7 @@ func init() {
 }
 
 func SetLogger(logger *log.Logger) {
-	internal.Logger = logger
+	backend.Logger = logger
 }
 
 // Factory is an interface that abstracts creation of new queues.

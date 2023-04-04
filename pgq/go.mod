@@ -1,10 +1,10 @@
-module github.com/vmihailenco/taskq/v4/pgq
+module github.com/vmihailenco/taskq/pgq/v4
 
 go 1.20
 
 replace github.com/vmihailenco/taskq/v4 => ./..
 
-replace github.com/vmihailenco/taskq/v4/taskqtest => ../taskqtest
+replace github.com/vmihailenco/taskq/taskqtest/v4 => ../taskqtest
 
 require (
 	github.com/oklog/ulid/v2 v2.1.0
@@ -13,8 +13,8 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.1.12
 	github.com/uptrace/bun/driver/pgdriver v1.1.12
 	github.com/uptrace/bun/extra/bundebug v1.1.12
-	github.com/vmihailenco/taskq/v4 v4.0.0-00010101000000-000000000000
-	github.com/vmihailenco/taskq/v4/taskqtest v0.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/taskqtest/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
 )
 
 require (
@@ -30,7 +30,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.0.2 // indirect
+	github.com/redis/go-redis/v9 v9.0.3 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
