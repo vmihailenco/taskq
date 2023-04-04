@@ -11,7 +11,7 @@ require (
 	github.com/klauspost/compress v1.16.3
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/vmihailenco/msgpack/v5 v5.3.5
-	github.com/vmihailenco/taskq/memqueue/v4 v4.0.0-00010101000000-000000000000
+	github.com/vmihailenco/taskq/memqueue/v4 v4.0.0-beta.1
 )
 
 require (
