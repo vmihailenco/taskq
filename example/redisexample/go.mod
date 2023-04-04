@@ -12,8 +12,8 @@ replace github.com/vmihailenco/taskq/taskqtest/v4 => ../../taskqtest
 
 require (
 	github.com/redis/go-redis/v9 v9.0.3
-	github.com/vmihailenco/taskq/redisq/v4 v4.0.0-beta.2
-	github.com/vmihailenco/taskq/v4 v4.0.0-beta.2
+	github.com/vmihailenco/taskq/redisq/v4 v4.0.0-beta.3
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.3
 )
 
 require (

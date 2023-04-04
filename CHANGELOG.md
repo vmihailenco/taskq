@@ -1,3 +1,7 @@
+# [4.0.0-beta.3](https://github.com/vmihailenco/taskq/compare/v4.0.0-beta.2...v4.0.0-beta.3) (2023-04-04)
+
+
+
 # [4.0.0-beta.2](https://github.com/vmihailenco/taskq/compare/v4.0.0-beta.1...v4.0.0-beta.2) (2023-04-04)
 
 
