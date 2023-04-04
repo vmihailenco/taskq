@@ -41,7 +41,7 @@ fi
 
 git checkout v4
 
-PACKAGE_DIRS=$(find . -mindepth 2 -type f -name 'go.mod' -exec dirname {} \; \
+PACKAGE_DIRS=$(find . -type f -name 'go.mod' -exec dirname {} \; \
   | sed 's/^\.\///' \
   | sort)
 
@@ -53,8 +53,8 @@ done
 
 for dir in $PACKAGE_DIRS
 do
-    printf "${dir}: go mod tidy -compat=1.18\n"
-    (cd ./${dir} && go mod tidy -compat=1.18)
+    printf "${dir}: go mod tidy -compat=1.20\n"
+    (cd ./${dir} && go mod tidy -compat=1.20)
 done
 
 for dir in $PACKAGE_DIRS
