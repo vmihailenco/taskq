@@ -39,7 +39,7 @@ then
     exit 1
 fi
 
-git checkout v3
+git checkout v4
 
 PACKAGE_DIRS=$(find . -mindepth 2 -type f -name 'go.mod' -exec dirname {} \; \
   | sed 's/^\.\///' \
@@ -53,8 +53,14 @@ done
 
 for dir in $PACKAGE_DIRS
 do
-    printf "${dir}: go get -d && go mod tidy\n"
-    (cd ./${dir} && go get -d && go mod tidy)
+    printf "${dir}: go mod tidy -compat=1.18\n"
+    (cd ./${dir} && go mod tidy -compat=1.18)
+done
+
+for dir in $PACKAGE_DIRS
+do
+    sed --in-place \
+      "s/vmihailenco\/taskq\([^ ]*\) v.*/vmihailenco\/taskq\1 ${TAG}/" "${dir}/go.mod"
 done
 
 sed --in-place "s/\(return \)\"[^\"]*\"/\1\"${TAG#v}\"/" ./version.go
@@ -62,7 +68,7 @@ sed --in-place "s/\(\"version\": \)\"[^\"]*\"/\1\"${TAG#v}\"/" ./package.json
 
 conventional-changelog -p angular -i CHANGELOG.md -s
 
-git checkout -b release/${TAG} v3
+git checkout -b release/${TAG} v4
 git add -u
 git commit -m "chore: release $TAG (release.sh)"
 git push origin release/${TAG}
