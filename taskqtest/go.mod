@@ -10,7 +10,7 @@ require (
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.2
-	github.com/vmihailenco/taskq/v4 v4.0.0-beta.1
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.2
 )
 
 require (
