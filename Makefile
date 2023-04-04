@@ -6,12 +6,12 @@ test:
 	go test ./... -run=NONE -bench=. -benchmem
 
 go_mod_tidy:
-	go get -u && go mod tidy -go=1.17
+	go get -u && go mod tidy -go=1.18
 	set -e; for dir in $(ALL_GO_MOD_DIRS); do \
 	  echo "go mod tidy in $${dir}"; \
 	  (cd "$${dir}" && \
 	    go get -u ./... && \
-	    go mod tidy -go=1.17); \
+	    go mod tidy -go=1.18); \
 	done
 
 fmt:

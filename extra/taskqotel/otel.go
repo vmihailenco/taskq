@@ -19,12 +19,12 @@ func NewHook() *OpenTelemetryHook {
 }
 
 func (h OpenTelemetryHook) BeforeProcessJob(evt *taskq.ProcessJobEvent) error {
-	evt.Job.Ctx, _ = tracer.Start(evt.Job.Ctx, evt.Job.TaskName)
+	evt.Ctx, _ = tracer.Start(evt.Ctx, evt.Job.TaskName)
 	return nil
 }
 
 func (h OpenTelemetryHook) AfterProcessJob(evt *taskq.ProcessJobEvent) error {
-	ctx := evt.Job.Ctx
+	ctx := evt.Ctx
 
 	span := trace.SpanFromContext(ctx)
 	defer span.End()

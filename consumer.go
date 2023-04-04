@@ -390,7 +390,7 @@ func (c *Consumer) Process(ctx context.Context, msg *Job) error {
 		return msg.Err
 	}
 
-	evt, err := c.beforeProcessJob(msg)
+	evt, err := c.beforeProcessJob(ctx, msg)
 	if err != nil {
 		msg.Err = err
 		c.Put(ctx, msg)
@@ -474,6 +474,7 @@ func (c *Consumer) Purge(ctx context.Context) error {
 }
 
 type ProcessJobEvent struct {
+	Ctx       context.Context
 	Job       *Job
 	StartTime time.Time
 
@@ -485,12 +486,13 @@ type ConsumerHook interface {
 	AfterProcessJob(*ProcessJobEvent) error
 }
 
-func (c *Consumer) beforeProcessJob(msg *Job) (*ProcessJobEvent, error) {
+func (c *Consumer) beforeProcessJob(ctx context.Context, msg *Job) (*ProcessJobEvent, error) {
 	if len(c.hooks) == 0 {
 		return nil, nil
 	}
 
 	evt := &ProcessJobEvent{
+		Ctx:       ctx,
 		Job:       msg,
 		StartTime: time.Now(),
 	}
