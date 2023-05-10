@@ -11,7 +11,7 @@ require (
 	github.com/onsi/gomega v1.27.6
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/satori/go.uuid v1.2.0
-	github.com/vmihailenco/taskq/v4 v4.0.0-beta.3
+	github.com/vmihailenco/taskq/v4 v4.0.0-beta.4
 )
 
 require (
@@ -19,6 +19,8 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-redis/redis_rate/v10 v10.0.1 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect

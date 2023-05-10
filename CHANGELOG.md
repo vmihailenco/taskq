@@ -1,3 +1,12 @@
+# [4.0.0-beta.4](https://github.com/vmihailenco/taskq/compare/v4.0.0-beta.3...v4.0.0-beta.4) (2023-05-10)
+
+
+### Features
+
+* add oteltaskq ([7cee441](https://github.com/vmihailenco/taskq/commit/7cee441630ccff79f22a292e6b564a9e9c7bcd84))
+
+
+
 # [4.0.0-beta.3](https://github.com/vmihailenco/taskq/compare/v4.0.0-beta.2...v4.0.0-beta.3) (2023-04-04)
 
 
