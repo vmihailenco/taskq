@@ -6,6 +6,8 @@ replace github.com/vmihailenco/taskq/memqueue/v4 => ./memqueue
 
 require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13
+	github.com/go-logr/logr v1.2.4
+	github.com/go-logr/stdr v1.2.2
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/klauspost/compress v1.16.3

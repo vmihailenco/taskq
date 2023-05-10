@@ -6,17 +6,20 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-logr/logr"
+	"github.com/go-logr/stdr"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/v4/backend"
 )
 
 func init() {
-	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
+	SetLogger(stdr.New(log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)))
 }
 
-func SetLogger(logger *log.Logger) {
-	backend.Logger = logger
+// SetLogger configures the logger used internally to opentelemetry.
+func SetLogger(logger logr.Logger) {
+	backend.SetLogger(logger)
 }
 
 // Factory is an interface that abstracts creation of new queues.

@@ -300,7 +300,8 @@ func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)
 			return err
 		})
 		if err != nil && err != redislock.ErrNotObtained {
-			backend.Logger.Printf("redisq: %s failed: %s", name, err)
+			backend.Error(err, "redisq: scheduler failed",
+				"name", name)
 		}
 		if err != nil || n == 0 {
 			time.Sleep(q.schedulerBackoff())
@@ -431,7 +432,7 @@ func (q *Queue) withRedisLock(
 
 	defer func() {
 		if err := lock.Release(ctx); err != nil {
-			backend.Logger.Printf("redislock.Release failed: %s", err)
+			backend.Error(err, "lock.Release failed")
 		}
 	}()
 

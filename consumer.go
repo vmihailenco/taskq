@@ -293,7 +293,7 @@ func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 	for {
 		if pauseTime := c.paused(); pauseTime > 0 {
-			backend.Logger.Printf("%s is automatically paused for dur=%s", c, pauseTime)
+			backend.Warn("consumer is automatically paused", "pause_time", pauseTime)
 			time.Sleep(pauseTime)
 			c.resetPause()
 			continue
@@ -305,14 +305,10 @@ func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
 		case backend.ErrNotSupported, context.Canceled:
 			return
 		case context.DeadlineExceeded:
-			backend.Logger.Printf(
-				"fetcher(%d) reserveJobs failed: %s (exiting)",
-				fetcherID, err)
+			backend.Error(err, "reserveJobs failed (exiting)")
 		default:
 			backoff := time.Second
-			backend.Logger.Printf(
-				"fetcher(%d) reserveJobs failed: %s (sleeping for dur=%s)",
-				fetcherID, err, backoff)
+			backend.Error(err, "reserveJobs failed (will retry)", "backoff", backoff)
 			sleep(ctx, backoff)
 		}
 	}
@@ -427,28 +423,34 @@ func (c *Consumer) Put(ctx context.Context, job *Job) {
 
 func (c *Consumer) release(ctx context.Context, job *Job) {
 	if job.Err != nil {
-		backend.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
-			job.TaskName, job.ReservedCount, job.Delay, job.Err)
+		backend.Error(job.Err, "job failed (will retry)",
+			"task_name", job.TaskName,
+			"reserved_count", job.ReservedCount,
+			"delay", job.Delay)
 	}
 
 	if err := c.q.Release(ctx, job); err != nil {
-		backend.Logger.Printf("task=%q Release failed: %s", job.TaskName, err)
+		backend.Error(err, "Release failed",
+			"task_name", job.TaskName)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
 func (c *Consumer) delete(ctx context.Context, job *Job) {
 	if job.Err != nil {
-		backend.Logger.Printf("task=%q handler failed after retry=%d: %s",
-			job.TaskName, job.ReservedCount, job.Err)
+		backend.Error(job.Err, "job failed (dropping)",
+			"task_name", job.TaskName,
+			"reserved_count", job.ReservedCount)
 
 		if err := c.opt.Handler.HandleJob(ctx, job); err != nil {
-			backend.Logger.Printf("task=%q fallback handler failed: %s", job.TaskName, err)
+			backend.Error(err, "fallback handler failed (dropping)",
+				"task_name", job.TaskName)
 		}
 	}
 
 	if err := c.q.Delete(ctx, job); err != nil {
-		backend.Logger.Printf("task=%q Delete failed: %s", job.TaskName, err)
+		backend.Error(err, "Delete failed",
+			"task_name", job.TaskName)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
