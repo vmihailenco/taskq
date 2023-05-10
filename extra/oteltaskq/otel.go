@@ -1,4 +1,4 @@
-package taskqotel
+package oteltaskq
 
 import (
 	"context"
