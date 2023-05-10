@@ -1,4 +1,4 @@
-module github.com/vmihailenco/taskq/extra/taskqotel/v4
+module github.com/vmihailenco/taskq/extra/oteltaskq/v4
 
 go 1.20
 
@@ -8,8 +8,8 @@ replace github.com/vmihailenco/taskq/memqueue/v4 => ../../memqueue
 
 require (
 	github.com/vmihailenco/taskq/v4 v4.0.0-beta.3
-	go.opentelemetry.io/otel v1.14.0
-	go.opentelemetry.io/otel/trace v1.14.0
+	go.opentelemetry.io/otel v1.15.1
+	go.opentelemetry.io/otel/trace v1.15.1
 
 )
 

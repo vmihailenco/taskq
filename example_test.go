@@ -5,23 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/memqueue/v4"
 	"github.com/vmihailenco/taskq/v4"
 )
-
-func timeSince(start time.Time) time.Duration {
-	secs := float64(time.Since(start)) / float64(time.Second)
-	return time.Duration(math.Floor(secs)) * time.Second
-}
-
-func timeSinceCeil(start time.Time) time.Duration {
-	secs := float64(time.Since(start)) / float64(time.Second)
-	return time.Duration(math.Ceil(secs)) * time.Second
-}
 
 func Example_retryOnError() {
 	start := time.Now()
@@ -120,4 +112,29 @@ func Example_once() {
 	_ = q.Close()
 
 	// Output: hello world
+}
+
+var (
+	ringOnce sync.Once
+	ring     *redis.Ring
+)
+
+func redisRing() *redis.Ring {
+	ringOnce.Do(func() {
+		ring = redis.NewRing(&redis.RingOptions{
+			Addrs: map[string]string{"0": ":6379"},
+		})
+	})
+	_ = ring.FlushDB(context.TODO()).Err()
+	return ring
+}
+
+func timeSince(start time.Time) time.Duration {
+	secs := float64(time.Since(start)) / float64(time.Second)
+	return time.Duration(math.Floor(secs)) * time.Second
+}
+
+func timeSinceCeil(start time.Time) time.Duration {
+	secs := float64(time.Since(start)) / float64(time.Second)
+	return time.Duration(math.Ceil(secs)) * time.Second
 }

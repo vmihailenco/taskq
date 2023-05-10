@@ -1,6 +1,8 @@
 package taskqotel
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -18,21 +20,23 @@ func NewHook() *OpenTelemetryHook {
 	return new(OpenTelemetryHook)
 }
 
-func (h OpenTelemetryHook) BeforeProcessJob(evt *taskq.ProcessJobEvent) error {
-	evt.Ctx, _ = tracer.Start(evt.Ctx, evt.Job.TaskName)
-	return nil
+func (h OpenTelemetryHook) BeforeProcessJob(
+	ctx context.Context, evt *taskq.ProcessJobEvent,
+) context.Context {
+	ctx, _ = tracer.Start(ctx, evt.Job.TaskName)
+	return ctx
 }
 
-func (h OpenTelemetryHook) AfterProcessJob(evt *taskq.ProcessJobEvent) error {
-	ctx := evt.Ctx
-
+func (h OpenTelemetryHook) AfterProcessJob(ctx context.Context, evt *taskq.ProcessJobEvent) {
 	span := trace.SpanFromContext(ctx)
 	defer span.End()
+
+	if !span.IsRecording() {
+		return
+	}
 
 	if err := evt.Job.Err; err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		span.RecordError(err)
 	}
-
-	return nil
 }

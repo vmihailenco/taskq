@@ -129,9 +129,9 @@ func (c *Consumer) Stats() *ConsumerStats {
 	}
 }
 
-func (c *Consumer) AddJob(ctx context.Context, msg *Job) error {
+func (c *Consumer) AddJob(ctx context.Context, job *Job) error {
 	_, _ = c.limiter.Reserve(ctx, 1)
-	c.buffer <- msg
+	c.buffer <- job
 	return nil
 }
 
@@ -261,33 +261,33 @@ func (c *Consumer) ProcessAll(ctx context.Context) error {
 
 // ProcessOne processes at most one message in the queue.
 func (c *Consumer) ProcessOne(ctx context.Context) error {
-	msg, err := c.reserveOne(ctx)
+	job, err := c.reserveOne(ctx)
 	if err != nil {
 		return err
 	}
-	return c.Process(ctx, msg)
+	return c.Process(ctx, job)
 }
 
 func (c *Consumer) reserveOne(ctx context.Context) (*Job, error) {
 	select {
-	case msg := <-c.buffer:
-		return msg, nil
+	case job := <-c.buffer:
+		return job, nil
 	default:
 	}
 
-	msgs, err := c.q.ReserveN(ctx, 1, c.opt.WaitTimeout)
+	jobs, err := c.q.ReserveN(ctx, 1, c.opt.WaitTimeout)
 	if err != nil && err != backend.ErrNotSupported {
 		return nil, err
 	}
 
-	if len(msgs) == 0 {
+	if len(jobs) == 0 {
 		return nil, errors.New("taskq: queue is empty")
 	}
-	if len(msgs) != 1 {
-		return nil, fmt.Errorf("taskq: queue returned %d messages", len(msgs))
+	if len(jobs) != 1 {
+		return nil, fmt.Errorf("taskq: queue returned %d messages", len(jobs))
 	}
 
-	return &msgs[0], nil
+	return &jobs[0], nil
 }
 
 func (c *Consumer) fetcher(ctx context.Context, fetcherID int) {
@@ -324,22 +324,22 @@ func (c *Consumer) reserveJobs(ctx context.Context) error {
 		return err
 	}
 
-	msgs, err := c.q.ReserveN(ctx, size, c.opt.WaitTimeout)
+	jobs, err := c.q.ReserveN(ctx, size, c.opt.WaitTimeout)
 	if err != nil {
 		return err
 	}
 
-	if d := size - len(msgs); d > 0 {
+	if d := size - len(jobs); d > 0 {
 		c.limiter.Cancel(d)
 	}
 
-	for i := range msgs {
-		msg := &msgs[i]
+	for i := range jobs {
+		job := &jobs[i]
 		select {
-		case c.buffer <- msg:
+		case c.buffer <- job:
 		case <-ctx.Done():
-			for i := range msgs[i:] {
-				_ = c.q.Release(ctx, &msgs[i])
+			for i := range jobs[i:] {
+				_ = c.q.Release(ctx, &jobs[i])
 			}
 			return context.Canceled
 		}
@@ -350,113 +350,105 @@ func (c *Consumer) reserveJobs(ctx context.Context) error {
 
 func (c *Consumer) worker(ctx context.Context, workerID int) {
 	for {
-		msg := c.waitJob(ctx)
-		if msg == nil {
+		job := c.waitJob(ctx)
+		if job == nil {
 			return
 		}
-		_ = c.Process(backend.UndoContext(ctx), msg)
+		_ = c.Process(backend.UndoContext(ctx), job)
 	}
 }
 
 func (c *Consumer) waitJob(ctx context.Context) *Job {
 	select {
-	case msg := <-c.buffer:
-		return msg
+	case job := <-c.buffer:
+		return job
 	default:
 	}
 
 	select {
-	case msg := <-c.buffer:
-		return msg
+	case job := <-c.buffer:
+		return job
 	case <-ctx.Done():
 		return nil
 	}
 }
 
 // Process is low-level API to process message bypassing the internal queue.
-func (c *Consumer) Process(ctx context.Context, msg *Job) error {
+func (c *Consumer) Process(ctx context.Context, job *Job) error {
 	atomic.AddUint32(&c.inFlight, 1)
 
-	if msg.Delay > 0 {
-		if err := c.q.AddJob(ctx, msg); err != nil {
+	if job.Delay > 0 {
+		if err := c.q.AddJob(ctx, job); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	if msg.Err != nil {
-		msg.Delay = -1
-		c.Put(ctx, msg)
-		return msg.Err
+	if job.Err != nil {
+		job.Delay = -1
+		c.Put(ctx, job)
+		return job.Err
 	}
 
-	evt, err := c.beforeProcessJob(ctx, msg)
-	if err != nil {
-		msg.Err = err
-		c.Put(ctx, msg)
-		return err
-	}
+	ctx, evt := c.beforeProcessJob(ctx, job)
+	job.evt = evt
 
-	msg.evt = evt
-
-	msgErr := c.opt.Handler.HandleJob(ctx, msg)
-	if msgErr == ErrAsyncTask {
+	jobErr := c.opt.Handler.HandleJob(ctx, job)
+	if jobErr == ErrAsyncTask {
 		return ErrAsyncTask
 	}
 
-	msg.Err = msgErr
-	c.Put(ctx, msg)
+	job.Err = jobErr
+	c.Put(ctx, job)
 
-	return msg.Err
+	return job.Err
 }
 
-func (c *Consumer) Put(ctx context.Context, msg *Job) {
-	if err := c.afterProcessJob(msg); err != nil {
-		msg.Err = err
-	}
+func (c *Consumer) Put(ctx context.Context, job *Job) {
+	c.afterProcessJob(ctx, job)
 
-	if msg.Err == nil {
+	if job.Err == nil {
 		c.resetPause()
 		atomic.AddUint32(&c.processed, 1)
-		c.delete(ctx, msg)
+		c.delete(ctx, job)
 		return
 	}
 
 	atomic.AddUint32(&c.consecutiveNumErr, 1)
-	if msg.Delay <= 0 {
+	if job.Delay <= 0 {
 		atomic.AddUint32(&c.fails, 1)
-		c.delete(ctx, msg)
+		c.delete(ctx, job)
 		return
 	}
 
 	atomic.AddUint32(&c.retries, 1)
-	c.release(ctx, msg)
+	c.release(ctx, job)
 }
 
-func (c *Consumer) release(ctx context.Context, msg *Job) {
-	if msg.Err != nil {
+func (c *Consumer) release(ctx context.Context, job *Job) {
+	if job.Err != nil {
 		backend.Logger.Printf("task=%q failed (will retry=%d in dur=%s): %s",
-			msg.TaskName, msg.ReservedCount, msg.Delay, msg.Err)
+			job.TaskName, job.ReservedCount, job.Delay, job.Err)
 	}
 
-	if err := c.q.Release(ctx, msg); err != nil {
-		backend.Logger.Printf("task=%q Release failed: %s", msg.TaskName, err)
+	if err := c.q.Release(ctx, job); err != nil {
+		backend.Logger.Printf("task=%q Release failed: %s", job.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
 
-func (c *Consumer) delete(ctx context.Context, msg *Job) {
-	if msg.Err != nil {
+func (c *Consumer) delete(ctx context.Context, job *Job) {
+	if job.Err != nil {
 		backend.Logger.Printf("task=%q handler failed after retry=%d: %s",
-			msg.TaskName, msg.ReservedCount, msg.Err)
+			job.TaskName, job.ReservedCount, job.Err)
 
-		if err := c.opt.Handler.HandleJob(ctx, msg); err != nil {
-			backend.Logger.Printf("task=%q fallback handler failed: %s", msg.TaskName, err)
+		if err := c.opt.Handler.HandleJob(ctx, job); err != nil {
+			backend.Logger.Printf("task=%q fallback handler failed: %s", job.TaskName, err)
 		}
 	}
 
-	if err := c.q.Delete(ctx, msg); err != nil {
-		backend.Logger.Printf("task=%q Delete failed: %s", msg.TaskName, err)
+	if err := c.q.Delete(ctx, job); err != nil {
+		backend.Logger.Printf("task=%q Delete failed: %s", job.TaskName, err)
 	}
 	atomic.AddUint32(&c.inFlight, ^uint32(0))
 }
@@ -465,8 +457,8 @@ func (c *Consumer) delete(ctx context.Context, msg *Job) {
 func (c *Consumer) Purge(ctx context.Context) error {
 	for {
 		select {
-		case msg := <-c.buffer:
-			c.delete(ctx, msg)
+		case job := <-c.buffer:
+			c.delete(ctx, job)
 		default:
 			return nil
 		}
@@ -474,7 +466,6 @@ func (c *Consumer) Purge(ctx context.Context) error {
 }
 
 type ProcessJobEvent struct {
-	Ctx       context.Context
 	Job       *Job
 	StartTime time.Time
 
@@ -482,42 +473,37 @@ type ProcessJobEvent struct {
 }
 
 type ConsumerHook interface {
-	BeforeProcessJob(*ProcessJobEvent) error
-	AfterProcessJob(*ProcessJobEvent) error
+	BeforeProcessJob(context.Context, *ProcessJobEvent) context.Context
+	AfterProcessJob(context.Context, *ProcessJobEvent)
 }
 
-func (c *Consumer) beforeProcessJob(ctx context.Context, msg *Job) (*ProcessJobEvent, error) {
+func (c *Consumer) beforeProcessJob(
+	ctx context.Context, job *Job,
+) (context.Context, *ProcessJobEvent) {
 	if len(c.hooks) == 0 {
-		return nil, nil
+		return ctx, nil
 	}
 
 	evt := &ProcessJobEvent{
-		Ctx:       ctx,
-		Job:       msg,
+		Job:       job,
 		StartTime: time.Now(),
 	}
 
 	for _, hook := range c.hooks {
-		if err := hook.BeforeProcessJob(evt); err != nil {
-			return nil, err
-		}
+		ctx = hook.BeforeProcessJob(ctx, evt)
 	}
 
-	return evt, nil
+	return ctx, evt
 }
 
-func (c *Consumer) afterProcessJob(msg *Job) error {
-	if msg.evt == nil {
-		return nil
+func (c *Consumer) afterProcessJob(ctx context.Context, job *Job) {
+	if job.evt == nil {
+		return
 	}
 
-	var firstErr error
-	for _, hook := range c.hooks {
-		if err := hook.AfterProcessJob(msg.evt); err != nil && firstErr == nil {
-			firstErr = err
-		}
+	for i := len(c.hooks) - 1; i >= 0; i-- {
+		c.hooks[i].AfterProcessJob(ctx, job.evt)
 	}
-	return firstErr
 }
 
 func (c *Consumer) resetPause() {
