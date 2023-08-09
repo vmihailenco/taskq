@@ -476,7 +476,6 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 			continue
 		}
 
-		msg.Ctx = ctx
 		_ = c.Process(msg)
 	}
 }
