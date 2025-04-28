@@ -88,6 +88,10 @@ type Queue struct {
 var _ taskq.Queue = (*Queue)(nil)
 
 func NewQueue(opt *taskq.QueueOptions) *Queue {
+	return NewQueueMaybeConsumer(true, opt)
+}
+
+func NewQueueMaybeConsumer(startConsumer bool, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := &Queue{
@@ -95,8 +99,10 @@ func NewQueue(opt *taskq.QueueOptions) *Queue {
 	}
 
 	q.consumer = taskq.NewConsumer(q)
-	if err := q.consumer.Start(context.Background()); err != nil {
-		panic(err)
+	if startConsumer {
+		if err := q.consumer.Start(context.Background()); err != nil {
+			panic(err)
+		}
 	}
 
 	return q
