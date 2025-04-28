@@ -941,11 +941,11 @@ func exponentialBackoff(min, max time.Duration, retry int) time.Duration {
 	if retry > 0 {
 		d = min << uint(retry-1)
 	}
+	if (retry > 0 && d <= 0) || d > max {
+		return max
+	}
 	if d < min {
 		return min
-	}
-	if d > max {
-		return max
 	}
 	return d
 }
