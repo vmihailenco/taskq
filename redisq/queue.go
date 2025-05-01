@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/bsm/redislock"
 
@@ -35,13 +35,15 @@ type RedisStreamClient interface {
 	XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd
 	XPendingExt(ctx context.Context, a *redis.XPendingExtArgs) *redis.XPendingExtCmd
-	XTrim(ctx context.Context, key string, maxLen int64) *redis.IntCmd
+	XTrimMaxLen(ctx context.Context, key string, maxLen int64) *redis.IntCmd
 	XGroupDelConsumer(ctx context.Context, stream, group, consumer string) *redis.IntCmd
 
-	ZAdd(ctx context.Context, key string, members ...*redis.Z) *redis.IntCmd
+	ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd
 	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
 	ZRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd
 	XInfoConsumers(ctx context.Context, key string, group string) *redis.XInfoConsumersCmd
+	ZCard(ctx context.Context, key string) *redis.IntCmd
+	ZCount(ctx context.Context, key string, min, max string) *redis.IntCmd
 }
 
 type Queue struct {
@@ -168,7 +170,7 @@ func (q *Queue) add(pipe RedisStreamClient, msg *taskq.Message) error {
 
 	if msg.Delay > 0 {
 		tm := time.Now().Add(msg.Delay)
-		return pipe.ZAdd(msg.Ctx, q.zset, &redis.Z{
+		return pipe.ZAdd(msg.Ctx, q.zset, redis.Z{
 			Score:  float64(unixMs(tm)),
 			Member: body,
 		}).Err()
@@ -259,7 +261,7 @@ func (q *Queue) Delete(msg *taskq.Message) error {
 func (q *Queue) Purge() error {
 	ctx := context.TODO()
 	_ = q.redis.Del(ctx, q.zset).Err()
-	_ = q.redis.XTrim(ctx, q.stream, 0).Err()
+	_ = q.redis.XTrimMaxLen(ctx, q.stream, 0).Err()
 	return nil
 }
 

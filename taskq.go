@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/v3/internal"
 )
@@ -37,6 +37,10 @@ type Redis interface {
 	// Eval Required by redislock
 	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
 	EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
-	ScriptExists(ctx context.Context, scripts ...string) *redis.BoolSliceCmd
+	EvalRO(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+	EvalShaRO(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
+	ScriptExists(ctx context.Context, hashes ...string) *redis.BoolSliceCmd
+	ScriptFlush(ctx context.Context) *redis.StatusCmd
+	ScriptKill(ctx context.Context) *redis.StatusCmd
 	ScriptLoad(ctx context.Context, script string) *redis.StringCmd
 }

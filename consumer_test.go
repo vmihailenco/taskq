@@ -14,15 +14,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/v3"
 	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
-const waitTimeout = time.Second
-const testTimeout = 30 * time.Second
+const (
+	waitTimeout = time.Second
+	testTimeout = 30 * time.Second
+)
 
 func queueName(s string) string {
 	version := strings.Split(runtime.Version(), " ")[0]
@@ -143,7 +145,6 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 		End:    end,
 		Count:  100,
 	}).Result()
-
 	if err != nil {
 		t.Fatal(err)
 	}
