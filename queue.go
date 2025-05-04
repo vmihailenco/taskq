@@ -15,16 +15,16 @@ type QueueOptions struct {
 
 	// Minimum number of goroutines processing messages.
 	// Default is 1.
-	MinNumWorker int32
+	MinNumWorker int64
 	// Maximum number of goroutines processing messages.
 	// Default is 32 * number of CPUs.
-	MaxNumWorker int32
+	MaxNumWorker int64
 	// Global limit of concurrently running workers across all servers.
 	// Overrides MaxNumWorker.
-	WorkerLimit int32
+	WorkerLimit int64
 	// Maximum number of goroutines fetching messages.
 	// Default is 8 * number of CPUs.
-	MaxNumFetcher int32
+	MaxNumFetcher int64
 
 	// Number of messages reserved by a fetcher in the queue in one request.
 	// Default is 10 messages.
@@ -91,11 +91,11 @@ func (opt *QueueOptions) Init() {
 			opt.MinNumWorker = 1
 		}
 		if opt.MaxNumWorker == 0 {
-			opt.MaxNumWorker = 32 * int32(runtime.NumCPU())
+			opt.MaxNumWorker = 32 * int64(runtime.NumCPU())
 		}
 	}
 	if opt.MaxNumFetcher == 0 {
-		opt.MaxNumFetcher = 8 * int32(runtime.NumCPU())
+		opt.MaxNumFetcher = 8 * int64(runtime.NumCPU())
 	}
 
 	switch opt.PauseErrorsThreshold {

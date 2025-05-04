@@ -59,8 +59,8 @@ func (p *perfProfile) Timing() time.Duration {
 //------------------------------------------------------------------------------
 
 type consumerConfig struct {
-	NumFetcher int32
-	NumWorker  int32
+	NumFetcher int64
+	NumWorker  int64
 
 	perfProfile
 
@@ -68,7 +68,7 @@ type consumerConfig struct {
 	Score       float64
 }
 
-func newConsumerConfig(numFetcher, numWorker int32) *consumerConfig {
+func newConsumerConfig(numFetcher, numWorker int64) *consumerConfig {
 	return &consumerConfig{
 		NumFetcher: numFetcher,
 		NumWorker:  numWorker,
@@ -124,7 +124,7 @@ func newConfigRoulette(opt *QueueOptions) *configRoulette {
 		rnd: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
-	cfg := newConsumerConfig(1, int32(opt.MinNumWorker))
+	cfg := newConsumerConfig(1, int64(opt.MinNumWorker))
 	r.resetConfigs(cfg, false)
 
 	return r
@@ -272,7 +272,7 @@ func (r *configRoulette) addConfig(cfg *consumerConfig) {
 	r.cfgs = append(r.cfgs, cfg)
 }
 
-func (r *configRoulette) withLessWorkers(cfg *consumerConfig, n int32) *consumerConfig {
+func (r *configRoulette) withLessWorkers(cfg *consumerConfig, n int64) *consumerConfig {
 	if n <= 0 {
 		n = 1
 	} else if n > 10 {
@@ -286,7 +286,7 @@ func (r *configRoulette) withLessWorkers(cfg *consumerConfig, n int32) *consumer
 	return cfg
 }
 
-func (r *configRoulette) withMoreWorkers(cfg *consumerConfig, n int32) *consumerConfig {
+func (r *configRoulette) withMoreWorkers(cfg *consumerConfig, n int64) *consumerConfig {
 	if n <= 0 {
 		n = 1
 	} else if n > 10 {
