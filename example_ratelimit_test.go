@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vmihailenco/taskq/v5"
-	"github.com/vmihailenco/taskq/v5/memqueue"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 type RateLimitError string
@@ -35,9 +35,7 @@ func Example_customRateLimit() {
 	})
 
 	ctx := context.Background()
-	if err := q.Add(task.WithArgs(ctx)); err != nil {
-		panic(err)
-	}
+	q.Add(task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

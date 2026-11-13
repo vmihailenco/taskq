@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
 
-	"github.com/vmihailenco/taskq/v5"
-	"github.com/vmihailenco/taskq/v5/redisq"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
 var Redis = redis.NewClient(&redis.Options{

@@ -7,10 +7,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/go-redis/redis_rate/v10"
+	"github.com/go-redis/redis_rate/v9"
 
-	"github.com/vmihailenco/taskq/v5"
-	"github.com/vmihailenco/taskq/v5/memqueue"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 func timeSince(start time.Time) time.Duration {
@@ -39,9 +39,7 @@ func Example_retryOnError() {
 	})
 
 	ctx := context.Background()
-	if err := q.Add(task.WithArgs(ctx)); err != nil {
-		panic(err)
-	}
+	q.Add(task.WithArgs(ctx))
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

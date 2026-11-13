@@ -4,19 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	uuid "github.com/satori/go.uuid"
 
-	"github.com/vmihailenco/taskq/v5"
-	"github.com/vmihailenco/taskq/v5/memqueue"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/memqueue"
 )
 
 func TestMemqueue(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMemqueue(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	taskq.SetLogger(log.New(io.Discard, "", 0))
+	taskq.SetLogger(log.New(ioutil.Discard, "", 0))
 })
 
 var _ = BeforeEach(func() {
@@ -108,7 +108,7 @@ var _ = Describe("message with invalid number of args", func() {
 			},
 			RetryLimit: 1,
 		})
-		Expect(q.Consumer().Stop()).To(Succeed())
+		q.Consumer().Stop()
 
 		err := q.Add(task.WithArgs(ctx))
 		Expect(err).NotTo(HaveOccurred())
@@ -213,7 +213,7 @@ var _ = Describe("message retry timing", func() {
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			Expect(q.Add(msg)).To(Succeed())
+			q.Add(msg)
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -248,7 +248,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
+		q.Add(task.WithArgs(ctx))
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -276,7 +276,7 @@ var _ = Describe("named message", func() {
 			},
 		})
 
-		name := uuid.NewString()
+		name := uuid.NewV4().String()
 
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {
@@ -286,7 +286,7 @@ var _ = Describe("named message", func() {
 				defer wg.Done()
 				msg := task.WithArgs(ctx)
 				msg.Name = name
-				Expect(q.Add(msg)).To(Succeed())
+				q.Add(msg)
 			}()
 		}
 		wg.Wait()
@@ -332,7 +332,7 @@ var _ = Describe("CallOnce", func() {
 				msg := task.WithArgs(ctx)
 				msg.OnceInPeriod(delay)
 
-				Expect(q.Add(msg)).To(Succeed())
+				q.Add(msg)
 			}()
 		}
 		wg.Wait()
@@ -365,7 +365,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
+			q.Add(task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -401,7 +401,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
+			q.Add(task.WithArgs(ctx))
 		}
 
 		err := q.Close()
@@ -507,3 +507,14 @@ var _ = Describe("empty queue", func() {
 		})
 	})
 })
+
+// slot splits time into equal periods (called slots) and returns
+// slot number for provided time.
+func slot(period time.Duration) int64 {
+	tm := time.Now()
+	periodSec := int64(period / time.Second)
+	if periodSec == 0 {
+		return tm.Unix()
+	}
+	return tm.Unix() / periodSec
+}
