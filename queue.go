@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-redis/redis_rate/v10"
+	"github.com/go-redis/redis_rate/v9"
 )
 
 type QueueOptions struct {

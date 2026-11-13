@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/vmihailenco/taskq/v5"
-	"github.com/vmihailenco/taskq/v5/memqueue"
-	"github.com/vmihailenco/taskq/v5/redisq"
+	"github.com/vmihailenco/taskq/v3"
+	"github.com/vmihailenco/taskq/v3/memqueue"
+	"github.com/vmihailenco/taskq/v3/redisq"
 )
 
 func BenchmarkConsumerMemq(b *testing.B) {

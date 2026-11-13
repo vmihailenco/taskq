@@ -5,12 +5,13 @@ test:
 	go test ./... -short -race
 	go test ./... -run=NONE -bench=. -benchmem
 
-# No `go get -u` here: newer releases of some dependencies (go-redis v9.23.0+,
-# golang.org/x/net v0.59.0+) require Go 1.26, and taskq still supports Go 1.25.
 go_mod_tidy:
+	go get -u && go mod tidy -go=1.17
 	set -e; for dir in $(ALL_GO_MOD_DIRS); do \
 	  echo "go mod tidy in $${dir}"; \
-	  (cd "$${dir}" && go mod tidy -go=1.25.0); \
+	  (cd "$${dir}" && \
+	    go get -u ./... && \
+	    go mod tidy -go=1.17); \
 	done
 
 fmt:
