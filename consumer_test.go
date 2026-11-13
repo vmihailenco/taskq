@@ -134,22 +134,29 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 		t.Fatalf("message was not processed")
 	}
 
-	tm := time.Now().Add(opt.ReservationTimeout)
-	end := strconv.FormatInt(unixMs(tm), 10)
-	pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
-		Stream: "taskq:{" + opt.Name + "}:stream",
-		Group:  "taskq",
-		Start:  "-",
-		End:    end,
-		Count:  100,
-	}).Result()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(pending) > 0 {
-		t.Fatal("task not acknowledged and still exists in pending list.")
+	// The consumer acks the message only after the handler returns, so the
+	// ack can land slightly after we receive from ch. Poll instead of checking once.
+	deadline := time.Now().Add(testTimeout)
+	for {
+		tm := time.Now().Add(opt.ReservationTimeout)
+		end := strconv.FormatInt(unixMs(tm), 10)
+		pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
+			Stream: "taskq:{" + opt.Name + "}:stream",
+			Group:  "taskq",
+			Start:  "-",
+			End:    end,
+			Count:  100,
+		}).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("task not acknowledged and still exists in pending list.")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if err := p.Stop(); err != nil {

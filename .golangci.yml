@@ -1,2 +1,14 @@
+version: "2"
+
 run:
   tests: false
+
+linters:
+  exclusions:
+    rules:
+      # aws-sdk-go v1 is deprecated upstream. Moving azsqs to aws-sdk-go-v2 is a
+      # separate change; until then, don't fail lint on its deprecation notices.
+      - path: ^azsqs/
+        linters:
+          - staticcheck
+        text: 'SA1019: .*github\.com/aws/aws-sdk-go'

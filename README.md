@@ -33,7 +33,9 @@ Resources:
 
 ## Requirements
 
-- Go 1.25 or newer (CI runs against Go 1.25 – 1.27).
+- Go 1.25 or newer (CI runs against Go 1.25 – 1.27). Go 1.25 is out of upstream support and its
+  standard library has security fixes that are only available in newer releases, so build
+  production binaries with Go 1.26.11+ or 1.27.x.
 - [go-redis v9](https://github.com/redis/go-redis) (`github.com/redis/go-redis/v9`) for the Redis
   backend and for global rate limiting / locking.
 

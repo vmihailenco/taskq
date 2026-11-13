@@ -289,11 +289,7 @@ func (q *Queue) closed() bool {
 }
 
 func (q *Queue) scheduler(name string, fn func(ctx context.Context) (int, error)) {
-	for {
-		if q.closed() {
-			break
-		}
-
+	for !q.closed() {
 		ctx := context.TODO()
 
 		var n int
