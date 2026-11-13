@@ -1,6 +1,6 @@
 module github.com/vmihailenco/taskq/v3
 
-go 1.17
+go 1.25.0
 
 require (
 	github.com/aws/aws-sdk-go v1.43.45
@@ -28,9 +28,9 @@ require (
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
