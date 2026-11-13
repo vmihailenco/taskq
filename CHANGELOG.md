@@ -1,3 +1,28 @@
+# [5.0.0](https://github.com/vmihailenco/taskq/compare/v3.2.9...v5.0.0) (2026-11-13)
+
+
+### Features
+
+* release as v5 on go-redis v9, require Go 1.25+ ([8c03145](https://github.com/vmihailenco/taskq/commit/8c03145c34ff3ceba28e8d8c46135e053171efd0))
+
+
+### Bug Fixes
+
+* crash due to nil msg.Ctx. Fixes [#177](https://github.com/vmihailenco/taskq/issues/177) ([c24c993](https://github.com/vmihailenco/taskq/commit/c24c993ad9e1b9c4c3152f27b668a61697422501)), closes [#153](https://github.com/vmihailenco/taskq/issues/153)
+* dont automaticaly start consumer ([dde6a3f](https://github.com/vmihailenco/taskq/commit/dde6a3fd8995114b5924092fe0ef7d9a4b7b03f3))
+
+
+### BREAKING CHANGES
+
+* the module path changes to github.com/vmihailenco/taskq/v5 and
+taskq now uses go-redis v9 types in its public API. v5 is the v3 API on top of
+go-redis v9: change the import paths, pass a go-redis v9 client, and use Go 1.25
+or newer. Custom implementations of taskq.Redis must add EvalRO and EvalShaRO;
+custom implementations of redisq.RedisStreamClient must use the go-redis v9
+XTrimMaxLen and ZAdd signatures.
+
+
+
 ## [3.2.9](https://github.com/vmihailenco/taskq/compare/v3.2.8...v3.2.9) (2022-08-24)
 
 
