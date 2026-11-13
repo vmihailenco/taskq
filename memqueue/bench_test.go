@@ -53,7 +53,10 @@ func BenchmarkNamedMessage(b *testing.B) {
 		for pb.Next() {
 			msg := task.WithArgs(ctx)
 			msg.Name = "myname"
-			q.Add(msg)
+			if err := q.Add(msg); err != nil {
+				b.Error(err)
+				return
+			}
 		}
 	})
 }

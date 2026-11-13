@@ -124,8 +124,8 @@ func (q *Queue) Consumer() taskq.QueueConsumer {
 	return q.consumer
 }
 
-func (q *Queue) SetSync(sync bool) {
-	q.sync = sync
+func (q *Queue) SetSync(enabled bool) {
+	q.sync = enabled
 }
 
 func (q *Queue) SetNoDelay(noDelay bool) {

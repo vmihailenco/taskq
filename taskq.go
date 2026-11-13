@@ -3,17 +3,12 @@ package taskq
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	"github.com/vmihailenco/taskq/v5/internal"
 )
-
-func init() {
-	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
-}
 
 func SetLogger(logger *log.Logger) {
 	internal.Logger = logger

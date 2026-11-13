@@ -18,9 +18,9 @@ type factory struct {
 
 var _ taskq.Factory = (*factory)(nil)
 
-func NewFactory(sqs *sqs.SQS, accountID string) taskq.Factory {
+func NewFactory(client *sqs.SQS, accountID string) taskq.Factory {
 	return &factory{
-		sqs:       sqs,
+		sqs:       client,
 		accountID: accountID,
 	}
 }

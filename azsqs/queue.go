@@ -46,11 +46,11 @@ type Queue struct {
 
 var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
+func NewQueue(client *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := &Queue{
-		sqs:       sqs,
+		sqs:       client,
 		accountID: accountID,
 		opt:       opt,
 	}

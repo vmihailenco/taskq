@@ -6,13 +6,11 @@ import (
 	"time"
 )
 
-var unknownTaskOpt *TaskOptions
-
-func init() {
-	SetUnknownTaskOptions(&TaskOptions{
-		Name: "unknown",
-	})
-}
+var unknownTaskOpt = func() *TaskOptions {
+	opt := &TaskOptions{Name: "unknown"}
+	opt.init()
+	return opt
+}()
 
 func SetUnknownTaskOptions(opt *TaskOptions) {
 	opt.init()

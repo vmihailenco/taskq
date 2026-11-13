@@ -39,7 +39,9 @@ func Example_retryOnError() {
 	})
 
 	ctx := context.Background()
-	q.Add(task.WithArgs(ctx))
+	if err := q.Add(task.WithArgs(ctx)); err != nil {
+		panic(err)
+	}
 
 	// Wait for all messages to be processed.
 	_ = q.Close()

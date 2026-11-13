@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -25,7 +25,7 @@ func TestMemqueue(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	taskq.SetLogger(log.New(ioutil.Discard, "", 0))
+	taskq.SetLogger(log.New(io.Discard, "", 0))
 })
 
 var _ = BeforeEach(func() {
@@ -108,7 +108,7 @@ var _ = Describe("message with invalid number of args", func() {
 			},
 			RetryLimit: 1,
 		})
-		q.Consumer().Stop()
+		Expect(q.Consumer().Stop()).To(Succeed())
 
 		err := q.Add(task.WithArgs(ctx))
 		Expect(err).NotTo(HaveOccurred())
@@ -213,7 +213,7 @@ var _ = Describe("message retry timing", func() {
 			msg.Delay = 5 * backoff
 			now = time.Now().Add(msg.Delay)
 
-			q.Add(msg)
+			Expect(q.Add(msg)).To(Succeed())
 
 			err := q.Close()
 			Expect(err).NotTo(HaveOccurred())
@@ -248,7 +248,7 @@ var _ = Describe("failing queue with error handler", func() {
 			},
 			RetryLimit: 1,
 		})
-		q.Add(task.WithArgs(ctx))
+		Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
 
 		err := q.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -286,7 +286,7 @@ var _ = Describe("named message", func() {
 				defer wg.Done()
 				msg := task.WithArgs(ctx)
 				msg.Name = name
-				q.Add(msg)
+				Expect(q.Add(msg)).To(Succeed())
 			}()
 		}
 		wg.Wait()
@@ -332,7 +332,7 @@ var _ = Describe("CallOnce", func() {
 				msg := task.WithArgs(ctx)
 				msg.OnceInPeriod(delay)
 
-				q.Add(msg)
+				Expect(q.Add(msg)).To(Succeed())
 			}()
 		}
 		wg.Wait()
@@ -365,7 +365,7 @@ var _ = Describe("stress testing", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs(ctx))
+			Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
 		}
 
 		err := q.Close()
@@ -401,7 +401,7 @@ var _ = Describe("stress testing failing queue", func() {
 		})
 
 		for i := 0; i < n; i++ {
-			q.Add(task.WithArgs(ctx))
+			Expect(q.Add(task.WithArgs(ctx))).To(Succeed())
 		}
 
 		err := q.Close()
@@ -507,14 +507,3 @@ var _ = Describe("empty queue", func() {
 		})
 	})
 })
-
-// slot splits time into equal periods (called slots) and returns
-// slot number for provided time.
-func slot(period time.Duration) int64 {
-	tm := time.Now()
-	periodSec := int64(period / time.Second)
-	if periodSec == 0 {
-		return tm.Unix()
-	}
-	return tm.Unix() / periodSec
-}

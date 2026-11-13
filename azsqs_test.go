@@ -11,11 +11,7 @@ import (
 	"github.com/vmihailenco/taskq/v5/azsqs"
 )
 
-var accountID string
-
-func init() {
-	accountID = os.Getenv("AWS_ACCOUNT_ID")
-}
+var accountID = os.Getenv("AWS_ACCOUNT_ID")
 
 func awsSQS() *sqs.SQS {
 	return sqs.New(session.New())
