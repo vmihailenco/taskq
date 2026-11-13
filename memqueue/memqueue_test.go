@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/google/uuid"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	uuid "github.com/satori/go.uuid"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/memqueue"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/memqueue"
 )
 
 func TestMemqueue(t *testing.T) {
@@ -276,7 +276,7 @@ var _ = Describe("named message", func() {
 			},
 		})
 
-		name := uuid.NewV4().String()
+		name := uuid.NewString()
 
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {

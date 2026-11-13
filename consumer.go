@@ -8,11 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
 
 	"github.com/bsm/redislock"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v5/internal"
 )
 
 const stopTimeout = 30 * time.Second

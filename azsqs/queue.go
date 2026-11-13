@@ -13,11 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/internal"
-	"github.com/vmihailenco/taskq/v3/internal/base"
-	"github.com/vmihailenco/taskq/v3/internal/msgutil"
-	"github.com/vmihailenco/taskq/v3/memqueue"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/internal"
+	"github.com/vmihailenco/taskq/v5/internal/base"
+	"github.com/vmihailenco/taskq/v5/internal/msgutil"
+	"github.com/vmihailenco/taskq/v5/memqueue"
 )
 
 const msgSizeLimit = 262144
