@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v5/internal"
 )
 
 const numSelectedThreshold = 20
@@ -124,7 +124,7 @@ func newConfigRoulette(opt *QueueOptions) *configRoulette {
 		rnd: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
-	cfg := newConsumerConfig(1, int32(opt.MinNumWorker))
+	cfg := newConsumerConfig(1, opt.MinNumWorker)
 	r.resetConfigs(cfg, false)
 
 	return r

@@ -3,17 +3,12 @@ package taskq
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v5/internal"
 )
-
-func init() {
-	SetLogger(log.New(os.Stderr, "taskq: ", log.LstdFlags|log.Lshortfile))
-}
 
 func SetLogger(logger *log.Logger) {
 	internal.Logger = logger
@@ -34,9 +29,11 @@ type Redis interface {
 	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 	Pipelined(ctx context.Context, fn func(pipe redis.Pipeliner) error) ([]redis.Cmder, error)
 
-	// Eval Required by redislock
+	// Scripting methods required by redislock and redis_rate.
 	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
 	EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
+	EvalRO(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+	EvalShaRO(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd
 	ScriptExists(ctx context.Context, scripts ...string) *redis.BoolSliceCmd
 	ScriptLoad(ctx context.Context, script string) *redis.StringCmd
 }

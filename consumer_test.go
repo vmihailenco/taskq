@@ -2,10 +2,9 @@ package taskq_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"log"
-	"math/rand"
 	"runtime"
 	"strconv"
 	"strings"
@@ -14,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/redisq"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/redisq"
 )
 
 const waitTimeout = time.Second
@@ -26,7 +25,7 @@ const testTimeout = 30 * time.Second
 
 func queueName(s string) string {
 	version := strings.Split(runtime.Version(), " ")[0]
-	version = strings.Replace(version, ".", "", -1)
+	version = strings.ReplaceAll(version, ".", "")
 	return "test-" + s + "-" + version
 }
 
@@ -101,7 +100,7 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 
 	red, ok := opt.Redis.(redisq.RedisStreamClient)
 	if !ok {
-		log.Fatal(fmt.Errorf("redisq: Redis client must support streams"))
+		t.Fatal("redisq: Redis client must support streams")
 	}
 
 	q := factory.RegisterQueue(opt)
@@ -134,22 +133,29 @@ func testConsumerDelete(t *testing.T, factory taskq.Factory, opt *taskq.QueueOpt
 		t.Fatalf("message was not processed")
 	}
 
-	tm := time.Now().Add(opt.ReservationTimeout)
-	end := strconv.FormatInt(unixMs(tm), 10)
-	pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
-		Stream: "taskq:{" + opt.Name + "}:stream",
-		Group:  "taskq",
-		Start:  "-",
-		End:    end,
-		Count:  100,
-	}).Result()
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(pending) > 0 {
-		t.Fatal("task not acknowledged and still exists in pending list.")
+	// The consumer acks the message only after the handler returns, so the
+	// ack can land slightly after we receive from ch. Poll instead of checking once.
+	deadline := time.Now().Add(testTimeout)
+	for {
+		tm := time.Now().Add(opt.ReservationTimeout)
+		end := strconv.FormatInt(unixMs(tm), 10)
+		pending, err := red.XPendingExt(context.Background(), &redis.XPendingExtArgs{
+			Stream: "taskq:{" + opt.Name + "}:stream",
+			Group:  "taskq",
+			Start:  "-",
+			End:    end,
+			Count:  100,
+		}).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("task not acknowledged and still exists in pending list.")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if err := p.Stop(); err != nil {
@@ -235,7 +241,9 @@ func testFallback(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case <-ch:
@@ -279,7 +287,9 @@ func testDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	var tm time.Time
 	select {
@@ -338,7 +348,9 @@ func testRetry(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	timings := []time.Duration{0, time.Second, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)
@@ -381,16 +393,17 @@ func testNamedMessage(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptio
 
 			msg := task.WithArgs(c, "world")
 			msg.Name = "the-name"
-			err := q.Add(msg)
-			if err != nil {
-				t.Fatal(err)
+			if err := q.Add(msg); err != nil {
+				t.Error(err)
 			}
 		}()
 	}
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case <-ch:
@@ -436,9 +449,9 @@ func testCallOnce(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) 
 				msg := task.WithArgs(c)
 				msg.OnceInPeriod(500 * time.Millisecond)
 
-				err := q.Add(msg)
-				if err != nil {
-					t.Fatal(err)
+				if err := q.Add(msg); err != nil {
+					t.Error(err)
+					return
 				}
 			}
 			time.Sleep(time.Second)
@@ -496,7 +509,7 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 		}
 	}
 
-	eventually(func() error {
+	err := eventually(func() error {
 		n, err := q.Len()
 		if err != nil {
 			return err
@@ -507,6 +520,9 @@ func testLen(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions) {
 		}
 		return nil
 	}, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := q.Close(); err != nil {
 		t.Fatal(err)
@@ -537,16 +553,17 @@ func testRateLimit(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions)
 		go func() {
 			defer wg.Done()
 
-			err := q.Add(task.WithArgs(c))
-			if err != nil {
-				t.Fatal(err)
+			if err := q.Add(task.WithArgs(c)); err != nil {
+				t.Error(err)
 			}
 		}()
 	}
 	wg.Wait()
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	time.Sleep(5 * time.Second)
 
@@ -589,7 +606,9 @@ func testErrorDelay(t *testing.T, factory taskq.Factory, opt *taskq.QueueOptions
 	}
 
 	p := q.Consumer()
-	p.Start(c)
+	if err := p.Start(c); err != nil {
+		t.Fatal(err)
+	}
 
 	timings := []time.Duration{0, 3 * time.Second, 3 * time.Second}
 	testTimings(t, handlerCh, timings)

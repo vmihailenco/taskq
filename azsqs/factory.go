@@ -5,8 +5,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/internal/base"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/internal/base"
 )
 
 type factory struct {
@@ -18,9 +18,9 @@ type factory struct {
 
 var _ taskq.Factory = (*factory)(nil)
 
-func NewFactory(sqs *sqs.SQS, accountID string) taskq.Factory {
+func NewFactory(client *sqs.SQS, accountID string) taskq.Factory {
 	return &factory{
-		sqs:       sqs,
+		sqs:       client,
 		accountID: accountID,
 	}
 }

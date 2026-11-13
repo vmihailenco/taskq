@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/internal"
-	"github.com/vmihailenco/taskq/v3/internal/msgutil"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/internal"
+	"github.com/vmihailenco/taskq/v5/internal/msgutil"
 )
 
 type scheduler struct {
@@ -124,8 +124,8 @@ func (q *Queue) Consumer() taskq.QueueConsumer {
 	return q.consumer
 }
 
-func (q *Queue) SetSync(sync bool) {
-	q.sync = sync
+func (q *Queue) SetSync(enabled bool) {
+	q.sync = enabled
 }
 
 func (q *Queue) SetNoDelay(noDelay bool) {

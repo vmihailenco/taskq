@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/memqueue"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/memqueue"
 )
 
 func BenchmarkCallAsync(b *testing.B) {
@@ -53,7 +53,10 @@ func BenchmarkNamedMessage(b *testing.B) {
 		for pb.Next() {
 			msg := task.WithArgs(ctx)
 			msg.Name = "myname"
-			q.Add(msg)
+			if err := q.Add(msg); err != nil {
+				b.Error(err)
+				return
+			}
 		}
 	})
 }

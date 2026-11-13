@@ -8,11 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis_rate/v9"
+	"github.com/go-redis/redis_rate/v10"
 
 	"github.com/bsm/redislock"
 
-	"github.com/vmihailenco/taskq/v3/internal"
+	"github.com/vmihailenco/taskq/v5/internal"
 )
 
 const stopTimeout = 30 * time.Second
@@ -278,10 +278,6 @@ func (c *Consumer) addWorker(ctx context.Context, id int32) bool {
 		return true
 	}
 	return false
-}
-
-func (c *Consumer) removeWorker(id int32) bool { //nolint:unused
-	return atomic.CompareAndSwapInt32(&c.numWorker, id+1, id)
 }
 
 func (c *Consumer) addFetcher(ctx context.Context, id int32) bool {
@@ -901,7 +897,7 @@ func (l *limiter) Reserve(ctx context.Context, max int) int {
 			continue
 		}
 
-		if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, uint32(cancelled)-1) {
+		if atomic.CompareAndSwapUint32(&l.cancelled, cancelled, cancelled-1) {
 			return int(cancelled)
 		}
 	}

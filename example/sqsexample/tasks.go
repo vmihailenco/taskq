@@ -10,10 +10,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/azsqs"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/azsqs"
 )
 
 var Redis = redis.NewClient(&redis.Options{

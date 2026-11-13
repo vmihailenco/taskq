@@ -13,11 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	"github.com/vmihailenco/taskq/v3"
-	"github.com/vmihailenco/taskq/v3/internal"
-	"github.com/vmihailenco/taskq/v3/internal/base"
-	"github.com/vmihailenco/taskq/v3/internal/msgutil"
-	"github.com/vmihailenco/taskq/v3/memqueue"
+	"github.com/vmihailenco/taskq/v5"
+	"github.com/vmihailenco/taskq/v5/internal"
+	"github.com/vmihailenco/taskq/v5/internal/base"
+	"github.com/vmihailenco/taskq/v5/internal/msgutil"
+	"github.com/vmihailenco/taskq/v5/memqueue"
 )
 
 const msgSizeLimit = 262144
@@ -46,11 +46,11 @@ type Queue struct {
 
 var _ taskq.Queue = (*Queue)(nil)
 
-func NewQueue(sqs *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
+func NewQueue(client *sqs.SQS, accountID string, opt *taskq.QueueOptions) *Queue {
 	opt.Init()
 
 	q := &Queue{
-		sqs:       sqs,
+		sqs:       client,
 		accountID: accountID,
 		opt:       opt,
 	}

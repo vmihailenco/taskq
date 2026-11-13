@@ -39,7 +39,7 @@ then
     exit 1
 fi
 
-git checkout v3
+git checkout v5
 
 PACKAGE_DIRS=$(find . -mindepth 2 -type f -name 'go.mod' -exec dirname {} \; \
   | sed 's/^\.\///' \
@@ -62,7 +62,7 @@ sed --in-place "s/\(\"version\": \)\"[^\"]*\"/\1\"${TAG#v}\"/" ./package.json
 
 conventional-changelog -p angular -i CHANGELOG.md -s
 
-git checkout -b release/${TAG} v3
+git checkout -b release/${TAG} v5
 git add -u
 git commit -m "chore: release $TAG (release.sh)"
 git push origin release/${TAG}
