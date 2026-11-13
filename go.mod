@@ -1,6 +1,6 @@
 module github.com/vmihailenco/taskq/v3
 
-go 1.17
+go 1.24
 
 require (
 	github.com/aws/aws-sdk-go v1.43.45
@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/iron-io/iron_go3 v0.0.0-20190916120531-a4a7f74b73ac
-	github.com/klauspost/compress v1.15.1
+	github.com/klauspost/compress v1.18.7
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.18.1
 	github.com/satori/go.uuid v1.2.0
