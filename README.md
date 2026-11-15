@@ -10,6 +10,10 @@
 > [distributed tracing tool](https://get.uptrace.dev/compare/distributed-tracing-tools.html) powered
 > by OpenTelemetry and ClickHouse. Give it a star as well!
 
+## Migrate to V5
+
+[Upgrading from v3 to v5](https://github.com/vmihailenco/taskq/blob/v5/README.md#upgrading-from-v3-to-v5)
+
 ## Features
 
 - Redis, SQS, IronMQ, and in-memory backends.
