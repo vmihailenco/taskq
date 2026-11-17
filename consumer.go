@@ -342,7 +342,7 @@ func (c *Consumer) ProcessOne(ctx context.Context) error {
 	}
 
 	// TODO: wait
-	msg.Ctx = ctx
+	msg.Ctx = messageContext(ctx, msg.Ctx)
 	return c.Process(msg)
 }
 
@@ -472,9 +472,42 @@ func (c *Consumer) worker(ctx context.Context, workerID int32) {
 			continue
 		}
 
-		msg.Ctx = ctx
+		msg.Ctx = messageContext(ctx, msg.Ctx)
 		_ = c.Process(msg)
 	}
+}
+
+// messageContext returns the context a consumer processes a message with.
+//
+// Cancellation and deadline come from the consumer context only, so a message
+// is not canceled when the context it was added with is done, for example
+// after the HTTP request that added it has finished. Values are looked up in
+// the message context first and then in the consumer context, so in-process
+// queues such as memqueue keep request-scoped values like trace spans.
+func messageContext(consumerCtx, msgCtx context.Context) context.Context {
+	if msgCtx == nil {
+		return consumerCtx
+	}
+	return valuesContext{
+		Context: consumerCtx,
+		// WithoutCancel hides the cancelCtx of msgCtx from context.Cause and
+		// from contexts derived from this one.
+		values: context.WithoutCancel(msgCtx),
+	}
+}
+
+// valuesContext is a context that is canceled together with the embedded
+// context but resolves values from values first.
+type valuesContext struct {
+	context.Context
+	values context.Context
+}
+
+func (c valuesContext) Value(key any) any {
+	if v := c.values.Value(key); v != nil {
+		return v
+	}
+	return c.Context.Value(key)
 }
 
 func (c *Consumer) waitMessage(ctx context.Context, timer *time.Timer) *Message {
