@@ -20,6 +20,13 @@ var ErrDuplicate = errors.New("taskq: message with such name already exists")
 
 // Message is used to create and retrieve messages from a queue.
 type Message struct {
+	// Ctx is the context the message is added and processed with. It is not
+	// serialized, so it only reaches the handler when the queue hands the
+	// message over in process, as memqueue does. Consumer workers then give
+	// the handler the values of Ctx but take cancellation and deadline from
+	// the consumer context; memqueue in sync mode passes Ctx unchanged.
+	// Queues backed by Redis, SQS or IronMQ give the handler the consumer
+	// context.
 	Ctx context.Context `msgpack:"-"`
 
 	// SQS/IronMQ message id.

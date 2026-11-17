@@ -92,6 +92,100 @@ var _ = Describe("context.Context", func() {
 	})
 })
 
+type ctxKey string
+
+var _ = Describe("message context", func() {
+	var task *taskq.Task
+	var ch chan context.Context
+	var fails int32
+
+	BeforeEach(func() {
+		ch = make(chan context.Context, 10)
+		atomic.StoreInt32(&fails, 0)
+		task = taskq.RegisterTask(&taskq.TaskOptions{
+			Name: "test",
+			Handler: func(ctx context.Context) error {
+				ch <- ctx
+				if atomic.AddInt32(&fails, -1) >= 0 {
+					return errors.New("fake error")
+				}
+				return nil
+			},
+			MinBackoff: time.Millisecond,
+		})
+	})
+
+	newQueue := func(consumerCtx context.Context) *memqueue.Queue {
+		q := memqueue.NewQueueMaybeConsumer(false, &taskq.QueueOptions{
+			Name:    "test",
+			Storage: taskq.NewLocalStorage(),
+		})
+		Expect(q.Consumer().Start(consumerCtx)).To(Succeed())
+		DeferCleanup(q.Close)
+		return q
+	}
+
+	receive := func() context.Context {
+		var ctx context.Context
+		Eventually(ch).Should(Receive(&ctx))
+		return ctx
+	}
+
+	It("passes message context values to the handler", func() {
+		q := newQueue(context.Background())
+		msgCtx := context.WithValue(context.Background(), ctxKey("request"), "42")
+		Expect(q.Add(task.WithArgs(msgCtx))).To(Succeed())
+
+		Expect(receive().Value(ctxKey("request"))).To(Equal("42"))
+	})
+
+	It("passes message context values to the handler in sync mode", func() {
+		q := newQueue(context.Background())
+		q.SetSync(true)
+		msgCtx := context.WithValue(context.Background(), ctxKey("request"), "42")
+		Expect(q.Add(task.WithArgs(msgCtx))).To(Succeed())
+
+		Expect(receive().Value(ctxKey("request"))).To(Equal("42"))
+	})
+
+	It("passes message context values to retries", func() {
+		atomic.StoreInt32(&fails, 1)
+		q := newQueue(context.Background())
+		msgCtx := context.WithValue(context.Background(), ctxKey("request"), "42")
+		Expect(q.Add(task.WithArgs(msgCtx))).To(Succeed())
+
+		Expect(receive().Value(ctxKey("request"))).To(Equal("42"))
+		Expect(receive().Value(ctxKey("request"))).To(Equal("42"))
+	})
+
+	It("keeps consumer context values", func() {
+		consumerCtx := context.WithValue(context.Background(), ctxKey("consumer"), "c")
+		q := newQueue(consumerCtx)
+		msgCtx := context.WithValue(context.Background(), ctxKey("request"), "42")
+		Expect(q.Add(task.WithArgs(msgCtx))).To(Succeed())
+
+		ctx := receive()
+		Expect(ctx.Value(ctxKey("consumer"))).To(Equal("c"))
+		Expect(ctx.Value(ctxKey("request"))).To(Equal("42"))
+	})
+
+	It("takes cancellation from the consumer context only", func() {
+		consumerCtx, stopConsumer := context.WithCancelCause(context.Background())
+		q := newQueue(consumerCtx)
+		msgCtx, finishRequest := context.WithCancelCause(context.Background())
+		finishRequest(errors.New("request finished"))
+		Expect(q.Add(task.WithArgs(msgCtx))).To(Succeed())
+
+		ctx := receive()
+		Expect(ctx.Err()).NotTo(HaveOccurred())
+
+		stopped := errors.New("consumer stopped")
+		stopConsumer(stopped)
+		Expect(ctx.Done()).To(BeClosed())
+		Expect(context.Cause(ctx)).To(Equal(stopped))
+	})
+})
+
 var _ = Describe("message with invalid number of args", func() {
 	ctx := context.Background()
 	ch := make(chan bool, 10)
