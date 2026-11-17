@@ -7,7 +7,7 @@ toolchain go1.27.4
 replace github.com/vmihailenco/taskq/v5 => ../..
 
 require (
-	github.com/vmihailenco/taskq/v5 v5.0.0
+	github.com/vmihailenco/taskq/v5 v5.0.1
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 )

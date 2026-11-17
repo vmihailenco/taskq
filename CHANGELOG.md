@@ -1,3 +1,22 @@
+## [5.0.1](https://github.com/vmihailenco/taskq/compare/v5.0.0...v5.0.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* pass message context values to memqueue handlers ([d3fd762](https://github.com/vmihailenco/taskq/commit/d3fd762b9ac8970482e806da4a92451a726f3b95)), closes [#196](https://github.com/vmihailenco/taskq/issues/196)
+
+
+### Behavior Changes
+
+* memqueue handlers in async mode now see the values of the context a message
+was added with, as in sync mode; cancellation and deadline still come from the
+consumer context. With taskqotel, task spans become children of the producer's
+span. Copy a context that a framework reuses after the request, such as
+`*gin.Context`, before adding a message with it. Redis, SQS and IronMQ are
+unchanged.
+
+
+
 # [5.0.0](https://github.com/vmihailenco/taskq/compare/v3.2.9...v5.0.0) (2026-11-13)
 
 
