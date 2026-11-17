@@ -7,7 +7,7 @@ toolchain go1.27.4
 require (
 	github.com/aws/aws-sdk-go v1.55.8
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/vmihailenco/taskq/v5 v5.0.0
+	github.com/vmihailenco/taskq/v5 v5.0.1
 )
 
 require (
